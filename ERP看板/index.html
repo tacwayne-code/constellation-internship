@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>库存采购异常看板</title>
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' fill='%2307111f'/%3E%3Cpath d='M12 44 28 14l24 36H18' fill='none' stroke='%2338bdf8' stroke-width='5' stroke-linejoin='round'/%3E%3Cpath d='M29 31h10M29 41h18' stroke='%2322c55e' stroke-width='5' stroke-linecap='round'/%3E%3C/svg%3E" />
+  <link rel="stylesheet" href="./styles.css?v=51" />
+  </head>
+  <body>
+    <main class="risk-shell">
+      <header class="command-bar">
+        <div class="brand">
+          <span class="brand-mark" aria-hidden="true"></span>
+          <div>
+            <h1>库存采购异常看板</h1>
+            <p>基于 Odoo ERP 数据汇总采购、库存、供应商和收货异常，只读展示，不写回 ERP。</p>
+          </div>
+        </div>
+
+        <nav class="screen-tabs" aria-label="驾驶舱切换">
+          <button class="tab active" data-screen="purchase" type="button">采购异常</button>
+          <button class="tab" data-screen="inventory" type="button">库存异常</button>
+        </nav>
+
+        <div class="toolbar">
+          <label class="filter-control">
+            <span>等级</span>
+            <select id="levelFilter" aria-label="筛选风险等级">
+              <option value="all">全部异常</option>
+              <option value="P0">P0 今天必须处理</option>
+              <option value="P1">P1 3 天内处理</option>
+              <option value="P2">P2 本周关注</option>
+              <option value="P3">P3 普通提醒</option>
+            </select>
+          </label>
+          <label class="search-control">
+            <span>搜索</span>
+            <input id="riskSearch" autocomplete="off" placeholder="产品 / 物料 / 供应商 / 单号" />
+          </label>
+          <button class="tool-button" id="refreshBtn" type="button" title="刷新数据">刷新</button>
+          <button class="tool-button help-button" id="helpBtn" type="button" title="使用说明">❓ 使用说明</button>
+          <button class="icon-button" id="fullscreenBtn" type="button" title="全屏显示" aria-label="全屏显示">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" />
+            </svg>
+          </button>
+        </div>
+      </header>
+
+      <section class="status-strip" aria-label="数据状态">
+        <span class="live-dot" id="connectionDot"></span>
+        <span id="connectionStatus">正在连接 Odoo ERP</span>
+        <span id="refreshMeta">等待刷新</span>
+        <span id="dataCoverage">数据覆盖：等待同步</span>
+        <span id="clock">--:--:--</span>
+      </section>
+
+      <section class="dashboard-view active" id="purchaseView" aria-label="采购异常看板">
+        <div id="purchaseLayout" class="dashboard-layout"></div>
+      </section>
+
+      <section class="dashboard-view" id="inventoryView" aria-label="库存异常看板">
+        <div id="inventoryLayout" class="dashboard-layout"></div>
+      </section>
+    </main>
+
+    <div class="help-overlay" id="helpOverlay">
+      <div class="help-modal">
+        <div class="help-modal-header">
+          <h2>库存采购异常看板 — 使用说明</h2>
+          <button class="help-close" id="helpClose" type="button" aria-label="关闭">✕</button>
+        </div>
+        <div class="help-modal-body">
+
+          <section class="help-section">
+            <h3>📊 这是什么</h3>
+            <p>一个<strong>只读</strong>看板，连到 Odoo ERP 自动汇总采购和库存异常。打开看一眼就知道今天该处理什么。<strong>不会写回 Odoo，不会新增、修改、删除任何数据。</strong></p>
+          </section>
+
+          <section class="help-section">
+            <h3>🎨 异常等级（颜色）</h3>
+            <table class="help-table">
+              <tr><td class="hl-p0-strong">P0 亮红</td><td>前 5 个最紧急的，<strong>今天必须处理</strong></td></tr>
+              <tr><td class="hl-p0-muted">P0 暗红</td><td>同样紧急但排名靠后，今天尽量处理</td></tr>
+              <tr><td class="hl-p1">P1 橙色</td><td>3 天内处理</td></tr>
+              <tr><td class="hl-p2">P2 黄色</td><td>本周关注</td></tr>
+              <tr><td class="hl-p3">P3 绿色</td><td>普通提醒，知道就行</td></tr>
+            </table>
+          </section>
+
+          <section class="help-section">
+            <h3>📋 采购异常 — 数据来源和计算方式</h3>
+            <table class="help-table">
+              <tr><th>异常类型</th><th>触发条件</th><th>数据来源</th></tr>
+              <tr><td>采购数量不足</td><td>库存为 0 或低于安全库存，且在途采购量小于缺口</td><td>Odoo 在手量 + 补货规则最小库存 + 采购订单行到货量</td></tr>
+              <tr><td>询价单未回复</td><td>RFQ 预计日期已过，状态仍为询价/已发送，未转为采购订单</td><td>Odoo 采购单预计日期 + 状态</td></tr>
+              <tr><td>采购订单延期</td><td>采购收货预计日期已过，收货作业未完成入库</td><td>Odoo 仓库收货单 scheduled_date</td></tr>
+              <tr><td>预测库存不足</td><td>当前库存 &gt; 0，但按近 30 天消耗速度推算，<strong>3 天内会用完</strong></td><td>Odoo 在手量 + 近 30 天出库记录 ÷ 30 = 日均消耗 × 3</td></tr>
+              <tr><td>价格异常</td><td>采购行单价 &gt; 产品标准成本 × 1.15</td><td>Odoo 采购行 price_unit + 产品 standard_price</td></tr>
+            </table>
+          </section>
+
+          <section class="help-section">
+            <h3>🏗️ 库存异常 — 数据来源和计算方式</h3>
+            <table class="help-table">
+              <tr><th>异常类型</th><th>触发条件</th><th>数据来源</th></tr>
+              <tr><td>在手数量为 0</td><td>库存为 0，且存在<strong>需求信号</strong>（安全库存/在途采购/近期消耗 任一项满足）</td><td>Odoo 在手量 + 补货规则 + 在途采购 + 近 30 天出库</td></tr>
+              <tr><td>低于安全库存</td><td>在手库存 &lt; Odoo 补货规则设置的最小库存</td><td>Odoo 补货规则 product_min_qty</td></tr>
+              <tr><td>收货单未入库</td><td>采购收货单超期未完成入库</td><td>Odoo 收货单 scheduled_date</td></tr>
+              <tr><td>长期无库存移动</td><td>有库存但近 30 天无出库记录</td><td>Odoo 库存移动记录</td></tr>
+              <tr><td>账实异常</td><td>库存数量为负数或状态异常</td><td>Odoo 在手量</td></tr>
+            </table>
+          </section>
+
+          <section class="help-section">
+            <h3>补货通知与自动消失</h3>
+            <p>补货通知直接读取 Odoo「库存 → 补货」中的手动补货记录（trigger = manual），不会由看板自行推算，也不会写回 Odoo。</p>
+            <table class="help-table">
+              <tr><th>操作或状态</th><th>看板行为</th></tr>
+              <tr><td>Odoo 保存补货申请</td><td>下一次刷新显示产品、当前库存、补货数量和可取得的供应商信息</td></tr>
+              <tr><td>部分入库</td><td>色块继续保留</td></tr>
+              <tr><td>足量入库</td><td>在手库存相对申请基线的增加量达到原申请数量后，下一次刷新自动消失</td></tr>
+              <tr><td>申请数量为 0</td><td>无法按数量判断完成，等待 Odoo 移除记录或人工隐藏</td></tr>
+              <tr><td>人工删除色块</td><td>只在当前浏览器持久隐藏，刷新不会重现；可点「恢复已忽略」恢复，不影响 Odoo</td></tr>
+            </table>
+          </section>
+
+          <section class="help-section">
+            <h3>🔍 什么是「需求信号」</h3>
+            <p>看板<strong>不是</strong>把"库存为 0"就报异常。一个产品要有至少一项满足，才会被纳入监控：</p>
+            <table class="help-table">
+              <tr><td>1. 有补货规则</td><td>Odoo 里配了最小库存（product_min_qty &gt; 0）</td></tr>
+              <tr><td>2. 有在途采购</td><td>已有采购单但还没到货（已下单量 &gt; 已收货量）</td></tr>
+              <tr><td>3. 近期有消耗</td><td>近 30 天有出库记录，说明生产实际在用</td></tr>
+            </table>
+            <p>三项都不满足 → 认为是不常用的备件/呆滞料 → <strong>不报异常</strong>。当前 770 个零库存产品中有 78% 因此被过滤，避免满屏都是无意义的红色。</p>
+          </section>
+
+          <section class="help-section">
+            <h3>📐 关键指标计算方式</h3>
+            <table class="help-table">
+              <tr><th>指标</th><th>怎么算的</th></tr>
+              <tr><td>日均消耗</td><td>Odoo 近 30 天所有已完成出库（stock.move, state=done, 从 WH/库存 出去）的总量 ÷ 30</td></tr>
+              <tr><td>安全库存</td><td>直接从 Odoo「补货规则」的最小库存字段读的，不是看板算的</td></tr>
+              <tr><td>缺口</td><td>max(安全库存 - 在手量, 补货建议量, 0)</td></tr>
+              <tr><td>在途采购</td><td>Odoo 采购订单行（state=draft/sent/purchase）中 已下单量 - 已收货量 的总和</td></tr>
+              <tr><td>库存异常指数</td><td>100 - 断货×2 - P0×3 - 低库存×1 - 未入库×1 - 呆滞 - 账实×2，最低 0</td></tr>
+              <tr><td>供应商准时率</td><td>100% - 延期次数×8 - 平均延期天数×1.4，最低 0%</td></tr>
+            </table>
+          </section>
+
+          <section class="help-section">
+            <h3>🔄 数据刷新</h3>
+            <p>页面每 <strong>3 分钟自动刷新</strong>。点「刷新」按钮立即拉最新数据。Odoo 里改了数据，最多 3 分钟看板就会更新。库存恢复到安全库存以上且不再触发 72 小时缺货条件后，对应库存异常色块会自动消失。</p>
+          </section>
+
+        </div>
+      </div>
+    </div>
+
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+    <script src="./app.js?v=51"></script>
+  </body>
+</html>

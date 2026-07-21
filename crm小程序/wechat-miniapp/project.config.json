@@ -1,0 +1,18 @@
+{
+  "description": "销售CRM微信员工入口",
+  "packOptions": {
+    "ignore": []
+  },
+  "setting": {
+    "urlCheck": false,
+    "es6": true,
+    "enhance": true,
+    "postcss": true,
+    "minified": true
+  },
+  "compileType": "miniprogram",
+  "appid": "touristappid",
+  "projectname": "crm-miniapp",
+  "miniprogramRoot": "./"
+}
+

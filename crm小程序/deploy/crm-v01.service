@@ -1,0 +1,25 @@
+[Unit]
+Description=CRM Miniapp Web and API
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=sameng
+Group=sameng
+WorkingDirectory=/home/sameng/apps/crm-v01/current
+Environment=PYTHONDONTWRITEBYTECODE=1
+EnvironmentFile=-/home/sameng/apps/crm-v01/shared/crm.env
+ExecStart=/usr/bin/python3 server/shared_server.py --host 127.0.0.1 --port 8123 --data /home/sameng/apps/crm-v01/shared/shared-db.json --employees /home/sameng/apps/crm-v01/shared/employees.json --dist dist
+Restart=on-failure
+RestartSec=3
+TimeoutStopSec=15
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=read-only
+ReadWritePaths=/home/sameng/apps/crm-v01/shared
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

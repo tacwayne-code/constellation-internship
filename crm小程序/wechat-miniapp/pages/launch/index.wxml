@@ -1,0 +1,43 @@
+<view class="launch">
+  <view class="brand">CRM</view>
+  <block wx:if="{{status === 'loading'}}">
+    <view class="spinner"></view>
+    <view class="title">正在确认员工身份</view>
+    <view class="note">请稍候</view>
+  </block>
+  <block wx:elif="{{status === 'binding'}}">
+    <view class="title">验证公司员工身份</view>
+    <view class="note">首次使用需要核对公司预留手机号</view>
+    <button class="primary" open-type="getPhoneNumber" bindgetphonenumber="verifyPhone">
+      验证公司员工身份
+    </button>
+  </block>
+  <block wx:elif="{{status === 'profile'}}">
+    <view class="title">{{isFirstAccount ? '创建首个经理账号' : '申请公司员工权限'}}</view>
+    <view class="note">已验证手机号 {{maskedPhone}}</view>
+    <view class="application-form">
+      <view class="field-label">真实姓名</view>
+      <input class="input" value="{{name}}" bindinput="updateName" maxlength="30" placeholder="填写姓名" />
+      <block wx:if="{{!isFirstAccount}}">
+        <view class="field-label">申请角色</view>
+        <picker mode="selector" range="{{roleOptions}}" bindchange="updateRole">
+          <view class="picker">{{requestedRole}} <text>›</text></view>
+        </picker>
+      </block>
+    </view>
+    <view class="note role-note" wx:if="{{isFirstAccount}}">首个注册账号将自动成为经理并直接进入系统</view>
+    <view class="note role-note" wx:else>最终角色由管理员审核确认</view>
+    <view class="note error" wx:if="{{message}}">{{message}}</view>
+    <button class="primary" bindtap="submitApplication">{{isFirstAccount ? '创建经理账号' : '提交人员申请'}}</button>
+  </block>
+  <block wx:elif="{{status === 'pending'}}">
+    <view class="title">等待管理员审核</view>
+    <view class="note">申请通过后再次打开小程序即可进入 CRM</view>
+    <button class="secondary" bindtap="startLogin">刷新审核状态</button>
+  </block>
+  <block wx:else>
+    <view class="title">暂时无法进入</view>
+    <view class="note error">{{message}}</view>
+    <button class="secondary" bindtap="startLogin">重新验证</button>
+  </block>
+</view>

@@ -1,0 +1,14 @@
+{
+  "pages": [
+    "pages/launch/index",
+    "pages/webview/index"
+  ],
+  "window": {
+    "navigationBarTitleText": "销售CRM",
+    "navigationBarBackgroundColor": "#ffffff",
+    "navigationBarTextStyle": "black",
+    "backgroundColor": "#f3f6f9"
+  },
+  "sitemapLocation": "sitemap.json"
+}
+

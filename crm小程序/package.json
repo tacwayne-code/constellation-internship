@@ -1,0 +1,22 @@
+{
+  "name": "crm-miniapp-web",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1",
+    "api": "python server/shared_server.py --host 127.0.0.1 --port 4174 --data server/data/shared-db.json --auth-mode DEMO",
+    "build": "vite build",
+    "test": "node --test tests/*.test.mjs && python -m unittest discover -s tests -p \"test_*.py\"",
+    "test:domain": "node --test tests/domain.test.mjs",
+    "preview": "vite preview --host 127.0.0.1",
+    "start": "python server/shared_server.py --host 127.0.0.1 --port 4173 --data server/data/shared-db.json --dist dist --auth-mode DEMO"
+  },
+  "dependencies": {
+    "@vitejs/plugin-react": "latest",
+    "vite": "latest",
+    "react": "latest",
+    "react-dom": "latest"
+  },
+  "devDependencies": {}
+}

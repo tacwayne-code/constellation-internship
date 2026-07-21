@@ -1,0 +1,10 @@
+{
+  "desc": "公司内部CRM不参与搜索",
+  "rules": [
+    {
+      "action": "disallow",
+      "page": "*"
+    }
+  ]
+}
+
