@@ -34,6 +34,38 @@ def gen_system_id():
     return 'ITM-' + datetime.now().strftime('%Y%m%d%H%M%S') + '-' + gen_uuid()
 
 
+# ── API Key 加密工具 ──
+def _encrypt(plain_text):
+    """用 SECRET_KEY 对敏感字段做可逆混淆（非密码级加密，防明文泄露）"""
+    import base64
+    from flask import current_app
+    try:
+        key = current_app.config.get('SECRET_KEY', 'plm-fallback')[:32]
+    except Exception:
+        key = 'plm-fallback-32bytes-key-here!'[:32]
+    key_bytes = key.encode('utf-8').ljust(32, b'\0')
+    plain_bytes = plain_text.encode('utf-8')
+    result = bytes(p ^ key_bytes[i % 32] for i, p in enumerate(plain_bytes))
+    return base64.urlsafe_b64encode(result).decode()
+
+
+def _decrypt(cipher_text):
+    """解密 _encrypt 的输出"""
+    import base64
+    from flask import current_app
+    try:
+        key = current_app.config.get('SECRET_KEY', 'plm-fallback')[:32]
+    except Exception:
+        key = 'plm-fallback-32bytes-key-here!'[:32]
+    key_bytes = key.encode('utf-8').ljust(32, b'\0')
+    try:
+        data = base64.urlsafe_b64decode(cipher_text)
+        result = bytes(d ^ key_bytes[i % 32] for i, d in enumerate(data))
+        return result.decode('utf-8')
+    except Exception:
+        return cipher_text  # 旧数据未加密，原样返回
+
+
 # ──────────────── 1. 用户与权限 ────────────────
 class User(UserMixin, db.Model):
     __tablename__ = 'plm_user'
@@ -392,11 +424,21 @@ class IntegrationConfig(db.Model):
     name = db.Column(db.String(100), nullable=False)
     system_type = db.Column(db.String(30))  # odoo / cad / erp / mes
     api_url = db.Column(db.String(500))
-    api_key = db.Column(db.String(500))
+    _api_key = db.Column('api_key', db.String(500))  # 加密存储
     is_active = db.Column(db.Boolean, default=False)
     last_sync = db.Column(db.DateTime)
     sync_interval = db.Column(db.Integer, default=60)  # minutes
     created_at = db.Column(db.DateTime, default=datetime.now)
+
+    @property
+    def api_key(self):
+        """解密读取 API Key"""
+        return _decrypt(self._api_key) if self._api_key else ''
+
+    @api_key.setter
+    def api_key(self, value):
+        """加密写入 API Key"""
+        self._api_key = _encrypt(value) if value else ''
 
 
 class SyncLog(db.Model):

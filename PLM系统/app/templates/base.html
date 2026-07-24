@@ -106,6 +106,23 @@
     </div>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.3/js/bootstrap.bundle.min.js"></script>
+    {# CSRF 自动注入：所有 POST 表单自动添加 csrf_token #}
+    <script>
+    (function() {
+        var csrf = '{{ csrf_token }}';
+        if (!csrf) return;
+        document.querySelectorAll('form').forEach(function(f) {
+            var m = (f.method || 'post').toLowerCase();
+            if (m === 'get') return;
+            if (f.querySelector('input[name=csrf_token]')) return;
+            var inp = document.createElement('input');
+            inp.type = 'hidden';
+            inp.name = 'csrf_token';
+            inp.value = csrf;
+            f.appendChild(inp);
+        });
+    })();
+    </script>
     {% block scripts %}{% endblock %}
 </body>
 </html>    <script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.3/js/bootstrap.bundle.min.js"></script>

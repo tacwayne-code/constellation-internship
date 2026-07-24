@@ -846,9 +846,6 @@ def view_bom(id):
                            all_docs=all_docs, all_products=all_products,
                            items=items, items_page=items_page, items_per_page=items_per_page,
                            items_total=items_total, items_total_pages=items_total_pages)
-    if bom.bom_type == 'EBOM':
-        derived_mboms = Bom.query.filter_by(source_ebom_id=bom.id).order_by(Bom.created_at.desc()).all()
-    return render_template('boms/view.html', bom=bom, products=products, derived_mboms=derived_mboms)
 
 
 @bom_bp.route('/<int:id>/edit', methods=['GET', 'POST'])
@@ -1349,11 +1346,14 @@ def submit_ecr(id):
 @login_required
 def approve_ecr(id):
     ecr = ChangeRequest.query.get_or_404(id)
-    action = request.form['action']
+    action = request.form.get('action', '')
     if action == 'approved':
         ecr.status = 'approved'
     elif action == 'rejected':
         ecr.status = 'rejected'
+    else:
+        flash('无效操作', 'danger')
+        return redirect(url_for('changes.view_change', id=id))
     db.session.commit()
     flash(f'变更申请已{action}', 'success')
     return redirect(url_for('changes.view_change', id=id))
