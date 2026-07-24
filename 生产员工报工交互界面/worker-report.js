@@ -348,6 +348,15 @@ function setupEvents() {
       resetForm();
     }
   });
+
+  // 全屏按钮
+  const fsBtn = $("#fullscreenBtn");
+  if (fsBtn) {
+    fsBtn.addEventListener("click", toggleFullscreen);
+    document.addEventListener("fullscreenchange", updateFullscreenLabel);
+    document.addEventListener("webkitfullscreenchange", updateFullscreenLabel);
+    document.addEventListener("msfullscreenchange", updateFullscreenLabel);
+  }
 }
 
 // ====== 数量变更 ======
@@ -434,6 +443,58 @@ function toast(msg, type) {
   clearTimeout(t._tid);
   t._tid = setTimeout(() => { t.className = "toast"; }, 2500);
 }
+
+// ====== 全屏（修复跨页跳转退出全屏的问题） ======
+function nativeFullscreen() {
+  return document.fullscreenElement || document.webkitFullscreenElement || document.msFullscreenElement;
+}
+function pseudoFullscreen() {
+  return document.documentElement.classList.contains("app-fullscreen");
+}
+function updateFullscreenLabel() {
+  const btn = $("#fullscreenBtn");
+  if (!btn) return;
+  btn.textContent = nativeFullscreen() ? "退出全屏" : pseudoFullscreen() ? "退出沉浸" : "全屏";
+}
+async function toggleFullscreen() {
+  if (nativeFullscreen()) {
+    const exit = document.exitFullscreen || document.webkitExitFullscreen || document.msExitFullscreen;
+    if (exit) await exit.call(document);
+    updateFullscreenLabel();
+    return;
+  }
+  if (pseudoFullscreen()) {
+    document.documentElement.classList.remove("app-fullscreen");
+    updateFullscreenLabel();
+    return;
+  }
+  const request = document.documentElement.requestFullscreen || document.documentElement.webkitRequestFullscreen || document.msRequestFullscreen;
+  try {
+    if (request) await request.call(document.documentElement);
+    else document.documentElement.classList.add("app-fullscreen");
+  } catch (_) {
+    document.documentElement.classList.add("app-fullscreen");
+  }
+  // 记住这次是从看板跳过来的，3 秒内可自动恢复全屏
+  try { sessionStorage.setItem("wr_fullscreen_intent", "1"); } catch (_) {}
+  updateFullscreenLabel();
+}
+
+// 跳转标记：dashboard 点击"生产报工"时设置此标记，worker-report 自动尝试恢复全屏
+try {
+  if (sessionStorage.getItem("wr_fullscreen_intent") === "1") {
+    // 必须由用户手势触发，因此我们改成：显示一条引导，让用户点全屏按钮
+    sessionStorage.removeItem("wr_fullscreen_intent");
+    // 短暂地把按钮高亮一下，提示用户点击
+    setTimeout(() => {
+      const btn = $("#fullscreenBtn");
+      if (btn) {
+        btn.classList.add("btn-pulse");
+        setTimeout(() => btn.classList.remove("btn-pulse"), 3000);
+      }
+    }, 600);
+  }
+} catch (_) {}
 
 // ====== 启动 ======
 async function init() {

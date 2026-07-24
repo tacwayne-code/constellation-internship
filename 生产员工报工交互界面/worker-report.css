@@ -135,6 +135,16 @@ html, body {
   color: #0a6d85;
 }
 .btn-pill.btn-primary:hover { background: var(--cyan); color: #fff; border-color: var(--cyan); }
+.btn-pill.btn-pulse {
+  animation: btnPulse 1s ease-in-out infinite;
+  border-color: var(--orange);
+  box-shadow: 0 0 0 0 rgba(245,158,11,.7);
+}
+@keyframes btnPulse {
+  0%   { box-shadow: 0 0 0 0 rgba(245,158,11,.7); transform: scale(1); }
+  50%  { box-shadow: 0 0 0 10px rgba(245,158,11,0); transform: scale(1.06); }
+  100% { box-shadow: 0 0 0 0 rgba(245,158,11,0); transform: scale(1); }
+}
 .topbar-clock {
   display: flex;
   flex-direction: column;
@@ -278,15 +288,15 @@ html, body {
   color: #34d399;
 }
 
-/* ===================== 工单卡片（触摸大屏版） ===================== */
+/* ===================== 工单卡片（触摸大屏远距版） ===================== */
 .order-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
-  gap: 12px;
+  grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
+  gap: 14px;
   align-content: start;
 }
 .order-card {
-  padding: 22px;
+  padding: 24px;
   border: 2px solid var(--border);
   border-radius: var(--radius-sm);
   background: var(--surface);
@@ -294,7 +304,7 @@ html, body {
   transition: all .12s;
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 16px;
 }
 .order-card:hover { border-color: var(--border-strong); }
 .order-card.active {
@@ -306,22 +316,22 @@ html, body {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
 }
 .oc-customer-code {
-  font-size: 15px;
+  font-size: 20px;
   font-weight: 800;
   color: #E8F0FF;
-  padding: 4px 12px;
+  padding: 5px 14px;
   border-radius: 4px;
   background: rgba(14,165,201,.12);
   border: 1px solid rgba(14,165,201,.3);
 }
-.oc-id { font-size: 22px; font-weight: 900; color: var(--text-heading); }
+.oc-id { font-size: 32px; font-weight: 900; color: var(--text-heading); }
 .oc-status {
-  padding: 4px 14px;
-  border-radius: 12px;
-  font-size: 14px;
+  padding: 5px 16px;
+  border-radius: 14px;
+  font-size: 18px;
   font-weight: 800;
   flex-shrink: 0;
 }
@@ -332,7 +342,7 @@ html, body {
   justify-content: space-between;
   align-items: flex-end;
   gap: 18px;
-  padding: 8px 0;
+  padding: 10px 0;
   border-bottom: 1px dashed var(--border);
 }
 .oc-prod-main {
@@ -341,8 +351,8 @@ html, body {
   gap: 4px;
   min-width: 0;
 }
-.oc-prod-main strong { font-size: 22px; font-weight: 900; color: var(--cyan); }
-.oc-prod-main small { font-size: 15px; color: var(--muted-light); font-weight: 700; }
+.oc-prod-main strong { font-size: 30px; font-weight: 900; color: var(--cyan); }
+.oc-prod-main small { font-size: 22px; color: var(--muted-light); font-weight: 700; }
 .oc-prod-extra {
   display: flex;
   flex-direction: column;
@@ -351,27 +361,27 @@ html, body {
   flex-shrink: 0;
   padding-right: 4px;
 }
-.oc-prod-extra small { font-size: 12px; color: var(--muted); font-weight: 700; }
+.oc-prod-extra small { font-size: 16px; color: var(--muted); font-weight: 700; }
 .oc-spec {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
   gap: 8px;
-  font-size: 16px;
+  font-size: 22px;
 }
 .oc-spec span { color: var(--text); font-weight: 800; }
-.oc-spec small { color: var(--muted); font-size: 12px; font-weight: 700; }
+.oc-spec small { color: var(--muted); font-size: 16px; font-weight: 700; }
 .oc-qty-row {
   display: flex;
   justify-content: space-between;
   align-items: baseline;
-  font-size: 20px;
+  font-size: 28px;
   font-weight: 900;
   color: var(--text-heading);
 }
 .oc-qty-row small {
   color: var(--orange);
-  font-size: 15px;
+  font-size: 20px;
   font-weight: 800;
 }
 .oc-meta-row {
@@ -381,7 +391,7 @@ html, body {
   gap: 10px;
   padding-top: 10px;
   border-top: 1px solid var(--border);
-  font-size: 15px;
+  font-size: 18px;
 }
 .oc-remark {
   color: var(--muted-light);
