@@ -1,0 +1,178 @@
+{% extends "base.html" %}
+
+{% block title %}新建流程{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1 class="h3 mb-0">{% if edit_mode %}编辑流程{% else %}新建流程{% endif %}</h1>
+        <a href="{{ url_for('workflows.list_workflows') }}" class="btn btn-outline-secondary">
+            <i class="bi bi-arrow-left"></i> 返回列表
+        </a>
+    </div>
+
+    <div class="card shadow-sm">
+        <div class="card-body">
+            <form method="POST" action="{% if edit_mode %}{{ url_for('workflows.edit_workflow', id=workflow.id) }}{% else %}{{ url_for('workflows.create_workflow') }}{% endif %}">
+                <div class="row g-3 mb-4">
+                    <div class="col-md-6">
+                        <label for="name" class="form-label">流程名称 <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control" id="name" name="name" placeholder="请输入流程名称" required value="{{ workflow.name if edit_mode else '' }}">
+                    </div>
+                    <div class="col-md-6">
+                        <label for="model_type" class="form-label">模型类型 <span class="text-danger">*</span></label>
+                        <select class="form-select" id="model_type" name="model_type" required>
+                            <option value="" disabled {% if not edit_mode %}selected{% endif %}>请选择模型类型</option>
+                            <option value="document" {% if edit_mode and workflow.model_type == 'document' %}selected{% endif %}>文档 (document)</option>
+                            <option value="change" {% if edit_mode and workflow.model_type == 'change' %}selected{% endif %}>变更 (change)</option>
+                            <option value="bom" {% if edit_mode and workflow.model_type == 'bom' %}selected{% endif %}>BOM (bom)</option>
+                        </select>
+                    </div>
+                    <div class="col-12">
+                        <label for="description" class="form-label">描述</label>
+                        <textarea class="form-control" id="description" name="description" rows="3" placeholder="请输入流程描述">{{ workflow.description if edit_mode else '' }}</textarea>
+                    </div>
+                    {% if edit_mode %}
+                    <div class="col-12">
+                        <div class="form-check form-switch">
+                            <input class="form-check-input" type="checkbox" name="is_active" id="is_active" {% if workflow.is_active %}checked{% endif %}>
+                            <label class="form-check-label" for="is_active">启用此流程</label>
+                        </div>
+                    </div>
+                    {% endif %}
+                </div>
+
+                <hr class="my-4">
+
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <h5 class="mb-0">审批步骤</h5>
+                    <button type="button" class="btn btn-sm btn-success" onclick="addStep()">
+                        <i class="bi bi-plus-lg"></i> 添加步骤
+                    </button>
+                </div>
+
+                <div class="table-responsive">
+                    <table class="table table-bordered align-middle" id="stepTable">
+                        <thead class="table-light">
+                            <tr>
+                                <th scope="col" style="width: 60px;">序号</th>
+                                <th scope="col">步骤名称</th>
+                                <th scope="col">审批角色</th>
+                                <th scope="col" style="width: 80px;">操作</th>
+                            </tr>
+                        </thead>
+                        <tbody id="stepBody">
+                            {% if edit_mode and workflow.steps.first() %}
+                                {% for step in workflow.steps %}
+                                <tr>
+                                    <td class="step-index text-center">{{ loop.index }}</td>
+                                    <td>
+                                        <input type="text" class="form-control" name="step_name[]" placeholder="请输入步骤名称" required value="{{ step.name }}">
+                                    </td>
+                                    <td>
+                                        <select class="form-select" name="step_role[]" required>
+                                            <option value="admin" {% if step.approver_role == 'admin' %}selected{% endif %}>管理员 (admin)</option>
+                                            <option value="manager" {% if step.approver_role == 'manager' %}selected{% endif %}>经理 (manager)</option>
+                                            <option value="user" {% if step.approver_role == 'user' %}selected{% endif %}>普通用户 (user)</option>
+                                        </select>
+                                    </td>
+                                    <td class="text-center">
+                                        <button type="button" class="btn btn-sm btn-outline-danger" onclick="removeStep(this)">
+                                            <i class="bi bi-trash"></i>
+                                        </button>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            {% else %}
+                            <tr>
+                                <td class="step-index text-center">1</td>
+                                <td>
+                                    <input type="text" class="form-control" name="step_name[]" placeholder="请输入步骤名称" required>
+                                </td>
+                                <td>
+                                    <select class="form-select" name="step_role[]" required>
+                                        <option value="" disabled selected>请选择角色</option>
+                                        <option value="admin">管理员 (admin)</option>
+                                        <option value="manager">经理 (manager)</option>
+                                        <option value="user">普通用户 (user)</option>
+                                    </select>
+                                </td>
+                                <td class="text-center">
+                                    <button type="button" class="btn btn-sm btn-outline-danger" onclick="removeStep(this)">
+                                        <i class="bi bi-trash"></i>
+                                    </button>
+                                </td>
+                            </tr>
+                            {% endif %}
+                        </tbody>
+                    </table>
+                </div>
+
+                <div class="d-flex justify-content-end gap-2 mt-4">
+                    <button type="reset" class="btn btn-outline-secondary">重置</button>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="bi bi-check-lg"></i> {% if edit_mode %}保存修改{% else %}创建流程{% endif %}
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<script>
+let stepCount = {{ (workflow.steps.first() and 1) or 0 if edit_mode else 1 }};
+const maxSteps = 20;
+
+function addStep() {
+    if (stepCount >= maxSteps) {
+        alert('最多添加 ' + maxSteps + ' 个审批步骤');
+        return;
+    }
+    stepCount++;
+    const tbody = document.getElementById('stepBody');
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+        <td class="step-index text-center">${stepCount}</td>
+        <td>
+            <input type="text" class="form-control" name="step_name[]" placeholder="请输入步骤名称" required>
+        </td>
+        <td>
+            <select class="form-select" name="step_role[]" required>
+                <option value="" disabled selected>请选择角色</option>
+                <option value="admin">管理员 (admin)</option>
+                <option value="manager">经理 (manager)</option>
+                <option value="user">普通用户 (user)</option>
+            </select>
+        </td>
+        <td class="text-center">
+            <button type="button" class="btn btn-sm btn-outline-danger" onclick="removeStep(this)">
+                <i class="bi bi-trash"></i>
+            </button>
+        </td>
+    `;
+    tbody.appendChild(tr);
+    reindexSteps();
+}
+
+function removeStep(btn) {
+    const tbody = document.getElementById('stepBody');
+    if (tbody.rows.length <= 1) {
+        alert('至少保留一个审批步骤');
+        return;
+    }
+    btn.closest('tr').remove();
+    stepCount--;
+    reindexSteps();
+}
+
+function reindexSteps() {
+    const rows = document.getElementById('stepBody').rows;
+    for (let i = 0; i < rows.length; i++) {
+        rows[i].querySelector('.step-index').textContent = i + 1;
+    }
+}
+</script>
+{% endblock %}

@@ -1,0 +1,178 @@
+{% extends "base.html" %}
+
+{% block title %}{{ ecr.title }} - 变更详情{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2 class="mb-0">变更申请详情</h2>
+        <a href="{{ url_for('changes.list_changes') }}" class="btn btn-outline-secondary">
+            <i class="bi bi-arrow-left"></i> 返回变更列表
+        </a>
+    </div>
+
+    <!-- ECR Details -->
+    <div class="card shadow-sm mb-4">
+        <div class="card-header">
+            <h5 class="mb-0">ECR 基本信息</h5>
+        </div>
+        <div class="card-body">
+            <div class="row mb-3">
+                <div class="col-md-2 text-muted small">ECR 编号</div>
+                <div class="col-md-4"><strong>{{ ecr.ecr_no }}</strong></div>
+                <div class="col-md-2 text-muted small">状态</div>
+                <div class="col-md-4">
+                    <span class="badge rounded-pill
+                        {% if ecr.status == 'draft' %}bg-secondary
+                        {% elif ecr.status == 'submitted' %}bg-primary
+                        {% elif ecr.status == 'analyzing' %}bg-info text-dark
+                        {% elif ecr.status == 'approved' %}bg-success
+                        {% elif ecr.status == 'rejected' %}bg-danger
+                        {% elif ecr.status == 'closed' %}bg-dark
+                        {% else %}bg-secondary{% endif %}">
+                        {{ ecr.status }}
+                    </span>
+                </div>
+            </div>
+            <div class="row mb-3">
+                <div class="col-md-2 text-muted small">标题</div>
+                <div class="col-md-10"><strong>{{ ecr.title }}</strong></div>
+            </div>
+            <div class="row mb-3">
+                <div class="col-md-2 text-muted small">描述</div>
+                <div class="col-md-10">{{ ecr.description }}</div>
+            </div>
+            <div class="row mb-3">
+                <div class="col-md-2 text-muted small">原因</div>
+                <div class="col-md-10">{{ ecr.reason }}</div>
+            </div>
+            <div class="row mb-3">
+                <div class="col-md-2 text-muted small">优先级</div>
+                <div class="col-md-4">
+                    <span class="badge
+                        {% if ecr.priority == 'high' %}bg-danger
+                        {% elif ecr.priority == 'medium' %}bg-warning text-dark
+                        {% elif ecr.priority == 'low' %}bg-info text-dark
+                        {% else %}bg-secondary{% endif %}">
+                        {{ ecr.priority }}
+                    </span>
+                </div>
+                <div class="col-md-2 text-muted small">申请人</div>
+                <div class="col-md-4">{{ ecr.applicant.display_name if ecr.applicant else '-' }}</div>
+            </div>
+            <div class="row">
+                <div class="col-md-2 text-muted small">负责人</div>
+                <div class="col-md-4">{{ ecr.assignee.display_name if ecr.assignee else '未指派' }}</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Action Buttons -->
+    <div class="mb-4">
+        {% if ecr.status == 'draft' %}
+        <!-- Submit for review -->
+        <div class="card shadow-sm">
+            <div class="card-body">
+                <form method="POST" action="{{ url_for('changes.submit_ecr', id=ecr.id) }}" class="d-inline">
+                    <button type="submit" class="btn btn-primary">
+                        <i class="bi bi-send"></i> 提交审核
+                    </button>
+                </form>
+            </div>
+        </div>
+        {% endif %}
+
+        {% if ecr.status == 'submitted' or ecr.status == 'analyzing' %}
+        <!-- Approve and Reject -->
+        <div class="card shadow-sm">
+            <div class="card-body d-flex gap-2">
+                <form method="POST" action="{{ url_for('changes.approve_ecr', id=ecr.id) }}" class="d-inline">
+                    <input type="hidden" name="action" value="approve">
+                    <button type="submit" class="btn btn-success">
+                        <i class="bi bi-check-lg"></i> 批准
+                    </button>
+                </form>
+                <form method="POST" action="{{ url_for('changes.approve_ecr', id=ecr.id) }}" class="d-inline">
+                    <input type="hidden" name="action" value="reject">
+                    <button type="submit" class="btn btn-danger">
+                        <i class="bi bi-x-lg"></i> 驳回
+                    </button>
+                </form>
+            </div>
+        </div>
+        {% endif %}
+
+        {% if ecr.status == 'approved' and not eco %}
+        <!-- Create ECO -->
+        <div class="card shadow-sm">
+            <div class="card-header">
+                <h5 class="mb-0">创建变更通知 (ECO)</h5>
+            </div>
+            <div class="card-body">
+                <form method="POST" action="{{ url_for('changes.create_eco', id=ecr.id) }}">
+                    <div class="mb-3">
+                        <label for="impact_analysis" class="form-label">影响分析 <span class="text-danger">*</span></label>
+                        <textarea class="form-control" id="impact_analysis" name="impact_analysis" rows="3" required></textarea>
+                    </div>
+                    <div class="mb-3">
+                        <label for="affected_boms" class="form-label">受影响的 BOM</label>
+                        <textarea class="form-control" id="affected_boms" name="affected_boms" rows="2"></textarea>
+                    </div>
+                    <div class="mb-3">
+                        <label for="affected_docs" class="form-label">受影响的文档</label>
+                        <textarea class="form-control" id="affected_docs" name="affected_docs" rows="2"></textarea>
+                    </div>
+                    <button type="submit" class="btn btn-primary">创建变更通知 (ECO)</button>
+                </form>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+
+    {% if eco %}
+    <!-- ECO Details -->
+    <div class="card shadow-sm mb-4">
+        <div class="card-header">
+            <h5 class="mb-0">ECO 变更通知</h5>
+        </div>
+        <div class="card-body">
+            <div class="row mb-3">
+                <div class="col-md-2 text-muted small">ECO 编号</div>
+                <div class="col-md-4"><strong>{{ eco.eco_no }}</strong></div>
+                <div class="col-md-2 text-muted small">状态</div>
+                <div class="col-md-4">
+                    <span class="badge rounded-pill
+                        {% if eco.status == 'pending' %}bg-warning text-dark
+                        {% elif eco.status == 'executing' %}bg-primary
+                        {% elif eco.status == 'completed' %}bg-success
+                        {% else %}bg-secondary{% endif %}">
+                        {{ eco.status }}
+                    </span>
+                </div>
+            </div>
+            <div class="row mb-3">
+                <div class="col-md-2 text-muted small">影响分析</div>
+                <div class="col-md-10">{{ eco.impact_analysis }}</div>
+            </div>
+            <div class="row mb-3">
+                <div class="col-md-2 text-muted small">受影响的 BOM</div>
+                <div class="col-md-10">{{ eco.affected_boms if eco.affected_boms else '-' }}</div>
+            </div>
+            <div class="row mb-3">
+                <div class="col-md-2 text-muted small">受影响的文档</div>
+                <div class="col-md-10">{{ eco.affected_docs if eco.affected_docs else '-' }}</div>
+            </div>
+        </div>
+        {% if eco.status == 'pending' or eco.status == 'executing' %}
+        <div class="card-footer">
+            <form method="POST" action="{{ url_for('changes.complete_eco', id=eco.id) }}" class="d-inline">
+                <button type="submit" class="btn btn-success">
+                    <i class="bi bi-check2-circle"></i> 执行完成
+                </button>
+            </form>
+        </div>
+        {% endif %}
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

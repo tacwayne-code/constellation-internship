@@ -1,0 +1,99 @@
+{% extends "base.html" %}
+
+{% block title %}新建版本 - PLM 系统{% endblock %}
+
+{% block page_header %}
+<h5 class="mb-0"><i class="bi bi-plus-circle me-2"></i>新建版本</h5>
+{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-lg-8">
+        <!-- 当前版本信息 -->
+        <div class="card mb-4">
+            <div class="card-header bg-white">
+                <h6 class="mb-0"><i class="bi bi-info-circle me-1"></i>当前版本信息</h6>
+            </div>
+            <div class="card-body">
+                <table class="table table-borderless mb-0">
+                    <tr>
+                        <td class="text-muted" style="width: 100px;">文档编号</td>
+                        <td class="fw-medium">{{ doc.doc_no }}</td>
+                    </tr>
+                    <tr>
+                        <td class="text-muted">标题</td>
+                        <td class="fw-medium">{{ doc.title }}</td>
+                    </tr>
+                    <tr>
+                        <td class="text-muted">当前版本</td>
+                        <td><span class="badge bg-primary fs-6">{{ doc.version }}</span></td>
+                    </tr>
+                    <tr>
+                        <td class="text-muted">状态</td>
+                        <td>
+                            {% set status_labels = {
+                                'draft': '草稿', 'review': '审批中', 'approved': '已批准',
+                                'published': '已发布', 'obsolete': '已作废'
+                            } %}
+                            {% set status_colors = {
+                                'draft': 'secondary', 'review': 'info', 'approved': 'success',
+                                'published': 'primary', 'obsolete': 'dark'
+                            } %}
+                            <span class="badge bg-{{ status_colors.get(doc.status, 'secondary') }}">
+                                {{ status_labels.get(doc.status, doc.status) }}
+                            </span>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td class="text-muted">当前文件</td>
+                        <td>
+                            {% if doc.file_name %}
+                            <i class="bi bi-paperclip me-1"></i>{{ doc.file_name }}
+                            {% if doc.file_size %}
+                            <small class="text-muted">({{ (doc.file_size / 1024)|round(1) }} KB)</small>
+                            {% endif %}
+                            {% else %}
+                            <span class="text-muted">无附件</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                </table>
+            </div>
+        </div>
+
+        <!-- 新建版本表单 -->
+        <div class="card">
+            <div class="card-header bg-white">
+                <h6 class="mb-0"><i class="bi bi-pencil-square me-1"></i>新版本信息</h6>
+            </div>
+            <div class="card-body p-4">
+                <div class="alert alert-info">
+                    <i class="bi bi-info-circle me-1"></i>创建新版本后，当前版本将被归档，文档状态将重置为 <strong>草稿</strong>。
+                </div>
+
+                <form method="POST" action="{{ url_for('documents.new_version', id=doc.id) }}" enctype="multipart/form-data">
+                    <div class="mb-3">
+                        <label for="change_note" class="form-label">变更说明 <span class="text-danger">*</span></label>
+                        <textarea class="form-control" id="change_note" name="change_note" rows="4" placeholder="请详细描述本次版本的变更内容" required></textarea>
+                    </div>
+
+                    <div class="mb-4">
+                        <label for="file" class="form-label">上传新文件</label>
+                        <input class="form-control" type="file" id="file" name="file">
+                        <div class="form-text">上传更新后的文件，如不更换文件则留空</div>
+                    </div>
+
+                    <div class="d-flex justify-content-between">
+                        <a href="{{ url_for('documents.view_doc', id=doc.id) }}" class="btn btn-outline-secondary">
+                            <i class="bi bi-arrow-left me-1"></i>返回
+                        </a>
+                        <button type="submit" class="btn btn-primary">
+                            <i class="bi bi-check-lg me-1"></i>创建新版本
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

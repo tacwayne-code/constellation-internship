@@ -1,0 +1,232 @@
+{% extends "base.html" %}
+
+{% block title %}产品详情 - {{ product.system_id or product.code }}{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h4 class="mb-0">
+        <i class="bi bi-cube me-2 text-primary"></i>产品详情
+    </h4>
+    <div class="d-flex gap-2">
+        <a href="{{ url_for('structures.tree') }}" class="btn btn-outline-secondary btn-sm">
+            <i class="bi bi-arrow-left me-1"></i>返回结构树
+        </a>
+        <a href="{{ url_for('structures.create_product') }}?parent={{ product.id }}" class="btn btn-primary btn-sm">
+            <i class="bi bi-plus-lg me-1"></i>添加子产品
+        </a>
+    </div>
+</div>
+
+<!-- 基本信息卡 -->
+<div class="card mb-4">
+    <div class="card-header bg-primary bg-opacity-10">
+        <h5 class="mb-0"><i class="bi bi-info-circle me-2"></i>基本信息</h5>
+    </div>
+    <div class="card-body">
+        <div class="row mb-3">
+            <div class="col-sm-3 fw-bold text-muted">主物料号</div>
+            <div class="col-sm-9">
+                <code class="fs-5 text-primary">{{ product.system_id or product.code }}</code>
+                <small class="text-muted ms-2">（系统自动分配，唯一不变）</small>
+            </div>
+        </div>
+        <div class="row mb-3">
+            <div class="col-sm-3 fw-bold text-muted">产品名称</div>
+            <div class="col-sm-9 fw-semibold">{{ product.name }}</div>
+        </div>
+        <div class="row mb-3">
+            <div class="col-sm-3 fw-bold text-muted">层级</div>
+            <div class="col-sm-9">
+                {% if product.level == 0 %}
+                <span class="badge bg-primary px-3 py-2">整机</span>
+                {% elif product.level == 1 %}
+                <span class="badge bg-secondary px-3 py-2">部件 / 模组</span>
+                {% elif product.level == 2 %}
+                <span class="badge bg-info px-3 py-2">组件</span>
+                {% else %}
+                <span class="badge bg-warning text-dark px-3 py-2">零件</span>
+                {% endif %}
+                <small class="text-muted ms-2">Level {{ product.level }}</small>
+            </div>
+        </div>
+        <div class="row mb-3">
+            <div class="col-sm-3 fw-bold text-muted">状态</div>
+            <div class="col-sm-9">
+                <span class="badge bg-{{ 'success' if product.status == 'active' else 'secondary' }} px-3 py-2">
+                    {{ '启用' if product.status == 'active' else product.status }}
+                </span>
+            </div>
+        </div>
+        <div class="row mb-3">
+            <div class="col-sm-3 fw-bold text-muted">描述</div>
+            <div class="col-sm-9">{{ product.description or '—' }}</div>
+        </div>
+        <div class="row mb-3">
+            <div class="col-sm-3 fw-bold text-muted">创建 / 更新时间</div>
+            <div class="col-sm-9">
+                <small class="text-muted">
+                    创建：{{ product.created_at.strftime('%Y-%m-%d %H:%M') if product.created_at else '—' }} ·
+                    更新：{{ product.updated_at.strftime('%Y-%m-%d %H:%M') if product.updated_at else '—' }}
+                </small>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <!-- 左侧：父产品 + 子产品 -->
+    <div class="col-md-6">
+        <!-- 父产品 -->
+        <div class="card mb-4">
+            <div class="card-header bg-white">
+                <strong><i class="bi bi-arrow-up-circle me-2"></i>所属父产品</strong>
+            </div>
+            <div class="card-body">
+                {% if parent %}
+                <a href="{{ url_for('structures.product_detail', id=parent.id) }}" class="text-decoration-none">
+                    <code class="text-primary">{{ parent.system_id or parent.code }}</code> — {{ parent.name }}
+                </a>
+                {% else %}
+                <span class="text-muted small">顶层产品（无父产品）</span>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- 子产品 -->
+        <div class="card mb-4">
+            <div class="card-header bg-white d-flex justify-content-between align-items-center">
+                <strong><i class="bi bi-arrow-down-circle me-2"></i>子产品（下属零部件）</strong>
+                <span class="badge bg-secondary">{{ children|length }} 项</span>
+            </div>
+            <div class="card-body p-0">
+                {% if children %}
+                <ul class="list-group list-group-flush">
+                    {% for c in children %}
+                    <li class="list-group-item d-flex justify-content-between align-items-center">
+                        <a href="{{ url_for('structures.product_detail', id=c.id) }}" class="text-decoration-none">
+                            <code class="text-primary">{{ c.system_id or c.code }}</code>
+                            <span class="ms-2">{{ c.name }}</span>
+                        </a>
+                        <span class="badge bg-light text-dark">L{{ c.level }}</span>
+                    </li>
+                    {% endfor %}
+                </ul>
+                {% else %}
+                <div class="p-3 text-center text-muted small">暂无子产品</div>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- 此产品作为物料被哪些 BOM 引用 -->
+        <div class="card mb-4">
+            <div class="card-header bg-white d-flex justify-content-between align-items-center">
+                <strong><i class="bi bi-link-45deg me-2"></i>被引用于</strong>
+                <span class="badge bg-secondary">{{ used_in_boms|length }} 个 BOM</span>
+            </div>
+            <div class="card-body p-0">
+                {% if used_in_boms %}
+                <ul class="list-group list-group-flush">
+                    {% for b in used_in_boms %}
+                    <li class="list-group-item d-flex justify-content-between align-items-center">
+                        <a href="{{ url_for('boms.view_bom', id=b.id) }}" class="text-decoration-none">
+                            <code>{{ b.bom_no }}</code> — {{ b.name[:40] }}
+                        </a>
+                        <span class="badge bg-{{ 'success' if b.bom_type == 'EBOM' else 'warning' }}">
+                            {{ b.bom_type }}
+                        </span>
+                    </li>
+                    {% endfor %}
+                </ul>
+                {% else %}
+                <div class="p-3 text-center text-muted small">尚无 BOM 引用此物料</div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <!-- 右侧：关联 eBOM + 关联文档 -->
+    <div class="col-md-6">
+        <!-- 关联 eBOM（此产品作为整机/部件的 BOM） -->
+        <div class="card mb-4">
+            <div class="card-header bg-white d-flex justify-content-between align-items-center">
+                <strong><i class="bi bi-list-check me-2"></i>此产品的 eBOM</strong>
+                <span class="badge bg-secondary">{{ boms|length }} 个</span>
+            </div>
+            <div class="card-body p-0">
+                {% if boms %}
+                <ul class="list-group list-group-flush">
+                    {% for b in boms %}
+                    <li class="list-group-item">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <a href="{{ url_for('boms.view_bom', id=b.id) }}" class="text-decoration-none">
+                                <code class="text-primary">{{ b.bom_no }}</code>
+                                <span class="ms-2 fw-semibold">{{ b.name }}</span>
+                            </a>
+                            <span class="badge bg-{{ 'success' if b.status == 'released' else 'warning' }}">
+                                {{ '已发布' if b.status == 'released' else '草稿' }}
+                            </span>
+                        </div>
+                        <div class="mt-1 small text-muted">
+                            <i class="bi bi-box me-1"></i>{{ b.items.count() }} 项物料 ·
+                            <i class="bi bi-arrow-repeat me-1"></i>{{ b.version }} ·
+                            <i class="bi bi-calendar me-1"></i>{{ b.created_at.strftime('%Y-%m-%d') if b.created_at else '—' }}
+                        </div>
+                    </li>
+                    {% endfor %}
+                </ul>
+                {% else %}
+                <div class="p-3 text-center text-muted small">尚未为此产品创建 eBOM</div>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- 关联文档（按图号匹配的图文档案） -->
+        <div class="card mb-4">
+            <div class="card-header bg-white d-flex justify-content-between align-items-center">
+                <strong><i class="bi bi-file-earmark-text me-2"></i>关联图纸/文档</strong>
+                <span class="badge bg-secondary">{{ docs|length }} 个</span>
+            </div>
+            <div class="card-body p-0">
+                {% if docs %}
+                <ul class="list-group list-group-flush">
+                    {% for d in docs %}
+                    <li class="list-group-item">
+                        <i class="bi bi-file-earmark me-1 text-muted"></i>
+                        <a href="{{ url_for('documents.view_doc', id=d.id) }}" class="text-decoration-none">
+                            {{ d.title[:50] }}
+                        </a>
+                        <div class="small text-muted mt-1">
+                            <span class="badge bg-light text-dark">{{ d.version }}</span>
+                            <span class="badge bg-{{ 'success' if d.status == 'published' else 'secondary' }}">
+                                {{ d.status }}
+                            </span>
+                        </div>
+                    </li>
+                    {% endfor %}
+                </ul>
+                {% else %}
+                <div class="p-3 text-center text-muted small">暂无关联文档（按图号匹配）</div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 操作按钮 -->
+<div class="card">
+    <div class="card-body d-flex gap-2">
+        <a href="{{ url_for('structures.tree') }}" class="btn btn-outline-secondary">
+            <i class="bi bi-arrow-left me-1"></i>返回结构树
+        </a>
+        <a href="{{ url_for('structures.create_product') }}?parent={{ product.id }}" class="btn btn-primary">
+            <i class="bi bi-plus-lg me-1"></i>添加子产品
+        </a>
+        <form method="post" action="{{ url_for('structures.delete_product', id=product.id) }}"
+              onsubmit="return confirm('确定要删除产品「{{ product.code }} - {{ product.name }}」吗？');">
+            <button type="submit" class="btn btn-outline-danger">
+                <i class="bi bi-trash me-1"></i>删除此产品
+            </button>
+        </form>
+    </div>
+</div>
+{% endblock %}

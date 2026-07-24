@@ -1,0 +1,243 @@
+{% extends "base.html" %}
+
+{% block title %}图文档案管理 - PLM 系统{% endblock %}
+
+{% block page_header %}
+<h5 class="mb-0"><i class="bi bi-file-earmark-text me-2"></i>图文档案管理</h5>
+{% endblock %}
+
+{% block content %}
+<div class="row">
+    <!-- 侧边栏筛选 -->
+    <div class="col-md-3">
+        <div class="card mb-4">
+            <div class="card-body">
+                <h6 class="card-title"><i class="bi bi-funnel me-1"></i>按分类筛选</h6>
+                <div class="list-group list-group-flush">
+                    <a href="{{ url_for('documents.list_docs', **request.args.to_dict() | remove_key('category_id')) if false else url_for('documents.list_docs', q=keyword, status=status_filter) }}"
+                       class="list-group-item list-group-item-action d-flex justify-content-between align-items-center {% if not request.args.get('category_id') %}active{% endif %}">
+                        全部分类
+                    </a>
+                    {% for cat in categories %}
+                    <a href="{{ url_for('documents.list_docs', category_id=cat.id, q=keyword, status=status_filter) }}"
+                       class="list-group-item list-group-item-action d-flex justify-content-between align-items-center {% if request.args.get('category_id')|int == cat.id %}active{% endif %}">
+                        {{ cat.name }}
+                        <span class="badge bg-secondary rounded-pill">{{ category_counts[cat.id] }}</span>
+                    </a>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 主内容区 -->
+    <div class="col-md-9">
+        <!-- 搜索栏 -->
+        <div class="card mb-3">
+            <div class="card-body">
+                <form method="get" action="{{ url_for('documents.list_docs') }}" class="row g-2">
+                    {% if request.args.get('category_id') %}
+                    <input type="hidden" name="category_id" value="{{ request.args.get('category_id') }}">
+                    {% endif %}
+                    <div class="col-md-7">
+                        <div class="input-group">
+                            <span class="input-group-text bg-white"><i class="bi bi-search"></i></span>
+                            <input type="text" name="q" class="form-control" placeholder="搜索文档编号、标题、标签或描述..." value="{{ keyword or '' }}">
+                            {% if keyword %}
+                            <a href="{{ url_for('documents.list_docs', category_id=request.args.get('category_id', ''), status=status_filter) }}" class="btn btn-outline-secondary">
+                                <i class="bi bi-x"></i> 清除
+                            </a>
+                            {% endif %}
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <select name="status" class="form-select" onchange="this.form.submit()">
+                            <option value="">全部状态</option>
+                            <option value="draft" {% if status_filter == 'draft' %}selected{% endif %}>草稿</option>
+                            <option value="review" {% if status_filter == 'review' %}selected{% endif %}>审批中</option>
+                            <option value="approved" {% if status_filter == 'approved' %}selected{% endif %}>已批准</option>
+                            <option value="published" {% if status_filter == 'published' %}selected{% endif %}>已发布</option>
+                            <option value="obsolete" {% if status_filter == 'obsolete' %}selected{% endif %}>已作废</option>
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <button type="submit" class="btn btn-primary w-100">搜索</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <span class="text-muted">
+                共 <strong>{{ total }}</strong> 条记录
+                {% if keyword %}<span class="badge bg-info ms-2">关键词：{{ keyword }}</span>{% endif %}
+                {% if fmt_filter %}<span class="badge bg-secondary ms-2">格式：.{{ fmt_filter }}</span>{% endif %}
+                {% if total > 0 %}
+                <span class="ms-2">第 {{ page }} / {{ total_pages }} 页</span>
+                {% endif %}
+            </span>
+            <a href="{{ url_for('documents.create_doc') }}" class="btn btn-primary">
+                <i class="bi bi-plus-lg me-1"></i>新建文档
+            </a>
+        </div>
+
+        {# 格式子筛选（仅在选中某分类时显示） #}
+        {% if category_id and fmt_counts %}
+        <div class="card mb-3 border-info">
+            <div class="card-body py-2">
+                <small class="text-muted me-2"><i class="bi bi-funnel me-1"></i>按文件格式筛选：</small>
+                {% set current_cat = category_id %}
+                <a href="{{ url_for('documents.list_docs', category_id=current_cat, q=keyword, status=status_filter) }}"
+                   class="btn btn-sm {% if not fmt_filter %}btn-primary{% else %}btn-outline-secondary{% endif %} me-1">
+                    全部
+                </a>
+                {% for ext, cnt in fmt_counts.items() %}
+                {% if cnt > 0 %}
+                <a href="{{ url_for('documents.list_docs', category_id=current_cat, q=keyword, status=status_filter, fmt=ext) }}"
+                   class="btn btn-sm {% if fmt_filter == ext %}btn-primary{% else %}btn-outline-secondary{% endif %} me-1">
+                    .{{ ext | upper }} <span class="badge bg-light text-dark ms-1">{{ cnt }}</span>
+                </a>
+                {% endif %}
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+
+        <div class="card">
+            <div class="card-body p-0">
+                {% if docs %}
+                <div class="table-responsive">
+                    <table class="table table-hover mb-0">
+                        <thead>
+                            <tr>
+                                <th>文档编号</th>
+                                <th>标题</th>
+                                <th style="width:80px">格式</th>
+                                <th style="width:60px">版本</th>
+                                <th style="width:80px">状态</th>
+                                <th style="width:90px">作者</th>
+                                <th style="width:130px">更新时间</th>
+                                <th style="width:80px">操作</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for doc in docs %}
+                            <tr>
+                                <td>
+                                    <a href="{{ url_for('documents.view_doc', id=doc.id) }}" class="text-decoration-none fw-medium">
+                                        {{ doc.doc_no }}
+                                    </a>
+                                </td>
+                                <td>
+                                    <a href="{{ url_for('documents.view_doc', id=doc.id) }}" class="text-decoration-none">
+                                        {{ doc.title }}
+                                    </a>
+                                </td>
+                                <td>
+                                    {% if doc.file_name %}
+                                        {% set ext = doc.file_name.rsplit('.', 1)[-1]|upper %}
+                                        {% set ext_colors = {'PDF':'danger','DWG':'primary','SLDDRW':'primary','SLDPRT':'success','STEP':'warning','ST':'warning','DXF':'primary','DOC':'info','DOCX':'info','XLS':'success','XLSX':'success','ZIP':'secondary','RAR':'secondary','JPG':'info','PNG':'info','XT':'warning'} %}
+                                        <span class="badge bg-{{ ext_colors.get(ext, 'secondary') }}">.{{ ext }}</span>
+                                    {% endif %}
+                                </td>
+                                <td><span class="badge bg-light text-dark">{{ doc.version }}</span></td>
+                                <td>
+                                    {% set status_colors = {
+                                        'draft': 'secondary',
+                                        'review': 'info',
+                                        'approved': 'success',
+                                        'published': 'primary',
+                                        'obsolete': 'dark'
+                                    } %}
+                                    {% set status_labels = {
+                                        'draft': '草稿',
+                                        'review': '审批中',
+                                        'approved': '已批准',
+                                        'published': '已发布',
+                                        'obsolete': '已作废'
+                                    } %}
+                                    <span class="badge bg-{{ status_colors.get(doc.status, 'secondary') }} badge-status">
+                                        {{ status_labels.get(doc.status, doc.status) }}
+                                    </span>
+                                </td>
+                                <td>{{ doc.author.display_name if doc.author else '-' }}</td>
+                                <td class="text-muted small">{{ doc.updated_at.strftime('%Y-%m-%d %H:%M') if doc.updated_at else '-' }}</td>
+                                <td>
+                                    <div class="d-flex gap-1 align-items-center">
+                                        <a href="{{ url_for('documents.view_doc', id=doc.id) }}" class="btn btn-outline-primary btn-sm d-inline-flex align-items-center justify-content-center" title="查看" style="width:32px;height:32px;padding:0;">
+                                            <i class="bi bi-eye"></i>
+                                        </a>
+                                        {% if doc.author_id == current_user.id or current_user.role == 'admin' %}
+                                        <form method="post" action="{{ url_for('documents.delete_doc', id=doc.id) }}" onsubmit="return confirm('确定要删除文档「{{ doc.title }}」吗？\n此操作不可撤销！');">
+                                            <button type="submit" class="btn btn-outline-danger btn-sm d-inline-flex align-items-center justify-content-center" title="删除" style="width:32px;height:32px;padding:0;">
+                                                <i class="bi bi-trash"></i>
+                                            </button>
+                                        </form>
+                                        {% endif %}
+                                    </div>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+
+                {# 翻页控件 #}
+                {% if total_pages > 1 %}
+                <div class="d-flex justify-content-between align-items-center p-3 border-top">
+                    <small class="text-muted">
+                        每页 {{ per_page }} 条，共 {{ total }} 条 / {{ total_pages }} 页
+                    </small>
+                    <nav>
+                        <ul class="pagination pagination-sm mb-0">
+                            <li class="page-item {% if page <= 1 %}disabled{% endif %}">
+                                <a class="page-link" href="{{ url_for('documents.list_docs', category_id=category_id, q=keyword, status=status_filter, fmt=fmt_filter, page=1) }}">
+                                    <i class="bi bi-chevron-double-left"></i>
+                                </a>
+                            </li>
+                            <li class="page-item {% if page <= 1 %}disabled{% endif %}">
+                                <a class="page-link" href="{{ url_for('documents.list_docs', category_id=category_id, q=keyword, status=status_filter, fmt=fmt_filter, page=page-1) }}">
+                                    <i class="bi bi-chevron-left"></i>
+                                </a>
+                            </li>
+                            {% for p in range(1, total_pages + 1) %}
+                            {% if p == 1 or p == total_pages or (p >= page - 2 and p <= page + 2) %}
+                            <li class="page-item {% if p == page %}active{% endif %}">
+                                <a class="page-link" href="{{ url_for('documents.list_docs', category_id=category_id, q=keyword, status=status_filter, fmt=fmt_filter, page=p) }}">{{ p }}</a>
+                            </li>
+                            {% elif p == page - 3 or p == page + 3 %}
+                            <li class="page-item disabled"><span class="page-link">…</span></li>
+                            {% endif %}
+                            {% endfor %}
+                            <li class="page-item {% if page >= total_pages %}disabled{% endif %}">
+                                <a class="page-link" href="{{ url_for('documents.list_docs', category_id=category_id, q=keyword, status=status_filter, fmt=fmt_filter, page=page+1) }}">
+                                    <i class="bi bi-chevron-right"></i>
+                                </a>
+                            </li>
+                            <li class="page-item {% if page >= total_pages %}disabled{% endif %}">
+                                <a class="page-link" href="{{ url_for('documents.list_docs', category_id=category_id, q=keyword, status=status_filter, fmt=fmt_filter, page=total_pages) }}">
+                                    <i class="bi bi-chevron-double-right"></i>
+                                </a>
+                            </li>
+                        </ul>
+                    </nav>
+                </div>
+                {% endif %}
+                {% else %}
+                <div class="empty-state">
+                    <i class="bi bi-file-earmark-text"></i>
+                    <p class="mb-1">
+                        {% if keyword or request.args.get('category_id') %}
+                        没有找到匹配的文档
+                        {% else %}
+                        暂无文档
+                        {% endif %}
+                    </p>
+                    <a href="{{ url_for('documents.create_doc') }}" class="btn btn-primary btn-sm mt-2">新建文档</a>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

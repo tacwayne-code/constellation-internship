@@ -1,0 +1,117 @@
+{% extends "base.html" %}
+
+{% block title %}BOM 版本对比{% endblock %}
+
+{% block content %}
+<h4 class="mb-4"><i class="bi bi-arrow-left-right me-2 text-primary"></i>BOM 版本对比</h4>
+
+{% if bom_a and bom_b %}
+<div class="row mb-4">
+    <div class="col-md-6">
+        <div class="card border-primary">
+            <div class="card-header bg-primary bg-opacity-10"><strong>基准版本 (A)</strong></div>
+            <div class="card-body small">
+                <strong>{{ bom_a.name }}</strong><br>
+                <code>{{ bom_a.bom_no }}</code> · v{{ bom_a.version }} · {{ bom_a.items.count() }} 项物料
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="card border-success">
+            <div class="card-header bg-success bg-opacity-10"><strong>对比版本 (B)</strong></div>
+            <div class="card-body small">
+                <strong>{{ bom_b.name }}</strong><br>
+                <code>{{ bom_b.bom_no }}</code> · v{{ bom_b.version }} · {{ bom_b.items.count() }} 项物料
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 差异统计 -->
+<div class="row mb-3">
+    {% set added = diff|selectattr('change','equalto','added')|list %}
+    {% set removed = diff|selectattr('change','equalto','removed')|list %}
+    {% set changed = diff|selectattr('change','equalto','changed')|list %}
+    {% set same = diff|selectattr('change','equalto','same')|list %}
+    <div class="col-auto">
+        <span class="badge bg-success px-3 py-2">+{{ added|length }} 新增</span>
+    </div>
+    <div class="col-auto">
+        <span class="badge bg-danger px-3 py-2">-{{ removed|length }} 删除</span>
+    </div>
+    <div class="col-auto">
+        <span class="badge bg-warning text-dark px-3 py-2">~{{ changed|length }} 变更</span>
+    </div>
+    <div class="col-auto">
+        <span class="badge bg-secondary px-3 py-2">={{ same|length }} 相同</span>
+    </div>
+</div>
+
+<table class="table table-sm table-hover">
+    <thead>
+        <tr>
+            <th>物料</th>
+            <th>名称</th>
+            <th style="width:80px">A 用量</th>
+            <th style="width:80px">B 用量</th>
+            <th style="width:60px">单位</th>
+            <th>备注变更</th>
+        </tr>
+    </thead>
+    <tbody>
+    {% for row in diff %}
+    <tr class="{% if row.change == 'added' %}table-success{% elif row.change == 'removed' %}table-danger{% elif row.change == 'changed' %}table-warning{% endif %}">
+        <td><code>{{ row.code }}</code></td>
+        <td>{{ row.name }}</td>
+        <td>
+            {% if row.a_qty is not none %}
+            <span class="{% if row.change == 'changed' %}text-decoration-line-through text-danger{% endif %}">{{ row.a_qty|round(2) }}</span>
+            {% else %}<span class="text-muted">-</span>{% endif %}
+        </td>
+        <td>
+            {% if row.b_qty is not none %}
+            <span class="{% if row.change in ('changed','added') %}fw-bold text-success{% endif %}">{{ row.b_qty|round(2) }}</span>
+            {% else %}<span class="text-muted">-</span>{% endif %}
+        </td>
+        <td>{{ row.unit }}</td>
+        <td class="small">
+            {% if row.a_note != row.b_note %}
+            <span class="text-danger text-decoration-line-through">{{ row.a_note }}</span> →
+            <span class="text-success">{{ row.b_note }}</span>
+            {% else %}{{ row.a_note }}{% endif %}
+        </td>
+    </tr>
+    {% endfor %}
+    </tbody>
+</table>
+
+{% else %}
+<div class="text-muted text-center py-5">
+    <i class="bi bi-arrow-left-right fs-1 mb-3 d-block"></i>
+    <p>请选择两个 BOM 版本进行对比</p>
+    {% if all_boms %}
+    <form method="get" class="row g-2 justify-content-center" style="max-width:600px;margin:0 auto;">
+        <div class="col-sm-5">
+            <select name="a" class="form-select" required>
+                <option value="">-- 基准版本 (A) --</option>
+                {% for b in all_boms %}
+                <option value="{{ b.id }}">{{ b.name[:50] }} (v{{ b.version }})</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="col-sm-5">
+            <select name="b" class="form-select" required>
+                <option value="">-- 对比版本 (B) --</option>
+                {% for b in all_boms %}
+                <option value="{{ b.id }}">{{ b.name[:50] }} (v{{ b.version }})</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="col-sm-2">
+            <button type="submit" class="btn btn-primary w-100"><i class="bi bi-arrow-left-right"></i></button>
+        </div>
+    </form>
+    {% endif %}
+</div>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,118 @@
+{% extends "base.html" %}
+
+{% block title %}{{ workflow.name }} - 流程详情{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h1 class="h3 mb-1">{{ workflow.name }}</h1>
+            <span class="badge bg-{% if workflow.is_active %}success{% else %}secondary{% endif %}">
+                {% if workflow.is_active %}已启用{% else %}已禁用{% endif %}
+            </span>
+            <span class="badge bg-info ms-1">{{ workflow.model_type }}</span>
+        </div>
+        <div class="d-flex gap-2">
+            <a href="{{ url_for('workflows.list_workflows') }}" class="btn btn-outline-secondary">
+                <i class="bi bi-arrow-left"></i> 返回列表
+            </a>
+            <a href="{{ url_for('workflows.edit_workflow', id=workflow.id) }}" class="btn btn-primary">
+                <i class="bi bi-pencil"></i> 编辑
+            </a>
+        </div>
+    </div>
+
+    <div class="row g-3">
+        <div class="col-md-4">
+            <div class="card shadow-sm">
+                <div class="card-header bg-white">
+                    <h5 class="mb-0">基本信息</h5>
+                </div>
+                <div class="card-body">
+                    <table class="table table-borderless table-sm mb-0">
+                        <tr>
+                            <td class="text-muted" style="width: 100px;">流程编号</td>
+                            <td>WF-{{ '%05d' % workflow.id }}</td>
+                        </tr>
+                        <tr>
+                            <td class="text-muted">名称</td>
+                            <td><strong>{{ workflow.name }}</strong></td>
+                        </tr>
+                        <tr>
+                            <td class="text-muted">模型类型</td>
+                            <td><span class="badge bg-info">{{ workflow.model_type }}</span></td>
+                        </tr>
+                        <tr>
+                            <td class="text-muted">状态</td>
+                            <td>
+                                {% if workflow.is_active %}
+                                <span class="text-success"><i class="bi bi-check-circle-fill"></i> 启用中</span>
+                                {% else %}
+                                <span class="text-muted"><i class="bi bi-pause-circle-fill"></i> 已禁用</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        <tr>
+                            <td class="text-muted">创建时间</td>
+                            <td>{{ workflow.created_at.strftime('%Y-%m-%d %H:%M') if workflow.created_at else '-' }}</td>
+                        </tr>
+                    </table>
+
+                    {% if workflow.description %}
+                    <hr>
+                    <h6 class="text-muted">描述</h6>
+                    <p class="mb-0">{{ workflow.description }}</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-8">
+            <div class="card shadow-sm">
+                <div class="card-header bg-white">
+                    <h5 class="mb-0"><i class="bi bi-list-ol"></i> 审批步骤</h5>
+                </div>
+                <div class="card-body p-0">
+                    {% if workflow.steps.first() %}
+                    <div class="table-responsive">
+                        <table class="table table-hover mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th style="width: 60px;">序号</th>
+                                    <th>步骤名称</th>
+                                    <th>审批角色</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for step in workflow.steps %}
+                                <tr>
+                                    <td class="text-center">
+                                        <span class="badge bg-primary" style="width:30px;height:30px;line-height:24px;border-radius:50%;">{{ loop.index }}</span>
+                                    </td>
+                                    <td><strong>{{ step.name }}</strong></td>
+                                    <td>
+                                        {% if step.approver_role == 'admin' %}
+                                        <span class="badge bg-danger">管理员</span>
+                                        {% elif step.approver_role == 'manager' %}
+                                        <span class="badge bg-warning text-dark">经理</span>
+                                        {% else %}
+                                        <span class="badge bg-secondary">普通用户</span>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% else %}
+                    <div class="text-center text-muted py-4">
+                        <i class="bi bi-inbox" style="font-size: 2rem;"></i>
+                        <p class="mb-0 mt-2">暂无审批步骤</p>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

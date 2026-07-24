@@ -1,0 +1,292 @@
+{% extends "base.html" %}
+
+{% block title %}{{ doc.title }} - PLM 系统{% endblock %}
+
+{% block page_header %}
+<div class="d-flex align-items-center">
+    <h5 class="mb-0"><i class="bi bi-file-earmark-text me-2"></i>{{ doc.title }}</h5>
+    <span class="badge bg-light text-muted ms-2">{{ doc.doc_no }}</span>
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="row">
+    <!-- 文档详情 -->
+    <div class="col-lg-8">
+        <div class="card mb-4">
+            <div class="card-body p-4">
+                {% set status_colors = {
+                    'draft': 'secondary',
+                    'review': 'info',
+                    'approved': 'success',
+                    'published': 'primary',
+                    'obsolete': 'dark'
+                } %}
+                {% set status_labels = {
+                    'draft': '草稿',
+                    'review': '审批中',
+                    'approved': '已批准',
+                    'published': '已发布',
+                    'obsolete': '已作废'
+                } %}
+
+                <div class="row mb-3">
+                    <div class="col-md-6">
+                        <table class="table table-borderless mb-0">
+                            <tr>
+                                <td class="text-muted pe-3" style="width: 100px;">文档编号</td>
+                                <td class="fw-medium">{{ doc.doc_no }}</td>
+                            </tr>
+                            <tr>
+                                <td class="text-muted">标题</td>
+                                <td class="fw-medium">{{ doc.title }}</td>
+                            </tr>
+                            <tr>
+                                <td class="text-muted">版本</td>
+                                <td><span class="badge bg-light text-dark fs-6">{{ doc.version }}</span></td>
+                            </tr>
+                            <tr>
+                                <td class="text-muted">状态</td>
+                                <td><span class="badge bg-{{ status_colors.get(doc.status, 'secondary') }} badge-status">{{ status_labels.get(doc.status, doc.status) }}</span></td>
+                            </tr>
+                            <tr>
+                                <td class="text-muted">分类</td>
+                                <td>{{ doc.category.name if doc.category else '-' }}</td>
+                            </tr>
+                            <tr>
+                                <td class="text-muted">标签</td>
+                                <td>
+                                    {% if doc.tags %}
+                                        {% for tag in doc.tags.split(',') %}
+                                        <span class="badge bg-info bg-opacity-10 text-info me-1">{{ tag.strip() }}</span>
+                                        {% endfor %}
+                                    {% else %}
+                                        -
+                                    {% endif %}
+                                </td>
+                            </tr>
+                        </table>
+                    </div>
+                    <div class="col-md-6">
+                        <table class="table table-borderless mb-0">
+                            <tr>
+                                <td class="text-muted pe-3" style="width: 100px;">作者</td>
+                                <td>{{ doc.author.display_name if doc.author else '-' }}</td>
+                            </tr>
+                            <tr>
+                                <td class="text-muted">创建时间</td>
+                                <td>{{ doc.created_at.strftime('%Y-%m-%d %H:%M') if doc.created_at else '-' }}</td>
+                            </tr>
+                            <tr>
+                                <td class="text-muted">更新时间</td>
+                                <td>{{ doc.updated_at.strftime('%Y-%m-%d %H:%M') if doc.updated_at else '-' }}</td>
+                            </tr>
+                            <tr>
+                                <td class="text-muted">锁定状态</td>
+                                <td>
+                                    {% if doc.is_locked %}
+                                    <span class="text-danger"><i class="bi bi-lock me-1"></i>已锁定</span>
+                                    <small class="text-muted">({{ doc.lock_holder.display_name if doc.lock_holder else '未知' }})</small>
+                                    {% else %}
+                                    <span class="text-success"><i class="bi bi-unlock me-1"></i>未锁定</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            <tr>
+                                <td class="text-muted">附件</td>
+                                <td>
+                                    {% if doc.file_name %}
+                                    {% if doc.file_path %}
+                                    <a href="{{ url_for('static', filename='uploads/' + doc.file_path) }}" class="btn btn-outline-primary btn-sm" download>
+                                        <i class="bi bi-download me-1"></i>{{ doc.file_name }}
+                                    </a>
+                                    <small class="text-muted ms-1">
+                                        ({% if doc.file_size %}{{ (doc.file_size / 1024)|round(1) }} KB{% else %}未知大小{% endif %})
+                                    </small>
+                                    {% else %}
+                                    <span class="text-muted">
+                                        <i class="bi bi-file-earmark me-1"></i>{{ doc.file_name }}
+                                        <span class="badge bg-secondary ms-1">仅记录，未上传</span>
+                                    </span>
+                                    <small class="text-muted ms-1">
+                                        ({% if doc.file_size %}{{ (doc.file_size / 1024)|round(1) }} KB{% else %}未知大小{% endif %})
+                                    </small>
+                                    {% endif %}
+                                    {% else %}
+                                    <span class="text-muted">无附件</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                        </table>
+                    </div>
+                </div>
+
+                {% if doc.description %}
+                <div class="mt-3">
+                    <h6 class="text-muted mb-2">描述</h6>
+                    <p class="mb-0">{{ doc.description }}</p>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- 审批历史 -->
+        <div class="card mb-4">
+            <div class="card-header bg-white">
+                <h6 class="mb-0"><i class="bi bi-check2-square me-1"></i>审批历史</h6>
+            </div>
+            <div class="card-body p-0">
+                {% if doc.approvals %}
+                <div class="table-responsive">
+                    <table class="table table-hover mb-0">
+                        <thead>
+                            <tr>
+                                <th>步骤</th>
+                                <th>审批人</th>
+                                <th>状态</th>
+                                <th>意见</th>
+                                <th>时间</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for appr in doc.approvals|sort(attribute='step') %}
+                            <tr>
+                                <td>{{ appr.step }}</td>
+                                <td>{{ appr.approver.display_name if appr.approver else '-' }}</td>
+                                <td>
+                                    {% set appr_labels = {'pending': '待审批', 'approved': '已通过', 'rejected': '已驳回'} %}
+                                    {% set appr_colors = {'pending': 'warning', 'approved': 'success', 'rejected': 'danger'} %}
+                                    <span class="badge bg-{{ appr_colors.get(appr.status, 'secondary') }}">
+                                        {{ appr_labels.get(appr.status, appr.status) }}
+                                    </span>
+                                </td>
+                                <td>{{ appr.comment or '-' }}</td>
+                                <td class="text-muted small">{{ appr.updated_at.strftime('%Y-%m-%d %H:%M') if appr.updated_at else (appr.created_at.strftime('%Y-%m-%d %H:%M') if appr.created_at else '-') }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <div class="text-center py-4 text-muted">
+                    <i class="bi bi-inbox"></i>
+                    <p class="mb-0 mt-1">暂无审批记录</p>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- 版本历史 -->
+        <div class="card mb-4">
+            <div class="card-header bg-white">
+                <h6 class="mb-0"><i class="bi bi-clock-history me-1"></i>版本历史</h6>
+            </div>
+            <div class="card-body p-0">
+                {% if doc.versions %}
+                <div class="table-responsive">
+                    <table class="table table-hover mb-0">
+                        <thead>
+                            <tr>
+                                <th>版本</th>
+                                <th>文件</th>
+                                <th>变更说明</th>
+                                <th>创建人</th>
+                                <th>创建时间</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for ver in doc.versions|sort(attribute='created_at', reverse=true) %}
+                            <tr>
+                                <td><span class="badge bg-light text-dark">{{ ver.version }}</span></td>
+                                <td>
+                                    {% if ver.file_name %}
+                                    {% if ver.file_path %}
+                                    <a href="{{ url_for('static', filename='uploads/' + ver.file_path) }}" download>
+                                        <i class="bi bi-paperclip me-1"></i>{{ ver.file_name }}
+                                    </a>
+                                    {% else %}
+                                    <span class="text-muted"><i class="bi bi-paperclip me-1"></i>{{ ver.file_name }}</span>
+                                    {% endif %}
+                                    {% else %}
+                                    <span class="text-muted">-</span>
+                                    {% endif %}
+                                </td>
+                                <td>{{ ver.change_note or '-' }}</td>
+                                <td>{{ ver.creator.display_name if ver.creator else '-' }}</td>
+                                <td class="text-muted small">{{ ver.created_at.strftime('%Y-%m-%d %H:%M') if ver.created_at else '-' }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <div class="text-center py-4 text-muted">
+                    <i class="bi bi-inbox"></i>
+                    <p class="mb-0 mt-1">暂无版本记录</p>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <!-- 操作面板 -->
+    <div class="col-lg-4">
+        <div class="card">
+            <div class="card-header bg-white">
+                <h6 class="mb-0"><i class="bi bi-gear me-1"></i>操作</h6>
+            </div>
+            <div class="card-body">
+                <!-- 提交审批 -->
+                {% if doc.status in ['draft', 'rejected'] %}
+                <form method="POST" action="{{ url_for('documents.submit_approval', id=doc.id) }}" class="mb-2">
+                    <button type="submit" class="btn btn-info w-100 text-white">
+                        <i class="bi bi-send me-1"></i>提交审批
+                    </button>
+                </form>
+                {% endif %}
+
+                <!-- 锁定 / 解锁 -->
+                {% if doc.is_locked %}
+                    {% if doc.locked_by == current_user.id or current_user.role == 'admin' %}
+                    <a href="{{ url_for('documents.unlock_doc', id=doc.id) }}" class="btn btn-warning w-100 mb-2">
+                        <i class="bi bi-unlock me-1"></i>解锁
+                    </a>
+                    {% endif %}
+                {% else %}
+                <a href="{{ url_for('documents.lock_doc', id=doc.id) }}" class="btn btn-outline-secondary w-100 mb-2">
+                    <i class="bi bi-lock me-1"></i>锁定
+                </a>
+                {% endif %}
+
+                <!-- 发布 -->
+                {% if doc.status == 'approved' %}
+                <form method="POST" action="{{ url_for('documents.publish_doc', id=doc.id) }}" class="mb-2">
+                    <button type="submit" class="btn btn-success w-100">
+                        <i class="bi bi-check-all me-1"></i>发布
+                    </button>
+                </form>
+                {% endif %}
+
+                <!-- 新建版本 -->
+                <a href="{{ url_for('documents.new_version', id=doc.id) }}" class="btn btn-primary w-100 mb-2">
+                    <i class="bi bi-plus-circle me-1"></i>新建版本
+                </a>
+
+                <!-- 删除（仅作者或管理员，已发布不能删） -->
+                {% if (doc.author_id == current_user.id or current_user.role == 'admin') and doc.status != 'published' %}
+                <form method="POST" action="{{ url_for('documents.delete_doc', id=doc.id) }}" class="mb-2" onsubmit="return confirm('确定要删除文档「{{ doc.title }}」吗？\n此操作不可撤销！');">
+                    <button type="submit" class="btn btn-outline-danger w-100">
+                        <i class="bi bi-trash me-1"></i>删除文档
+                    </button>
+                </form>
+                {% endif %}
+
+                <!-- 返回 -->
+                <a href="{{ url_for('documents.list_docs') }}" class="btn btn-outline-secondary w-100">
+                    <i class="bi bi-arrow-left me-1"></i>返回列表
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
