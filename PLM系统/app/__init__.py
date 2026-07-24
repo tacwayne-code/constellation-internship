@@ -2,7 +2,7 @@ from flask import Flask, request, session, abort
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager
 from config import Config
-import os, uuid, hmac, hashlib
+import os, uuid, hmac
 
 db = SQLAlchemy()
 login_manager = LoginManager()
@@ -37,22 +37,22 @@ def create_app(config_class=Config):
     app.register_blueprint(integration_bp, url_prefix='/integrations')
 
     # ── CSRF 防护 ──
+    def _ensure_csrf_token():
+        """确保 session 中有 csrf_token，无则创建"""
+        if 'csrf_token' not in session:
+            session['csrf_token'] = uuid.uuid4().hex
+        return session['csrf_token']
+
     @app.before_request
     def csrf_protect():
         """对 POST/PUT/DELETE 请求做简易 CSRF token 校验"""
         if request.method in ('GET', 'HEAD', 'OPTIONS'):
             return
-        # 跳过 API 请求（用 header token 替代 CSRF）
         if request.path.startswith('/api/') or request.path.startswith('/integrations/'):
             return
-        token = session.get('csrf_token')
-        if not token:
-            token = uuid.uuid4().hex
-            session['csrf_token'] = token
-        # 表单提交需携带 csrf_token
+        token = _ensure_csrf_token()
         if request.form:
             sent = request.form.get('csrf_token', '')
-            # static 和 login 路径豁免（not yet in session）
             if not sent and request.path in ('/auth/login',):
                 return
             if not hmac.compare_digest(sent, token):
@@ -61,11 +61,7 @@ def create_app(config_class=Config):
     @app.context_processor
     def inject_csrf():
         """向所有模板注入 csrf_token"""
-        token = session.get('csrf_token')
-        if not token:
-            token = uuid.uuid4().hex
-            session['csrf_token'] = token
-        return {'csrf_token': token}
+        return {'csrf_token': _ensure_csrf_token()}
 
     with app.app_context():
         db.create_all()
