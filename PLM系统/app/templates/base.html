@@ -62,13 +62,6 @@
         <a href="{{ url_for('projects.list_projects') }}" class="nav-item {% if request.endpoint and request.endpoint.startswith('projects.') %}active{% endif %}">
             <i class="bi bi-kanban"></i> 项目管理
         </a>
-        <div class="nav-section">制造与集成</div>
-        <a href="{{ url_for('processes.list_processes') }}" class="nav-item {% if request.endpoint and request.endpoint.startswith('processes.') %}active{% endif %}">
-            <i class="bi bi-gear"></i> 工艺管理
-        </a>
-        <a href="{{ url_for('work_hours.list_work_hours') }}" class="nav-item {% if request.endpoint and request.endpoint.startswith('work_hours.') %}active{% endif %}">
-            <i class="bi bi-clock"></i> 工时管理
-        </a>
         <div class="nav-section">PLM → Odoo 单向推送</div>
         <a href="{{ url_for('integrations.list_integrations') }}" class="nav-item {% if request.endpoint and request.endpoint.startswith('integrations.') %}active{% endif %}">
             <i class="bi bi-cloud-upload"></i> 系统集成（只推不取）
