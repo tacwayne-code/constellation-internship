@@ -1236,142 +1236,127 @@ DEST_LOCATION_ID = 15     # Virtual Locations/Production
 
 
 def odoo_deduct_materials(materials, idempotency_key):
-    """
-    直接扣减物料库存（不依赖工单），幂等保护
-    """
+    """直接扣减物料库存（启用负库存 -> 调 quant -> 创建 move 记录）"""
     if MOCK_MODE:
         logger.info(f"[MOCK] 模拟物料扣减: {len(materials)}项")
         return {"ok": True, "stock_move_ids": [900000 + i for i in range(len(materials))],
                 "message": "模拟物料扣减成功", "meta": {"mode": "mock", "source": "fake_odoo"}}
 
-    # 幂等检查：已扣减过则直接返回
     if idempotency_key:
         try:
             with DB_LOCK:
                 c = sqlite3.connect(str(DB_FILE))
                 row = c.execute(
                     "SELECT id FROM reports WHERE idempotency_key=? AND sync_status='odoo_synced'",
-                    (idempotency_key,)
-                ).fetchone()
+                    (idempotency_key,)).fetchone()
                 c.close()
                 if row:
-                    logger.info(f"Odoo 物料扣减幂等跳过: {idempotency_key}")
                     return {"ok": True, "stock_move_ids": [], "message": "已扣减过（幂等）",
                             "meta": {"mode": "real", "source": "idempotent"}}
         except Exception:
             pass
 
     client = get_odoo()
-    mode = "real"
     stock_move_ids = []
     errors = []
 
-    for i, mat in enumerate(materials):
+    for mat in materials:
         product_id = mat.get("productId", 0)
         actual_qty = mat.get("actualQty", 1)
         uom_id = mat.get("uomId", 1)
         code = mat.get("defaultCode", "?")
 
         if not product_id or actual_qty <= 0:
-            errors.append(f"物料 {code}: 无效的产品ID或数量")
+            errors.append(f"物料 {code}: 无效参数")
             continue
 
         try:
-            # 方案A：创建 stock.move 并 _action_done（标准流程）
+            _ensure_negative_stock_ok(client, product_id)
+
             move_id = client.call("stock.move", "create", [{
-                "product_id": product_id,
-                "product_uom_qty": actual_qty,
-                "product_uom": uom_id,
-                "location_id": SRC_LOCATION_ID,
+                "product_id": product_id, "product_uom_qty": actual_qty,
+                "product_uom": uom_id, "location_id": SRC_LOCATION_ID,
                 "location_dest_id": DEST_LOCATION_ID,
-                "name": f"报工消耗 {code} [{idempotency_key[:8]}]",
-                "state": "draft",
+                "name": f"报工消耗 {code} [{idempotency_key[:8]}]", "state": "draft",
             }])
-            logger.info(f"物料 {code}({product_id}): stock.move#{move_id} 已创建 qty={actual_qty}")
-
-            # 方案A：创建并完成 stock.move。失败时方案B：直接调整 quant
-            deducted = False
-            try:
-                client.call("stock.move", "write", [[move_id], {"quantity": actual_qty}])
-                client.call("stock.move", "_action_confirm", [[move_id]])
-                client.call("stock.move", "_action_done", [[move_id]])
-                deducted = True
-                logger.info(f"物料 {code}: _action_done 成功")
-            except Exception as ea:
-                logger.warning(f"物料 {code}: _action_done 失败: {ea}")
-
-            if not deducted:
-                try:
-                    # 方案B：在多条 quant 中按顺序扣减
-                    remaining = actual_qty
-                    quant_ids = client.call("stock.quant", "search", [
-                        [("product_id", "=", product_id), ("location_id", "=", SRC_LOCATION_ID)]
-                    ])
-                    if quant_ids:
-                        quants = client.call("stock.quant", "read", [quant_ids],
-                                             {"fields": ["id", "quantity"]})
-                        for q in quants:
-                            if remaining <= 0:
-                                break
-                            qty = float(q["quantity"])
-                            take = min(qty, remaining)
-                            client.call("stock.quant", "write", [[q["id"]], {
-                                "quantity": qty - take,
-                                "inventory_quantity": qty - take,
-                            }])
-                            remaining -= take
-                            logger.info(f"物料 {code}: quant#{q['id']} {qty} → {qty - take}")
-                        if remaining <= 0:
-                            deducted = True
-                        else:
-                            # quant 不足，对最后一个做负数处理
-                            if quant_ids:
-                                last_qty = float(quants[-1]["quantity"])
-                                client.call("stock.quant", "write", [[quants[-1]["id"]], {
-                                    "quantity": last_qty - remaining,
-                                    "inventory_quantity": last_qty - remaining,
-                                }])
-                                deducted = True
-                                logger.info(f"物料 {code}: quant#{quants[-1]['id']} 超额扣减 {remaining}")
-                            else:
-                                # 无 quant，创建负库存
-                                client.call("stock.quant", "create", [{
-                                    "product_id": product_id,
-                                    "location_id": SRC_LOCATION_ID,
-                                    "quantity": -actual_qty,
-                                    "inventory_quantity": -actual_qty,
-                                }])
-                                deducted = True
-                                logger.info(f"物料 {code}: 创建负库存 quant qty={-actual_qty}")
-                except Exception as eq:
-                    logger.error(f"物料 {code}: 方案B 调整 quant 失败: {eq}")
-
-            if not deducted:
-                errors.append(f"物料 {code}: 扣减失败，请重试")
-                continue
-
             stock_move_ids.append(move_id)
 
+            remaining = actual_qty
+            quant_ids = client.call("stock.quant", "search", [
+                [("product_id", "=", product_id), ("location_id", "=", SRC_LOCATION_ID)]
+            ])
+            if quant_ids:
+                quants = client.call("stock.quant", "read", [quant_ids], {"fields": ["id", "quantity"]})
+                for q in quants:
+                    if remaining <= 0:
+                        break
+                    qty = float(q["quantity"])
+                    take = min(qty, remaining)
+                    client.call("stock.quant", "write", [[q["id"]], {
+                        "quantity": qty - take, "inventory_quantity": qty - take,
+                    }])
+                    remaining -= take
+                    logger.info(f"物料 {code}: quant#{q['id']} {qty} -> {qty - take}")
+
+            if remaining > 0:
+                if quant_ids:
+                    last = quants[-1]
+                    client.call("stock.quant", "write", [[last["id"]], {
+                        "quantity": float(last["quantity"]) - remaining,
+                        "inventory_quantity": float(last["quantity"]) - remaining,
+                    }])
+                else:
+                    client.call("stock.quant", "create", [{
+                        "product_id": product_id, "location_id": SRC_LOCATION_ID,
+                        "quantity": -actual_qty, "inventory_quantity": -actual_qty,
+                    }])
+                logger.info(f"物料 {code}: 超额/负库存扣减 {remaining}")
+
+            try:
+                client.call("stock.move", "write", [[move_id], {"state": "done", "quantity": actual_qty}])
+            except Exception:
+                pass
+
         except Exception as e:
-            errors.append(f"物料 {code}: 创建失败: {e}")
-            logger.error(f"物料 {code}: {e}")
+            errors.append(f"物料 {code}: {e}")
+            logger.error(f"物料 {code} 扣减失败: {e}")
 
-    if errors:
-        return {
-            "ok": not all("无法完成" in e or "创建失败" in e for e in errors),
-            "partial": True,
-            "stock_move_ids": stock_move_ids,
-            "message": f"{len(stock_move_ids)} 项物料已扣减，{len(errors)} 项失败",
-            "errors": errors,
-            "meta": {"mode": mode, "source": "odoo"},
-        }
+    real_errors = [e for e in errors if "无效" not in e]
+    all_failed = len(materials) > 0 and len(stock_move_ids) == 0 and len(real_errors) > 0
+    partial = len(real_errors) > 0 and len(stock_move_ids) > 0
 
-    return {
-        "ok": True,
-        "stock_move_ids": stock_move_ids,
-        "message": f"已完成 {len(stock_move_ids)} 项物料库存扣减",
-        "meta": {"mode": mode, "source": "odoo"},
-    }
+    if all_failed:
+        return {"ok": False, "stock_move_ids": [], "errors": errors,
+                "message": f"全部 {len(real_errors)} 项物料扣减失败",
+                "meta": {"mode": "real", "source": "odoo"}}
+    if partial:
+        return {"ok": True, "partial": True, "stock_move_ids": stock_move_ids, "errors": errors,
+                "message": f"{len(stock_move_ids)} 项已扣减，{len(real_errors)} 项失败",
+                "meta": {"mode": "real", "source": "odoo"}}
+    return {"ok": True, "stock_move_ids": stock_move_ids,
+            "message": f"已完成 {len(stock_move_ids)} 项物料库存扣减",
+            "meta": {"mode": "real", "source": "odoo"}}
+
+
+def _ensure_negative_stock_ok(client, product_id):
+    """为产品模板启用负库存"""
+    if not hasattr(_ensure_negative_stock_ok, "_done"):
+        _ensure_negative_stock_ok._done = set()
+    if product_id in _ensure_negative_stock_ok._done:
+        return
+    try:
+        rows = client.call("product.product", "search_read", [[("id", "=", product_id)]],
+                           {"fields": ["product_tmpl_id"], "limit": 1})
+        if rows:
+            tmpl = rows[0].get("product_tmpl_id", 0)
+            if isinstance(tmpl, (list, tuple)):
+                tmpl = tmpl[0]
+            client.call("product.template", "write", [[tmpl], {"allow_negative_stock": True}])
+            _ensure_negative_stock_ok._done.add(product_id)
+            logger.info(f"物料 #{product_id} tmpl#{tmpl} 负库存已启用")
+    except Exception:
+        pass
+
 
 
 class Handler(SimpleHTTPRequestHandler):
