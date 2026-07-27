@@ -1661,14 +1661,18 @@ class Handler(SimpleHTTPRequestHandler):
                 _WO_CACHE["data"] = None
             elif odoo_result:
                 report["syncStatus"] = "odoo_failed"
-                report["errorMessage"] = odoo_result.get("error", "未知错误")
+                errors_list = odoo_result.get("errors", [odoo_result.get("error", "未知错误")])
+                report["errorMessage"] = "; ".join(errors_list) if isinstance(errors_list, list) else errors_list
 
             if db_add_report(report, materials):
                 saved = db_get_report(report["id"]) or report
                 result = _normalize_report(saved) if isinstance(saved, dict) else saved
 
                 if odoo_result and odoo_result.get("ok"):
-                    msg = "报工成功，已完成物料库存扣减"
+                    if odoo_result.get("partial"):
+                        msg = odoo_result.get("message", "部分物料扣减成功")
+                    else:
+                        msg = "报工成功，已完成物料库存扣减"
                 elif materials and not odoo_result:
                     msg = "报工已保存（未提交物料）"
                 else:
