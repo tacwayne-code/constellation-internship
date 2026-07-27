@@ -22,6 +22,7 @@
     </div>
     <div class="topbar-right">
       <span class="status-badge" id="apiStatus">● 在线</span>
+      <span class="mode-badge" id="modeBadge" style="display:none;">模拟环境</span>
       <button class="btn-pill" id="fullscreenBtn" title="切换全屏">全屏</button>
       <a class="btn-pill btn-primary" href="./index.html" title="返回订单看板">
         <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
@@ -168,6 +169,48 @@
     <div class="dialog-msg" id="successMsg">报工成功！</div>
     <div class="dialog-sub" id="successSub"></div>
     <button class="dialog-ok" id="successOk">继续报工</button>
+  </div>
+</div>
+
+<!-- BOM 物料弹窗 -->
+<div class="overlay" id="bomOverlay">
+  <div class="bom-dialog">
+    <div class="bom-header">
+      <h3>物料清单确认</h3>
+      <div class="bom-header-info">
+        <span id="bomHostType"></span>
+        <span id="bomOrderInfo"></span>
+      </div>
+      <button class="bom-close" id="bomClose">&times;</button>
+    </div>
+    <div class="bom-toolbar">
+      <label class="bom-check-all"><input type="checkbox" id="bomSelectAll" checked /> 全选</label>
+      <span class="bom-stock-warn" id="bomStockWarn" style="display:none;">⚠ 库存不足</span>
+    </div>
+    <div class="bom-body scrollable" id="bomBody">
+      <!-- 加载状态 -->
+      <div class="bom-state" id="bomLoading"><span class="spinner"></span>加载物料清单...</div>
+      <!-- 失败状态 -->
+      <div class="bom-state bom-error" id="bomError" style="display:none;"></div>
+      <!-- 空状态 -->
+      <div class="bom-state" id="bomEmpty" style="display:none;">当前工单无物料清单</div>
+      <!-- 物料列表 -->
+      <div class="bom-header-row" id="bomHeaderRow" style="display:none;">
+        <span></span>
+        <span>物料编码</span>
+        <span>物料名称</span>
+        <span>规格型号</span>
+        <span>单位</span>
+        <span>数量</span>
+        <span>物料类别</span>
+        <span>供应商</span>
+      </div>
+      <div class="bom-list" id="bomList" style="display:none;"></div>
+    </div>
+    <div class="bom-footer">
+      <button class="bom-btn bom-btn-cancel" id="bomCancel">取消</button>
+      <button class="bom-btn bom-btn-confirm" id="bomConfirm">确认物料</button>
+    </div>
   </div>
 </div>
 

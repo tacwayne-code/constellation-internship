@@ -1,4 +1,4 @@
-/* === 生产人员报工 · 统一布局逻辑 === */
+/* === 生产人员报工 V2 · BOM + Mock 支持 === */
 
 const $ = (s) => document.querySelector(s);
 const $$ = (s) => document.querySelectorAll(s);
@@ -11,7 +11,7 @@ async function apiGet(path) {
   const r = await fetch(API_BASE + path);
   const j = await r.json();
   if (!j.ok) throw new Error(j.error || "API error");
-  return j.data;
+  return j;
 }
 async function apiPost(path, body) {
   const r = await fetch(API_BASE + path, {
@@ -21,7 +21,7 @@ async function apiPost(path, body) {
   });
   const j = await r.json();
   if (!j.ok) throw new Error(j.error || "API error");
-  return j.data;
+  return j;
 }
 
 // ====== 全局状态 ======
@@ -36,9 +36,27 @@ const S = {
   selOperation: "",
   qty: 0,
   submitting: false,
+
+  // V2 新增
+  operations: [],
+  selectedProduction: null,
+  selectedWorkorder: null,
+  selectedOperation: null,
+  bomItems: [],
+  bomLoading: false,
+  bomError: "",
+  bomConfirmed: false,
+  submitRequestId: "",
+  runtimeMode: "unknown",
+  workorders: [],
 };
 
-const OP = { assembly: "总装", testing: "测试", qc: "质检", packing: "包装", debug: "调试" };
+// 工序映射（含新增）
+const OP = {
+  assembly: "总装", testing: "测试", qc: "质检", packing: "包装", debug: "调试",
+  pc_assembly_tape: "电脑装机（编带主机）",
+  pc_assembly_splitter: "电脑装机（分光主机）",
+};
 
 function esc(v) {
   return String(v ?? "").replace(/[&<>"']/g, (c) => ({
@@ -50,6 +68,14 @@ function unitText(value) {
   const unit = String(value || "").trim();
   if (unit === "Units" || unit === "Unit" || unit.toLowerCase() === "units") return "台";
   return unit;
+}
+
+// ====== UUID v4 ======
+function generateUUID() {
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+    var r = Math.random() * 16 | 0, v = c === 'x' ? r : (r & 0x3 | 0x8);
+    return v.toString(16);
+  });
 }
 
 // ====== 时钟 ======
@@ -72,28 +98,61 @@ function updateApiBadge() {
   else { b.textContent = "● 离线"; b.className = "status-badge offline"; }
 }
 
+function updateModeBadge() {
+  const b = $("#modeBadge");
+  if (!b) return;
+  if (S.runtimeMode === "mock") {
+    b.style.display = "inline-flex";
+    b.textContent = "⚠ 模拟环境";
+  } else {
+    b.style.display = "none";
+  }
+}
+
 // ====== 数据加载 ======
 async function loadAll() {
-  try { const r = await fetch(API_BASE + "/api/dashboard", { cache: "no-store" }); const p = await r.json(); if (p.ok) S.dashboard = p.data; }
-  catch { S.dashboard = null; }
+  try {
+    const r = await fetch(API_BASE + "/api/dashboard", { cache: "no-store" });
+    const p = await r.json();
+    if (p.ok) S.dashboard = p.data;
+  } catch { S.dashboard = null; }
 
-  try { S.workers = await apiGet("/api/workers"); }
-  catch { S.workers = defaultWorkers(); }
+  try {
+    const resp = await apiGet("/api/workers");
+    S.workers = resp.data || [];
+    // 检测模式
+    if (resp.meta && resp.meta.mode) S.runtimeMode = resp.meta.mode;
+  } catch { S.workers = defaultWorkers(); }
 
-  try { S.orders = await apiGet("/api/order-summary"); }
+  try { S.orders = (await apiGet("/api/order-summary")).data || []; }
   catch { S.orders = []; }
 
-  try { S.reports = await apiGet("/api/reports"); }
+  try { S.reports = (await apiGet("/api/reports")).data || []; }
   catch {
     try { S.reports = JSON.parse(localStorage.getItem("wr_reports") || "[]"); }
     catch { S.reports = []; }
   }
 
+  // V2: 加载工序
+  try {
+    const opResp = await apiGet("/api/operations");
+    S.operations = opResp.data || [];
+    if (opResp.meta && opResp.meta.mode) S.runtimeMode = opResp.meta.mode;
+  } catch { /* 使用默认 */ }
+
+  // V2: 加载工单
+  try {
+    const woResp = await apiGet("/api/workorders");
+    S.workorders = woResp.data || [];
+  } catch { S.workorders = []; }
+
   apiOnline = true;
   updateApiBadge();
+  updateModeBadge();
   renderKpis();
   renderTeamStatus();
   renderWorkers();
+  renderOperations();
   renderOrders();
   renderReportOverview();
   updateSubmit();
@@ -115,17 +174,17 @@ function renderKpis() {
   const grid = $("#kpiGrid");
   if (!grid) return;
 
-  // 今日统计
   const today = new Date().toISOString().split("T")[0];
   const todayR = S.reports.filter((r) => r.date === today);
   const todayQty = todayR.reduce((s, r) => s + (parseInt(r.qty) || 0), 0);
   const todayPeople = new Set(todayR.map((r) => r.workerName)).size;
   const activeOrders = S.orders.filter((o) => parseFloat(o.remaining) > 0).length;
+  const workorderCount = S.workorders.length || activeOrders;
 
   const kpis = [
     ["今日报工", String(todayR.length), "条", `已提交 ${todayQty}台`, "#10b981"],
     ["今日产量", String(todayQty), "台", `在岗 ${todayPeople}人`, "#0ea5c9"],
-    ["待处理工单", String(activeOrders), "个", "今日新增", "#f59e0b"],
+    ["待处理工单", String(workorderCount), "个", "今日新增", "#f59e0b"],
     ["可报工人", String(S.workers.length), "人", `共 ${S.workers.length}人`, "#4f8cf7"],
   ];
 
@@ -150,7 +209,6 @@ function renderTeamStatus() {
     teamMap[t].total++;
   });
 
-  // 计算每个班次的今日报工人数
   const today = new Date().toISOString().split("T")[0];
   const todayR = S.reports.filter((r) => r.date === today);
   todayR.forEach((r) => {
@@ -168,7 +226,8 @@ function renderTeamStatus() {
     const cls = t.name.includes("A") ? "A" :
                 t.name.includes("B") ? "B" :
                 t.name.includes("C") ? "C" :
-                t.name.includes("夜") ? "night" : "";
+                t.name.includes("夜") ? "night" :
+                t.name.includes("组装") ? "A" : "";
     return '<div class="team-card ' + cls + '">' +
       '<span class="team-name">' + esc(t.name) + '</span>' +
       '<span class="team-count">' + t.active + '/' + t.total + '</span>' +
@@ -191,26 +250,102 @@ function renderWorkers() {
 
   el.innerHTML = S.workers.map((w, i) => {
     const act = S.selWorkerIdx === i ? " active" : "";
-    const label = w.name + (w.team ? " · " + w.team : "");
+    const odoo = w.source === "odoo" ? " (Odoo)" : "";
+    const label = w.name + (w.team ? " · " + w.team : "") + odoo;
     return '<button class="chip worker-chip' + act + '" data-wi="' + i + '">' + esc(label) + '</button>';
   }).join("");
 }
 
-// ====== 工单渲染 ======
+// ====== 工序渲染（动态） ======
+function isLuoweihua() {
+  return S.selWorker && S.selWorker.name === "罗伟华";
+}
+
+function renderOperations() {
+  const el = $("#operationChips");
+  if (!el) return;
+
+  // 获取工序列表（优先使用动态加载的，回退到默认）
+  let ops = S.operations;
+  if (!ops || !ops.length) {
+    ops = [
+      { code: "assembly", name: "总装" },
+      { code: "testing", name: "测试" },
+      { code: "qc", name: "质检" },
+      { code: "packing", name: "包装" },
+      { code: "debug", name: "调试" },
+      { code: "pc_assembly_tape", name: "电脑装机（编带主机）" },
+      { code: "pc_assembly_splitter", name: "电脑装机（分光主机）" },
+    ];
+  }
+
+  const luoSelected = isLuoweihua();
+
+  el.innerHTML = ops.map((op) => {
+    const act = S.selOperation === op.code ? " active" : "";
+    const isPC = op.code.includes("pc_assembly");
+    // 电脑装机只允许罗伟华选择
+    const disabled = isPC && !luoSelected;
+    const cls = "chip op-chip" + act + (isPC ? " op-pc" : "") + (disabled ? " op-disabled" : "");
+    return '<button class="' + cls + '" data-op="' + esc(op.code) + '"' +
+           (disabled ? ' disabled title="该工序仅限罗伟华报工"' : '') +
+           '>' + esc(op.name || op.code) + '</button>';
+  }).join("");
+}
+
+// ====== 工单渲染（合并原订单 + 新工单） ======
 function renderOrders() {
   const el = $("#orderCards");
   const cnt = $("#orderCount");
   if (!el) return;
 
-  const active = S.orders.filter((o) => parseFloat(o.remaining) > 0);
-  if (cnt) cnt.textContent = active.length + " 个";
+  // 原有订单（保留不变）
+  const originalActive = S.orders.filter((o) => parseFloat(o.remaining) > 0);
 
-  if (!active.length) {
+  // 新工单（额外加入，不替换原有订单）
+  const workorderActive = (S.workorders || []).filter((w) => w.remainingQty > 0);
+
+  const totalCount = originalActive.length + workorderActive.length;
+  if (cnt) cnt.textContent = totalCount + " 个";
+
+  if (totalCount === 0) {
     el.innerHTML = '<div class="overview-empty">暂无待处理工单</div>';
     return;
   }
 
-  el.innerHTML = active.map((o) => {
+  let html = "";
+
+  // 1. 先渲染新工单（放前面）
+  html += workorderActive.map((w) => {
+    const act = S.selectedWorkorder && S.selectedWorkorder.workorderId === w.workorderId ? " active" : "";
+    const stCls = w.state === "progress" ? "running" : w.state === "ready" ? "progress" : "";
+    const stLabel = w.stateLabel || w.state || "";
+
+    return '<div class="order-card' + act + '" data-woid="' + esc(w.workorderId) + '" data-pid="' + esc(w.productionId || "") + '">' +
+      '<div class="oc-header">' +
+        '<span class="oc-tag-wo">工单</span>' +
+        '<span class="oc-id">WO#' + esc(w.workorderId) + '</span>' +
+        '<span class="oc-status ' + stCls + '">' + stLabel + '</span>' +
+      '</div>' +
+      '<div class="oc-product">' +
+        '<div class="oc-prod-main">' +
+          '<strong>' + esc(w.productName || w.workorderName || "") + '</strong>' +
+        '</div>' +
+      '</div>' +
+      '<div class="oc-spec"><span>' + esc(w.productionName || "MO#" + w.productionId) + '</span><small>生产单</small></div>' +
+      '<div class="oc-qty-row">' +
+        '<span>' + esc(w.qtyProduction) + '台</span>' +
+        '<small>已产 ' + esc(w.qtyProduced) + ' / 剩余 ' + esc(w.remainingQty) + '</small>' +
+      '</div>' +
+      '<div class="oc-meta-row">' +
+        '<span class="oc-remark">' + (w.hostType === "tape" ? "编带主机" : w.hostType === "splitter" ? "分光主机" : "") + '</span>' +
+        '<span class="oc-delivery">' + esc(w.workcenterName || "") + '</span>' +
+      '</div>' +
+    '</div>';
+  }).join("");
+
+  // 2. 再渲染原有订单（保留原始样式不变）
+  html += originalActive.map((o) => {
     const rem = parseFloat(o.remaining) || 0;
     const qty = parseFloat(o.qty) || 0;
     const uom = unitText(o.uom);
@@ -219,36 +354,30 @@ function renderOrders() {
     const stText = (o.status || "").indexOf("逾期") > -1 ? "逾期" : "进行中";
 
     return '<div class="order-card' + act + '" data-oid="' + esc(o.id) + '">' +
-      // 客户代码 + 订单号 + 状态（对应看板"客户/订单"列）
       '<div class="oc-header">' +
         '<span class="oc-customer-code">' + esc(o.customerCode ? "[" + o.customerCode + "]" : "") + '</span>' +
         '<span class="oc-id">' + esc(o.id) + '</span>' +
         '<span class="oc-status ' + stCls + '">' + stText + '</span>' +
       '</div>' +
-      // 机型 + 型号代码 + 机型标签（同行右对齐）
       '<div class="oc-product">' +
         '<div class="oc-prod-main">' +
           '<strong>' + esc(o.product || "") + '</strong>' +
           '<small>' + esc(o.code || "") + '</small>' +
         '</div>' +
-        '<div class="oc-prod-extra">' +
-          '<small>机型</small>' +
-        '</div>' +
       '</div>' +
-      // 规格型号（数值左，标签右）
       '<div class="oc-spec"><span>' + esc(o.spec || "—") + '</span><small>规格型号</small></div>' +
-      // 数量 + 待交付（对应看板"数量"列）
       '<div class="oc-qty-row">' +
         '<span>' + esc(o.qty) + esc(uom) + '</span>' +
         '<small>待交付 ' + esc(o.remaining) + esc(uom) + '</small>' +
       '</div>' +
-      // 备注 + 交付情况
       '<div class="oc-meta-row">' +
         '<span class="oc-remark">' + esc(o.remark || "") + '</span>' +
         '<span class="oc-delivery">' + esc(o.updated || o.date || "") + '</span>' +
       '</div>' +
     '</div>';
   }).join("");
+
+  el.innerHTML = html;
 }
 
 // ====== 报工概览 ======
@@ -290,8 +419,220 @@ function renderReportOverview() {
 function updateSubmit() {
   const btn = $("#submitBtn");
   if (!btn) return;
-  const can = S.selWorkerIdx >= 0 && S.selOrder && S.selOperation && S.qty > 0 && !S.submitting;
+  const hostOp = S.selOperation && S.selOperation.includes("pc_assembly");
+  let can = S.selWorkerIdx >= 0 && (S.selOrder || S.selectedWorkorder) && S.selOperation && S.qty > 0 && !S.submitting;
+  if (can && hostOp && !S.bomConfirmed) {
+    can = false; // 需要先确认BOM
+  }
   btn.disabled = !can;
+  if (hostOp && !S.bomConfirmed && can) {
+    btn.title = "请先确认物料清单";
+  } else {
+    btn.title = "";
+  }
+}
+
+// ====== BOM 弹窗逻辑 ======
+async function openBomModal() {
+  const hostType = S.selectedOperation ? S.selectedOperation.hostType : null;
+  if (!hostType) {
+    // 尝试从工单推断
+    if (S.selectedWorkorder && S.selectedWorkorder.hostType) {
+      S.selectedOperation = { ...S.selectedOperation, hostType: S.selectedWorkorder.hostType };
+    } else {
+      toast("无法确定主机类型", "error");
+      return;
+    }
+  }
+
+  const ht = S.selectedOperation.hostType;
+
+  // 清理旧状态
+  S.bomItems = [];
+  S.bomLoading = true;
+  S.bomError = "";
+  S.bomConfirmed = false;
+
+  // 显示弹窗
+  const overlay = $("#bomOverlay");
+  overlay.classList.add("show");
+
+  // 设置标题
+  $("#bomHostType").textContent = ht === "tape" ? "编带主机 BOM" : "分光主机 BOM";
+  const woInfo = S.selectedWorkorder
+    ? `WO#${S.selectedWorkorder.workorderId} | MO#${S.selectedWorkorder.productionId}`
+    : "";
+  $("#bomOrderInfo").textContent = woInfo;
+
+  // 显示加载状态
+  updateBomState("loading");
+
+  try {
+    const woId = S.selectedWorkorder ? S.selectedWorkorder.workorderId : "";
+    const resp = await apiGet(`/api/bom?hostType=${encodeURIComponent(ht)}&workorderId=${encodeURIComponent(woId)}`);
+    S.bomItems = (resp.data || []).map((item) => ({
+      ...item,
+      selected: true,
+      actualQty: item.actualQty || item.bomQty || 1,
+      validationError: "",
+    }));
+    S.bomLoading = false;
+    renderBomList();
+  } catch (err) {
+    S.bomLoading = false;
+    S.bomError = err.message || "加载物料清单失败";
+    updateBomState("error");
+  }
+}
+
+function updateBomState(state) {
+  $("#bomLoading").style.display = state === "loading" ? "flex" : "none";
+  $("#bomError").style.display = state === "error" ? "flex" : "none";
+  $("#bomEmpty").style.display = state === "empty" ? "flex" : "none";
+  $("#bomList").style.display = state === "list" ? "block" : "none";
+  $("#bomHeaderRow").style.display = state === "list" ? "grid" : "none";
+
+  if (state === "error") {
+    $("#bomError").textContent = "加载失败: " + (S.bomError || "未知错误");
+  }
+}
+
+function renderBomList() {
+  const el = $("#bomList");
+  const hasLowStock = S.bomItems.some((item) => item.availableQty < item.bomQty);
+
+  if (!S.bomItems.length) {
+    updateBomState("empty");
+    return;
+  }
+
+  updateBomState("list");
+
+  // 更新全选框
+  const allSelected = S.bomItems.every((item) => item.selected);
+  $("#bomSelectAll").checked = allSelected;
+
+  // 显示库存警告
+  $("#bomStockWarn").style.display = hasLowStock ? "inline" : "none";
+
+  el.innerHTML = S.bomItems.map((item, i) => {
+    const rowCls = item.selected ? "bom-row selected" : "bom-row";
+    const stockCls = item.availableQty <= 0 ? "low" :
+                     item.availableQty < item.bomQty ? "warn" : "ok";
+    const lowStock = item.availableQty < item.bomQty ? " low-stock" : "";
+
+    return '<div class="' + rowCls + lowStock + '" data-bi="' + i + '">' +
+      '<input type="checkbox" ' + (item.selected ? "checked" : "") + ' data-bi="' + i + '" class="bom-chk" />' +
+      '<span class="bom-col-code">' + esc(item.defaultCode || "") + '</span>' +
+      '<span class="bom-col-name">' + esc(item.name || "") + '</span>' +
+      '<span class="bom-col-spec">' + esc(item.specification || "") + '</span>' +
+      '<span class="bom-col-uom">' + esc(item.uomName || "pcs") + '</span>' +
+      '<span class="bom-col-actual">' +
+        '<button class="bom-qty-btn" data-bi="' + i + '" data-act="minus">−</button>' +
+        '<input class="bom-qty-input" type="number" min="0" value="' + item.actualQty + '" data-bi="' + i + '" />' +
+        '<button class="bom-qty-btn" data-bi="' + i + '" data-act="plus">+</button>' +
+      '</span>' +
+      '<span class="bom-col-category">' + esc(item.categoryName || "") + '</span>' +
+      '<span class="bom-col-brand">' + esc(item.brandSupplierName || "") + '</span>' +
+      '<span class="bom-col-stock ' + stockCls + '">' + esc(item.availableQty || 0) + '</span>' +
+    '</div>';
+  }).join("");
+
+  updateBomConfirmBtn();
+}
+
+function updateBomConfirmBtn() {
+  const btn = $("#bomConfirm");
+  if (!btn) return;
+  const hasSelected = S.bomItems.some((item) => item.selected);
+  const hasValidQty = S.bomItems.every((item) => !item.selected || item.actualQty > 0);
+  btn.disabled = !hasSelected || !hasValidQty;
+}
+
+function closeBomModal() {
+  $("#bomOverlay").classList.remove("show");
+}
+
+function confirmBom() {
+  // 验证所有选中项的数量
+  const invalid = S.bomItems.filter((item) => item.selected && item.actualQty <= 0);
+  if (invalid.length > 0) {
+    toast("请确保所有选中物料的数量大于0", "error");
+    return;
+  }
+
+  S.bomConfirmed = true;
+  closeBomModal();
+  updateSubmit();
+  toast("物料已确认，请选择工单并提交报工", "success");
+}
+
+// ====== BOM 事件 ======
+function setupBomEvents() {
+  // 全选
+  $("#bomSelectAll")?.addEventListener("change", (e) => {
+    const checked = e.target.checked;
+    S.bomItems.forEach((item) => { item.selected = checked; });
+    renderBomList();
+  });
+
+  // 单击行选择
+  $("#bomList")?.addEventListener("change", (e) => {
+    if (e.target.classList.contains("bom-chk")) {
+      const i = parseInt(e.target.dataset.bi);
+      if (i >= 0 && i < S.bomItems.length) {
+        S.bomItems[i].selected = e.target.checked;
+        renderBomList();
+      }
+    }
+    if (e.target.classList.contains("bom-qty-input")) {
+      const i = parseInt(e.target.dataset.bi);
+      if (i >= 0 && i < S.bomItems.length) {
+        const val = parseInt(e.target.value) || 0;
+        S.bomItems[i].actualQty = Math.max(0, val);
+        updateBomConfirmBtn();
+      }
+    }
+  });
+
+  // 数量加减按钮
+  $("#bomList")?.addEventListener("click", (e) => {
+    const btn = e.target.closest(".bom-qty-btn");
+    if (!btn) return;
+    const i = parseInt(btn.dataset.bi);
+    const act = btn.dataset.act;
+    if (i >= 0 && i < S.bomItems.length) {
+      let val = S.bomItems[i].actualQty || 0;
+      if (act === "plus") val++;
+      else if (act === "minus") val = Math.max(0, val - 1);
+      S.bomItems[i].actualQty = val;
+      renderBomList();
+    }
+  });
+
+  // 关闭
+  $("#bomClose")?.addEventListener("click", () => {
+    S.bomConfirmed = false;
+    closeBomModal();
+    updateSubmit();
+  });
+  $("#bomCancel")?.addEventListener("click", () => {
+    S.bomConfirmed = false;
+    closeBomModal();
+    updateSubmit();
+  });
+
+  // 确认
+  $("#bomConfirm")?.addEventListener("click", confirmBom);
+
+  // 点击遮罩关闭
+  $("#bomOverlay")?.addEventListener("click", (e) => {
+    if (e.target === e.currentTarget) {
+      S.bomConfirmed = false;
+      closeBomModal();
+      updateSubmit();
+    }
+  });
 }
 
 // ====== 事件绑定 ======
@@ -303,22 +644,56 @@ function setupEvents() {
     S.selWorkerIdx = idx;
     S.selWorker = S.workers[idx];
     renderWorkers();
+    renderOperations();
     updateSubmit();
   });
 
   $("#operationChips")?.addEventListener("click", (e) => {
     const chip = e.target.closest(".op-chip");
     if (!chip || !chip.dataset.op) return;
-    S.selOperation = chip.dataset.op;
+    const opCode = chip.dataset.op;
+    S.selOperation = opCode;
+
+    // 查找对应工序的完整信息
+    const opInfo = S.operations.find((o) => o.code === opCode);
+    S.selectedOperation = opInfo || { code: opCode, name: OP[opCode] || opCode };
+
+    // 清理旧 BOM
+    S.bomItems = [];
+    S.bomConfirmed = false;
+    S.bomError = "";
+
     $$(".op-chip").forEach((c) => c.classList.remove("active"));
     chip.classList.add("active");
+
+    // 电脑装机工序：直接弹出物料清单
+    if (opCode.includes("pc_assembly") && S.selectedOperation.hostType) {
+      openBomModal();
+    }
+
     updateSubmit();
   });
 
+  // V2: 工单点击（支持新旧格式）
   $("#orderCards")?.addEventListener("click", (e) => {
     const card = e.target.closest(".order-card");
-    if (!card || !card.dataset.oid) return;
-    S.selOrder = S.orders.find((o) => o.id === card.dataset.oid);
+    if (!card) return;
+
+    const woid = card.dataset.woid;
+    const oid = card.dataset.oid;
+
+    if (woid) {
+      // V2 工单格式
+      S.selectedWorkorder = S.workorders.find((w) => String(w.workorderId) === String(woid)) || null;
+      S.selectedProduction = S.selectedWorkorder ? { productionId: S.selectedWorkorder.productionId } : null;
+      S.selOrder = null;
+      // 切换工单不清理 BOM 确认（只要工序和工人不变，物料确认就保留）
+    } else if (oid) {
+      // 旧格式
+      S.selOrder = S.orders.find((o) => o.id === oid);
+      S.selectedWorkorder = null;
+    }
+
     $$(".order-card").forEach((c) => c.classList.remove("active"));
     card.classList.add("active");
     updateSubmit();
@@ -335,7 +710,15 @@ function setupEvents() {
     updateSubmit();
   }));
 
-  $("#submitBtn")?.addEventListener("click", submitReport);
+  $("#submitBtn")?.addEventListener("click", () => {
+    const hostOp = S.selOperation && S.selOperation.includes("pc_assembly");
+    if (hostOp && !S.bomConfirmed) {
+      // 电脑装机工序：先打开 BOM 弹窗
+      openBomModal();
+      return;
+    }
+    submitReport();
+  });
 
   $("#successOk")?.addEventListener("click", () => {
     $("#successOverlay").classList.remove("show");
@@ -357,6 +740,9 @@ function setupEvents() {
     document.addEventListener("webkitfullscreenchange", updateFullscreenLabel);
     document.addEventListener("msfullscreenchange", updateFullscreenLabel);
   }
+
+  // BOM 弹窗事件
+  setupBomEvents();
 }
 
 // ====== 数量变更 ======
@@ -370,7 +756,7 @@ function changeQty(delta) {
 async function submitReport() {
   if (S.submitting) return;
   if (S.selWorkerIdx < 0) { toast("请先选择工人", "error"); return; }
-  if (!S.selOrder) { toast("请先选择工单", "error"); return; }
+  if (!S.selectedWorkorder && !S.selOrder) { toast("请先选择工单", "error"); return; }
   if (!S.selOperation) { toast("请先选择工序", "error"); return; }
   if (S.qty <= 0) { toast("请设置完成数量", "error"); return; }
 
@@ -381,29 +767,81 @@ async function submitReport() {
   const remark = ($("#remarkInput").value || "").trim();
   const date = new Date().toISOString().split("T")[0];
   const time = new Date().toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit", hour12: false });
+  const idempotencyKey = generateUUID();
+
+  const opInfo = S.selectedOperation || { code: S.selOperation, name: OP[S.selOperation] || S.selOperation };
+  const woId = S.selectedWorkorder ? String(S.selectedWorkorder.workorderId) : (S.selOrder ? S.selOrder.id : "");
+  const prodId = S.selectedWorkorder ? String(S.selectedWorkorder.productionId || "") : "";
+
+  // 构建物料数据
+  let materials = [];
+  if (S.bomConfirmed && S.bomItems.length > 0) {
+    materials = S.bomItems
+      .filter((item) => item.selected)
+      .map((item) => ({
+        productId: item.productId || 0,
+        bomLineId: item.bomLineId || 0,
+        defaultCode: item.defaultCode || "",
+        actualQty: item.actualQty || 1,
+        uomId: item.uomId || 1,
+      }));
+  }
 
   const report = {
-    workerName: worker.name, workerId: worker.id, workerTeam: worker.team,
-    orderId: S.selOrder.id,
-    orderCustomer: S.selOrder.customer || "",
-    orderProduct: S.selOrder.product || "",
+    workerName: worker.name,
+    workerId: worker.id,
+    workerTeam: worker.team || "",
+    odooEmployeeId: worker.odooEmployeeId || 0,
+    orderId: woId,
+    orderCustomer: S.selOrder ? S.selOrder.customer || "" : "",
+    orderProduct: S.selOrder ? S.selOrder.product || "" : "",
+    productionId: prodId,
+    workorderId: woId,
     operation: S.selOperation,
-    operationLabel: OP[S.selOperation] || S.selOperation,
-    qty: S.qty, qualified: S.qty, hours: 0, remark: remark,
-    date: date, time: time,
+    operationLabel: opInfo.name || OP[S.selOperation] || S.selOperation,
+    qty: S.qty,
+    qualified: S.qty,
+    hours: 0,
+    remark: remark,
+    date: date,
+    time: time,
+    materials: materials,
+    idempotencyKey: idempotencyKey,
   };
 
+  S.submitRequestId = idempotencyKey;
+
   try {
+    let response;
     if (apiOnline) {
-      await apiPost("/api/reports", report);
-      S.reports = await apiGet("/api/reports");
+      response = await apiPost("/api/reports", report);
     } else {
       report.id = Date.now().toString(36);
       report.timestamp = Date.now();
       S.reports.push(report);
       try { localStorage.setItem("wr_reports", JSON.stringify(S.reports)); } catch (_) {}
+      response = { ok: true, meta: { mode: "offline", source: "localStorage" } };
     }
-    showSuccess(worker.name, S.qty);
+
+    // 根据模式显示不同的成功信息
+    const mode = response.meta ? response.meta.mode : "unknown";
+    let successMsg = "报工成功！";
+    let successSub = worker.name + " 完成 " + S.qty + " 台";
+
+    if (mode === "mock") {
+      successMsg = "模拟报工成功";
+      successSub += "（未写入 Odoo）";
+    } else if (mode === "real" && response.meta && response.meta.warning) {
+      successSub += "（本地已保存）";
+    }
+
+    if (response.data) {
+      S.reports.push(response.data);
+    } else {
+      S.reports = (await apiGet("/api/reports")).data || S.reports;
+    }
+
+    showSuccessMsg(worker.name, S.qty, mode);
     renderKpis();
     renderTeamStatus();
     renderReportOverview();
@@ -416,15 +854,33 @@ async function submitReport() {
 }
 
 // ====== 弹窗 ======
-function showSuccess(name, qty) {
-  $("#successMsg").textContent = "报工成功！";
-  $("#successSub").textContent = name + " 完成 " + qty + " 台";
+function showSuccessMsg(name, qty, mode) {
+  let msg = "报工成功！";
+  let sub = name + " 完成 " + qty + " 台";
+
+  if (mode === "mock") {
+    msg = "模拟报工成功";
+    sub += "（未写入 Odoo）";
+  }
+
+  $("#successMsg").textContent = msg;
+  $("#successSub").textContent = sub;
   $("#successOverlay").classList.add("show");
+}
+
+// 兼容旧函数名
+function showSuccess(name, qty) {
+  showSuccessMsg(name, qty, S.runtimeMode);
 }
 
 function resetForm() {
   S.selWorkerIdx = -1; S.selWorker = null;
   S.selOrder = null; S.selOperation = ""; S.qty = 0;
+  S.selectedWorkorder = null; S.selectedProduction = null;
+  S.selectedOperation = null;
+  S.bomItems = []; S.bomConfirmed = false;
+  S.bomError = ""; S.bomLoading = false;
+  S.submitRequestId = "";
   $("#qtyDisplay").textContent = "0";
   $("#remarkInput").value = "";
   $$(".chip").forEach((c) => c.classList.remove("active"));
@@ -433,6 +889,7 @@ function resetForm() {
   updateSubmit();
   renderWorkers();
   renderOrders();
+  renderOperations();
 }
 
 function toast(msg, type) {
@@ -444,7 +901,7 @@ function toast(msg, type) {
   t._tid = setTimeout(() => { t.className = "toast"; }, 2500);
 }
 
-// ====== 全屏（修复跨页跳转退出全屏的问题） ======
+// ====== 全屏 ======
 function nativeFullscreen() {
   return document.fullscreenElement || document.webkitFullscreenElement || document.msFullscreenElement;
 }
@@ -475,17 +932,14 @@ async function toggleFullscreen() {
   } catch (_) {
     document.documentElement.classList.add("app-fullscreen");
   }
-  // 记住这次是从看板跳过来的，3 秒内可自动恢复全屏
   try { sessionStorage.setItem("wr_fullscreen_intent", "1"); } catch (_) {}
   updateFullscreenLabel();
 }
 
-// 跳转标记：dashboard 点击"生产报工"时设置此标记，worker-report 自动尝试恢复全屏
+// 跳转标记
 try {
   if (sessionStorage.getItem("wr_fullscreen_intent") === "1") {
-    // 必须由用户手势触发，因此我们改成：显示一条引导，让用户点全屏按钮
     sessionStorage.removeItem("wr_fullscreen_intent");
-    // 短暂地把按钮高亮一下，提示用户点击
     setTimeout(() => {
       const btn = $("#fullscreenBtn");
       if (btn) {
@@ -498,9 +952,13 @@ try {
 
 // ====== 启动 ======
 async function init() {
-  try { await apiGet("/api/health"); apiOnline = true; }
-  catch { apiOnline = false; }
+  try {
+    const healthResp = await apiGet("/api/health");
+    apiOnline = true;
+    if (healthResp.mode) S.runtimeMode = healthResp.mode;
+  } catch { apiOnline = false; }
   updateApiBadge();
+  updateModeBadge();
 
   setupClock();
   setupEvents();

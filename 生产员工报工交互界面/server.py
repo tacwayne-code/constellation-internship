@@ -14,6 +14,20 @@ from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlparse
 
+# ---- 加载 .env 文件 ----
+_ENV_FILE = Path(__file__).resolve().parent / ".env"
+if _ENV_FILE.exists():
+    with open(_ENV_FILE) as _f:
+        for _line in _f:
+            _line = _line.strip()
+            if _line and not _line.startswith("#") and "=" in _line:
+                _key, _, _val = _line.partition("=")
+                _key = _key.strip()
+                _val = _val.strip()
+                if _key not in os.environ:
+                    os.environ[_key] = _val
+    del _key, _val, _line, _f
+
 # ============================================================
 # 配置 & 常量
 # ============================================================
@@ -23,9 +37,10 @@ ODOO_URL = os.getenv("ODOO_URL", "http://x.inspiri.cn").rstrip("/")
 ODOO_DB = os.getenv("ODOO_DB", "inspiri_erp")
 ODOO_USER = os.getenv("ODOO_USER", "ai_test")
 ODOO_PASSWORD = os.getenv("ODOO_PASSWORD", "")
+MOCK_MODE = os.getenv("ODOO_MOCK_MODE", "false").lower() == "true"
 LOCAL_TZ = timezone(timedelta(hours=8))
 API_KEY = os.getenv("API_KEY", "").strip()
-DB_FILE = BASE_DIR / "data.db"
+DB_FILE = BASE_DIR / ("data.mock.db" if MOCK_MODE else "data.db")
 WHITE_EXT = {".html", ".css", ".js", ".svg", ".ico", ".png"}
 
 # ============================================================
@@ -38,6 +53,12 @@ logging.basicConfig(
     datefmt="%Y-%m-%d %H:%M:%S",
 )
 logger = logging.getLogger("production-dashboard")
+if MOCK_MODE:
+    logger.warning("=" * 60)
+    logger.warning("ODOO MOCK MODE ENABLED - NO REAL ODOO WRITES")
+    logger.warning("=" * 60)
+else:
+    logger.info(f"Odoo: {ODOO_URL} db={ODOO_DB} user={ODOO_USER}")
 
 # ============================================================
 # 并发锁
@@ -47,7 +68,7 @@ DB_LOCK = threading.Lock()
 ODOO_LOCK = threading.Lock()
 
 # ============================================================
-# Odoo 客户端（单例 + 线程安全）
+# Odoo 客户端
 # ============================================================
 
 class OdooError(RuntimeError):
@@ -94,18 +115,99 @@ class OdooClient:
         return self.call(model, "read", [ids], {"fields": fields})
 
 
-# 全局单例
+# ============================================================
+# 工厂函数 - 根据 Mock 模式选择 Odoo 客户端
+# ============================================================
+
 _odoo_client = None
+_odoo_mode = None
 
 def get_odoo():
-    global _odoo_client
+    global _odoo_client, _odoo_mode
     if _odoo_client is None:
-        _odoo_client = OdooClient()
+        if MOCK_MODE:
+            from fake_odoo_client import FakeOdooClient
+            _odoo_client = FakeOdooClient()
+            _odoo_mode = "mock"
+            logger.warning("FakeOdooClient 已激活 - 模拟模式")
+        else:
+            _odoo_client = OdooClient()
+            _odoo_mode = "real"
     return _odoo_client
+
+def get_odoo_mode():
+    global _odoo_mode
+    if _odoo_mode is None:
+        get_odoo()
+    return _odoo_mode or ("mock" if MOCK_MODE else "real")
 
 # ============================================================
 # SQLite 数据层
 # ============================================================
+
+def _migrate_db():
+    """可重复执行的 SQLite 迁移"""
+    with DB_LOCK:
+        conn = sqlite3.connect(str(DB_FILE))
+        conn.execute("PRAGMA journal_mode=WAL")
+        cursor = conn.cursor()
+
+        # workers 表迁移
+        existing_wcols = {row[1] for row in cursor.execute("PRAGMA table_info(workers)").fetchall()}
+        worker_migrations = [
+            ("source", "TEXT DEFAULT 'local'"),
+            ("odoo_employee_id", "INTEGER DEFAULT 0"),
+        ]
+        for col_name, col_def in worker_migrations:
+            if col_name not in existing_wcols:
+                cursor.execute(f"ALTER TABLE workers ADD COLUMN {col_name} {col_def}")
+                logger.info(f"迁移: workers 表新增字段 {col_name}")
+
+        # reports 表迁移
+        existing_cols = {row[1] for row in cursor.execute("PRAGMA table_info(reports)").fetchall()}
+
+        migrations = [
+            ("production_id", "TEXT DEFAULT ''"),
+            ("workorder_id", "TEXT DEFAULT ''"),
+            ("odoo_employee_id", "INTEGER DEFAULT 0"),
+            ("idempotency_key", "TEXT DEFAULT ''"),
+            ("odoo_report_id", "TEXT DEFAULT ''"),
+            ("odoo_stock_move_ids", "TEXT DEFAULT ''"),
+            ("sync_status", "TEXT DEFAULT 'local'"),
+            ("error_message", "TEXT DEFAULT ''"),
+        ]
+
+        for col_name, col_def in migrations:
+            if col_name not in existing_cols:
+                cursor.execute(f"ALTER TABLE reports ADD COLUMN {col_name} {col_def}")
+                logger.info(f"迁移: reports 表新增字段 {col_name}")
+
+        # 创建 report_materials 表
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS report_materials (
+                id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                report_id  TEXT NOT NULL,
+                product_id INTEGER NOT NULL,
+                bom_line_id INTEGER DEFAULT 0,
+                default_code TEXT DEFAULT '',
+                actual_qty  REAL NOT NULL CHECK(actual_qty > 0),
+                uom_id     INTEGER DEFAULT 1,
+                created_at TEXT DEFAULT (datetime('now','localtime')),
+                FOREIGN KEY (report_id) REFERENCES reports(id)
+            )
+        """)
+
+        # idempotency_key 唯一索引
+        cursor.execute("""
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_reports_idempotency
+            ON reports(idempotency_key)
+            WHERE idempotency_key != ''
+        """)
+
+        conn.commit()
+        conn.close()
+    logger.info(f"SQLite 迁移完成 (DB: {DB_FILE})")
+
 
 def _init_db():
     """初始化 SQLite 数据库和表结构"""
@@ -117,6 +219,8 @@ def _init_db():
                 id    TEXT PRIMARY KEY,
                 name  TEXT NOT NULL,
                 team  TEXT DEFAULT '',
+                source TEXT DEFAULT 'local',
+                odoo_employee_id INTEGER DEFAULT 0,
                 created_at TEXT DEFAULT (datetime('now','localtime'))
             );
             CREATE TABLE IF NOT EXISTS reports (
@@ -136,6 +240,14 @@ def _init_db():
                 date       TEXT NOT NULL,
                 time       TEXT NOT NULL,
                 timestamp  INTEGER NOT NULL,
+                production_id TEXT DEFAULT '',
+                workorder_id  TEXT DEFAULT '',
+                odoo_employee_id INTEGER DEFAULT 0,
+                idempotency_key TEXT DEFAULT '',
+                odoo_report_id  TEXT DEFAULT '',
+                odoo_stock_move_ids TEXT DEFAULT '',
+                sync_status TEXT DEFAULT 'local',
+                error_message TEXT DEFAULT '',
                 created_at TEXT DEFAULT (datetime('now','localtime'))
             );
             CREATE INDEX IF NOT EXISTS idx_reports_date ON reports(date);
@@ -146,50 +258,74 @@ def _init_db():
         conn.commit()
         conn.close()
     logger.info("SQLite 数据库初始化完成")
+    # 执行迁移
+    _migrate_db()
 
 
 def _seed_workers():
-    """首次启动时写入默认工人"""
+    """首次启动时写入默认工人（含罗伟华）"""
     with DB_LOCK:
         conn = sqlite3.connect(str(DB_FILE))
         count = conn.execute("SELECT COUNT(*) FROM workers").fetchone()[0]
         if count == 0:
             default = [
-                ("WK001", "张建国", "A班"),
-                ("WK002", "李明辉", "A班"),
-                ("WK003", "王志强", "B班"),
-                ("WK004", "陈晓峰", "B班"),
-                ("WK005", "刘大伟", "C班"),
-                ("WK006", "赵永刚", "夜班"),
+                ("WK001", "张建国", "A班", "local", 0),
+                ("WK002", "��明辉", "A班", "local", 0),
+                ("WK003", "王志强", "B班", "local", 0),
+                ("WK004", "陈晓峰", "B班", "local", 0),
+                ("WK005", "刘大伟", "C班", "local", 0),
+                ("WK006", "赵永刚", "夜班", "local", 0),
+                ("LOCAL_LWH", "罗伟华", "组装班", "local", 0),
             ]
             conn.executemany(
-                "INSERT INTO workers (id, name, team) VALUES (?, ?, ?)", default
+                "INSERT INTO workers (id, name, team, source, odoo_employee_id) VALUES (?, ?, ?, ?, ?)",
+                default
             )
             conn.commit()
-            logger.info("已写入 6 个默认工人")
+            logger.info("已写入 7 个默认工人（含罗伟华）")
+        else:
+            # 确保罗伟华存在（如果没有的话）
+            existing = conn.execute("SELECT id FROM workers WHERE name = '罗伟华'").fetchone()
+            if not existing:
+                conn.execute(
+                    "INSERT INTO workers (id, name, team, source, odoo_employee_id) VALUES (?, ?, ?, ?, ?)",
+                    ("LOCAL_LWH", "罗伟华", "组装班", "local", 0)
+                )
+                conn.commit()
+                logger.info("已添加罗伟华（本地工人）")
         conn.close()
 
 
 def db_workers():
     with DB_LOCK:
         c = sqlite3.connect(str(DB_FILE))
-        rows = c.execute("SELECT id, name, team FROM workers ORDER BY id").fetchall()
+        c.row_factory = sqlite3.Row
+        rows = c.execute("SELECT id, name, team, source, odoo_employee_id FROM workers ORDER BY id").fetchall()
         c.close()
-    return [{"id": r[0], "name": r[1], "team": r[2]} for r in rows]
+    results = []
+    for r in rows:
+        w = {"id": r["id"], "name": r["name"], "team": r["team"],
+             "source": r["source"] if "source" in r.keys() else "local",
+             "odooEmployeeId": r["odoo_employee_id"] if "odoo_employee_id" in r.keys() else 0}
+        results.append(w)
+    return results
 
 
-def db_add_worker(wid, name, team):
+def db_add_worker(wid, name, team, source="local", odoo_employee_id=0):
     with DB_LOCK:
         c = sqlite3.connect(str(DB_FILE))
-        c.execute("INSERT INTO workers (id, name, team) VALUES (?, ?, ?)", (wid, name, team))
+        c.execute(
+            "INSERT INTO workers (id, name, team, source, odoo_employee_id) VALUES (?, ?, ?, ?, ?)",
+            (wid, name, team, source, odoo_employee_id)
+        )
         c.commit()
         c.close()
-    logger.info(f"添加工人: {name} ({wid})")
+    logger.info(f"添加工人: {name} ({wid}), source={source}")
 
 
 def _normalize_report(row):
-    """将 SQLite snake_case 字段转为前端 camelCase"""
-    return {
+    """将 SQLite 字段转为前端格式"""
+    base = {
         "id": row["id"], "workerId": row["worker_id"], "workerName": row["worker_name"],
         "workerTeam": row.get("worker_team", ""),
         "orderId": row["order_id"], "orderCustomer": row.get("order_customer", ""),
@@ -199,38 +335,63 @@ def _normalize_report(row):
         "remark": row.get("remark", ""), "date": row["date"], "time": row["time"],
         "timestamp": row["timestamp"],
     }
+    # 新字段
+    for f in ["production_id", "workorder_id", "odoo_employee_id", "idempotency_key",
+              "odoo_report_id", "sync_status"]:
+        if f in row.keys():
+            base[f] = row[f]
+    return base
+
+
+REPORT_COLS = ["id", "worker_id", "worker_name", "worker_team", "order_id",
+               "order_customer", "order_product", "operation", "operation_label",
+               "qty", "qualified", "hours", "remark", "date", "time", "timestamp",
+               "production_id", "workorder_id", "odoo_employee_id",
+               "idempotency_key", "odoo_report_id", "odoo_stock_move_ids",
+               "sync_status", "error_message", "created_at"]
 
 
 def db_reports(date_filter=None, limit=500):
     with DB_LOCK:
         c = sqlite3.connect(str(DB_FILE))
+        c.row_factory = sqlite3.Row
         if date_filter:
-            sql = "SELECT * FROM reports WHERE date = ? ORDER BY timestamp DESC LIMIT ?"
-            rows = c.execute(sql, (date_filter, limit)).fetchall()
+            rows = c.execute(
+                "SELECT * FROM reports WHERE date = ? ORDER BY timestamp DESC LIMIT ?",
+                (date_filter, limit)
+            ).fetchall()
         else:
-            sql = "SELECT * FROM reports ORDER BY timestamp DESC LIMIT ?"
-            rows = c.execute(sql, (limit,)).fetchall()
+            rows = c.execute(
+                "SELECT * FROM reports ORDER BY timestamp DESC LIMIT ?",
+                (limit,)
+            ).fetchall()
         c.close()
-    cols = ["id", "worker_id", "worker_name", "worker_team", "order_id",
-            "order_customer", "order_product", "operation", "operation_label",
-            "qty", "qualified", "hours", "remark", "date", "time", "timestamp", "created_at"]
-    return [dict(zip(cols, r)) for r in rows]
+    return [dict(r) for r in rows]
 
 
 def db_get_report(rid):
     with DB_LOCK:
         c = sqlite3.connect(str(DB_FILE))
+        c.row_factory = sqlite3.Row
         row = c.execute("SELECT * FROM reports WHERE id = ?", (rid,)).fetchone()
         c.close()
-    if not row:
-        return None
-    cols = ["id", "worker_id", "worker_name", "worker_team", "order_id",
-            "order_customer", "order_product", "operation", "operation_label",
-            "qty", "qualified", "hours", "remark", "date", "time", "timestamp", "created_at"]
-    return dict(zip(cols, row))
+    return dict(row) if row else None
 
 
-def db_add_report(report):
+def db_get_report_by_idempotency(key):
+    """根据幂等键查询报工"""
+    with DB_LOCK:
+        c = sqlite3.connect(str(DB_FILE))
+        c.row_factory = sqlite3.Row
+        row = c.execute(
+            "SELECT * FROM reports WHERE idempotency_key = ? AND idempotency_key != ''",
+            (key,)
+        ).fetchone()
+        c.close()
+    return dict(row) if row else None
+
+
+def db_add_report(report, materials=None):
     """添加报工，若违反唯一约束则返回 False"""
     with DB_LOCK:
         c = sqlite3.connect(str(DB_FILE))
@@ -239,28 +400,56 @@ def db_add_report(report):
                 """INSERT INTO reports
                 (id, worker_id, worker_name, worker_team, order_id, order_customer,
                  order_product, operation, operation_label, qty, qualified, hours,
-                 remark, date, time, timestamp)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                 remark, date, time, timestamp, production_id, workorder_id,
+                 odoo_employee_id, idempotency_key, odoo_report_id,
+                 odoo_stock_move_ids, sync_status, error_message)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (report["id"], report["workerId"], report["workerName"],
                  report.get("workerTeam", ""), report["orderId"],
                  report.get("orderCustomer", ""), report.get("orderProduct", ""),
                  report["operation"], report["operationLabel"],
                  report["qty"], report.get("qualified", report["qty"]),
                  report.get("hours", 0), report.get("remark", ""),
-                 report["date"], report["time"], report["timestamp"]),
+                 report["date"], report["time"], report["timestamp"],
+                 report.get("productionId", ""), report.get("workorderId", ""),
+                 report.get("odooEmployeeId", 0), report.get("idempotencyKey", ""),
+                 report.get("odooReportId", ""), report.get("odooStockMoveIds", ""),
+                 report.get("syncStatus", "local"), report.get("errorMessage", "")),
             )
+            # 保存物料记录
+            if materials:
+                for mat in materials:
+                    c.execute(
+                        """INSERT INTO report_materials
+                        (report_id, product_id, bom_line_id, default_code, actual_qty, uom_id)
+                        VALUES (?, ?, ?, ?, ?, ?)""",
+                        (report["id"], mat.get("productId", 0), mat.get("bomLineId", 0),
+                         mat.get("defaultCode", ""), mat.get("actualQty", 1), mat.get("uomId", 1)),
+                    )
             c.commit()
             ok = True
         except sqlite3.IntegrityError:
             ok = False
         c.close()
     if ok:
-        logger.info(f"报工: {report['workerName']} {report['orderId']} {report['qty']}台")
+        logger.info(f"报工: {report['workerName']} 工单#{report.get('workorderId','')} {report['qty']}台 "
+                     f"物料{len(materials) if materials else 0}项 [{report.get('syncStatus','local')}]")
     return ok
 
 
+def db_get_report_materials(report_id):
+    with DB_LOCK:
+        c = sqlite3.connect(str(DB_FILE))
+        c.row_factory = sqlite3.Row
+        rows = c.execute(
+            "SELECT * FROM report_materials WHERE report_id = ?", (report_id,)
+        ).fetchall()
+        c.close()
+    return [dict(r) for r in rows]
+
+
 # ============================================================
-# 数据查询函数（继续兼容原 JSON 接口格式）
+# 数据查询函数
 # ============================================================
 
 def load_workers():
@@ -272,7 +461,38 @@ def load_reports():
 
 
 # ============================================================
-# 共享密钥认证
+# 工序定义
+# ============================================================
+
+OPERATIONS = [
+    {"id": "assembly", "code": "assembly", "name": "总装", "hostType": None},
+    {"id": "testing", "code": "testing", "name": "测试", "hostType": None},
+    {"id": "qc", "code": "qc", "name": "质检", "hostType": None},
+    {"id": "packing", "code": "packing", "name": "包装", "hostType": None},
+    {"id": "debug", "code": "debug", "name": "调试", "hostType": None},
+    {"id": "pc_assembly_tape", "code": "pc_assembly_tape", "name": "电脑装机（编带主机）", "hostType": "tape",
+     "odooWorkcenterId": 101, "odooWorkcenterCode": "pc_assembly_tape"},
+    {"id": "pc_assembly_splitter", "code": "pc_assembly_splitter", "name": "电脑装机（分光主机）", "hostType": "splitter",
+     "odooWorkcenterId": 102, "odooWorkcenterCode": "pc_assembly_splitter"},
+]
+
+VALID_OPERATIONS = {op["code"] for op in OPERATIONS}
+OPERATION_MAP = {op["code"]: op for op in OPERATIONS}
+
+
+def get_operations():
+    """返回完整工序列表"""
+    mode = get_odoo_mode()
+    ops = []
+    for op in OPERATIONS:
+        o = dict(op)
+        o["meta"] = {"mode": mode, "source": "odoo" if mode == "real" else "mock"}
+        ops.append(o)
+    return ops
+
+
+# ============================================================
+# 认证校验
 # ============================================================
 
 def check_auth(handler):
@@ -282,8 +502,37 @@ def check_auth(handler):
     return provided == API_KEY
 
 
+_worker_ids_lock = threading.Lock()
+
+def get_valid_worker_ids():
+    with _worker_ids_lock:
+        workers = db_workers()
+        return {w["id"] for w in workers}
+
+
+_order_ids_cache = {"ids": set(), "ts": 0}
+_ORDER_CACHE_TTL = 60
+_order_ids_lock = threading.Lock()
+
+def get_valid_order_ids():
+    now = time.time()
+    with _order_ids_lock:
+        if now - _order_ids_cache["ts"] < _ORDER_CACHE_TTL and _order_ids_cache["ids"]:
+            return _order_ids_cache["ids"]
+    try:
+        data = load_dashboard()
+        ids = {row["order"] for row in data.get("deliveryRows", [])}
+        with _order_ids_lock:
+            _order_ids_cache["ids"] = ids
+            _order_ids_cache["ts"] = time.time()
+        return ids
+    except Exception:
+        with _order_ids_lock:
+            return _order_ids_cache["ids"]
+
+
 # ============================================================
-# Odoo 辅助函数（与原版保持一致）
+# Odoo 辅助函数
 # ============================================================
 
 def rel_name(value, fallback=""):
@@ -373,7 +622,7 @@ def build_stages(qty, delivered, remaining, need_qty, supplier, mrp, delivery_st
     mrp_state = (mrp or {}).get("state") or ""
     mrp_labels = {
         "draft": "草稿", "confirmed": "待生产", "progress": "生产中",
-        "to_close": "待关闭", "done": "���成", "cancel": "取消",
+        "to_close": "待关闭", "done": "完成", "cancel": "取消",
     }
     if remaining <= 0:
         return [
@@ -399,7 +648,7 @@ def build_stages(qty, delivered, remaining, need_qty, supplier, mrp, delivery_st
         production_stage = ["生产规划", "待录入", "pending"]
     if delivered > 0:
         delivery_stage = ["交付", f"已交{qty_text(delivered)}", "running"]
-    elif delivery_status == "已逾���":
+    elif delivery_status == "已逾期":
         delivery_stage = ["交付", "已逾期", "danger"]
     else:
         delivery_stage = ["交付", "待交付", "pending"]
@@ -410,7 +659,7 @@ def build_stages(qty, delivered, remaining, need_qty, supplier, mrp, delivery_st
 
 
 # ============================================================
-# Dashboard 数据加载
+# Dashboard 数据加载（保持原逻辑不变）
 # ============================================================
 
 def load_dashboard():
@@ -466,7 +715,7 @@ def load_dashboard():
         mrp_rows = client.search_read(
             "mrp.production", [["state", "not in", ["done", "cancel"]]],
             ["name", "origin", "product_id", "product_qty", "qty_produced",
-             "state", "reservation_state", "date_start", "date_deadline", "write_date"],
+             "state", "reservation_state", "date_deadline", "write_date"],
             limit=120, order="write_date desc",
         )
     except Exception:
@@ -545,14 +794,14 @@ def load_dashboard():
     except Exception:
         active_mrp_count = 0
 
+    mode = get_odoo_mode()
     kpis = [
         ["最近待处理", str(pending_order_count), "单", "最近7天更新", "#3b82f6"],
         ["待处理行", str(len(pending_rows)), "行", "交付后自动消失", "#22b8cf"],
         ["待交付数量", qty_text(remaining_qty), "台/套", "qty_to_deliver 汇总", "#20b26b"],
         ["补货缺口", qty_text(replenish_qty), "台", f"近7天补货 {len(recent_orderpoint_rows)} 条", "#f07a35"],
         ["待配供应商", str(supplier_missing), "条", "补货规则未配置供应商", "#eab842"],
-        ["生产规划", "待录入", "", "Odoo暂无真实工序进度", "#8b73e6"],
-        ["数据来源", "Odoo", "", "最近更新订单", "#eab842"],
+        ["数据来源", "Odoo" if mode == "real" else "模拟", "", f"模式: {mode}", "#eab842"],
     ]
     alerts = []
     for row in delivery_rows[:3]:
@@ -560,7 +809,7 @@ def load_dashboard():
                        f"{row['customer']} · {row['machine']} {row['spec']} · 数量 {row['qty']}，{row['remark']}，更新 {row['updated']}",
                        row["owner"]])
     if not alerts:
-        alerts.append(["提示", "暂无待处理", "最近7天暂无需��展示的在产订单。", "-"])
+        alerts.append(["提示", "暂无待处理", "最近7天暂无需要展示的在产订单。", "-"])
     latest_orders = []
     seen = set()
     for row in delivery_rows:
@@ -575,49 +824,324 @@ def load_dashboard():
         "replenishments": replenish_rows[:6], "latestOrders": latest_orders,
         "alerts": alerts,
         "meta": {
-            "source": "odoo", "db": ODOO_DB, "user": ODOO_USER,
+            "source": "odoo" if mode == "real" else "mock",
+            "mode": mode,
+            "db": ODOO_DB, "user": ODOO_USER,
             "updatedAt": datetime.now(LOCAL_TZ).isoformat(timespec="seconds"),
-            "accuracyNote": "客户、订单、产品、规格、数量、待交付、补货缺口、供应商配置均来自 Odoo 原字段；ERP流程进度由这些字段推导，生产工序进度当前未在 Odoo 维护。",
+            "accuracyNote": "客户、订单、产品、规格、数量、待交付、补货缺口、供应商配置均来自 Odoo 原字段。",
             "range": "最近7天更新",
-            "progressNote": "核心区只展示最近7天更新且仍待交付的订单行；问题解决后会自动从主列表消失。",
+            "progressNote": "核心区只展示最近7天更新且仍待交付的订单行。",
         },
     }
 
 
 # ============================================================
-# 认证校验
+# 新增: BOM 数据查询
 # ============================================================
 
-_worker_ids_lock = threading.Lock()
+# BOM 定义（基于真实 Odoo 调查 + Excel）
+TAPE_BOM_CODES = ["P04725", "P05346", "P05347", "P05350", "P05351", "P05352", "P05353"]
+SPLITTER_BOM_CODES = ["P04726", "P05346", "P05347", "P05348", "P05351", "P05352", "P05353"]
 
-def get_valid_worker_ids():
-    with _worker_ids_lock:
-        workers = db_workers()
-        return {w["id"] for w in workers}
+# 真实 Odoo product ID 映射
+ODOO_PRODUCT_IDS = {
+    "P04725": 11632, "P05346": 12253, "P05347": 12254, "P05350": 12257,
+    "P05348": 12255, "P05351": 12258, "P05352": 12259, "P05353": 12260,
+    "P04726": 11633,
+}
+
+# 真实 Odoo product.template ID 映射
+ODOO_TMPL_IDS = {
+    "P04725": 12977, "P05346": 13001, "P05347": 13002, "P05350": 13005,
+    "P05348": 13003, "P05351": 13006, "P05352": 13007, "P05353": 13008,
+    "P04726": 12978,
+}
+
+# BOM Line ID 映射（Mock 模式下使用）
+MOCK_BOM_LINE_IDS = {
+    "tape": {"P04725": 3001, "P05346": 3002, "P05347": 3003, "P05350": 3004,
+             "P05351": 3005, "P05352": 3006, "P05353": 3007},
+    "splitter": {"P04726": 3008, "P05346": 3009, "P05347": 3010, "P05348": 3011,
+                 "P05351": 3012, "P05352": 3013, "P05353": 3014},
+}
+
+# Excel BOM 数据（来自主机BOM物料清单登记表.xlsx）
+EXCEL_BOM = {
+    "tape": [
+        {"seq": 1, "defaultCode": "p04725", "name": "编带机箱", "spec": "黑色:4U300",
+         "uom": "pcs", "qty": 1, "category": "主机配件", "brand": "淘宝"},
+        {"seq": 2, "defaultCode": "P05346", "name": "cpu", "spec": "I3-3220",
+         "uom": "pcs", "qty": 1, "category": "主机配件", "brand": "淘宝"},
+        {"seq": 3, "defaultCode": "P05347", "name": "内存条", "spec": "DDR3-4G",
+         "uom": "pcs", "qty": 1, "category": "主机配件", "brand": "淘宝"},
+        {"seq": 4, "defaultCode": "P05350", "name": "硬盘", "spec": "SSD-128G",
+         "uom": "pcs", "qty": 1, "category": "主机配件", "brand": "淘宝"},
+        {"seq": 5, "defaultCode": "P05351", "name": "显卡", "spec": "G210",
+         "uom": "pcs", "qty": 1, "category": "主机配件", "brand": "淘宝"},
+        {"seq": 6, "defaultCode": "P05352", "name": "机箱电源", "spec": "ATX-400W",
+         "uom": "pcs", "qty": 1, "category": "主机配件", "brand": "淘宝"},
+        {"seq": 7, "defaultCode": "P05353", "name": "机箱风扇", "spec": "",
+         "uom": "pcs", "qty": 1, "category": "主机配件", "brand": "淘宝"},
+    ],
+    "splitter": [
+        {"seq": 1, "defaultCode": "P04726", "name": "分光机箱", "spec": "4U-610H",
+         "uom": "pcs", "qty": 1, "category": "主机配件", "brand": "淘宝"},
+        {"seq": 2, "defaultCode": "P05346", "name": "cpu", "spec": "I3-3220",
+         "uom": "pcs", "qty": 1, "category": "主机配件", "brand": "淘宝"},
+        {"seq": 3, "defaultCode": "P05347", "name": "内存条", "spec": "DDR3-4G",
+         "uom": "pcs", "qty": 1, "category": "主机配件", "brand": "淘宝"},
+        {"seq": 4, "defaultCode": "P05348", "name": "硬盘", "spec": "SSD-64G",
+         "uom": "pcs", "qty": 1, "category": "主机配件", "brand": "淘宝"},
+        {"seq": 5, "defaultCode": "P05351", "name": "显卡", "spec": "G210",
+         "uom": "pcs", "qty": 1, "category": "主机配件", "brand": "淘宝"},
+        {"seq": 6, "defaultCode": "P05352", "name": "机箱电源", "spec": "ATX-400W",
+         "uom": "pcs", "qty": 1, "category": "主机配件", "brand": "淘宝"},
+        {"seq": 7, "defaultCode": "P05353", "name": "机箱风���", "spec": "",
+         "uom": "pcs", "qty": 1, "category": "主机配件", "brand": "淘宝"},
+    ],
+}
 
 
-_order_ids_cache = {"ids": set(), "ts": 0}
-_ORDER_CACHE_TTL = 60
-_order_ids_lock = threading.Lock()
+def get_bom_data(host_type):
+    """
+    获取 BOM 数据
+    全部从 Odoo 实时查询：物料编码 → product.product → product.template
+    host_type: "tape" (编带主机) 或 "splitter" (分光主机)
+    """
+    if host_type not in ("tape", "splitter"):
+        return []
 
-def get_valid_order_ids():
-    now = time.time()
-    with _order_ids_lock:
-        if now - _order_ids_cache["ts"] < _ORDER_CACHE_TTL and _order_ids_cache["ids"]:
-            return _order_ids_cache["ids"]
+    codes = TAPE_BOM_CODES if host_type == "tape" else SPLITTER_BOM_CODES
+    excel_items = EXCEL_BOM.get(host_type, [])
+    bom_line_ids = MOCK_BOM_LINE_IDS.get(host_type, {})
+    mode = get_odoo_mode()
+
+    client = get_odoo() if mode == "real" else None
+
+    # 一次性查出所有 product.product，避免循环查询
+    products_by_id = {}  # {product_id: {code, name, categ, tmpl_id, seller_ids}}
+    if mode == "real" and client:
+        try:
+            rows = client.search_read(
+                "product.product",
+                [("default_code", "in", codes)],
+                ["id", "default_code", "name", "product_tmpl_id", "categ_id", "uom_id", "seller_ids"],
+                limit=20
+            )
+            for r in rows:
+                tmpl = r.get("product_tmpl_id")
+                tmpl_id = tmpl[0] if isinstance(tmpl, (list, tuple)) else tmpl
+                products_by_id[r["id"]] = {
+                    "code": r.get("default_code", ""),
+                    "name": r.get("name", ""),
+                    "categ": r.get("categ_id", ""),
+                    "uom": r.get("uom_id", ""),
+                    "tmpl_id": tmpl_id,
+                    "seller_ids": r.get("seller_ids", []) or [],
+                }
+        except Exception as e:
+            logger.warning(f"获取 product.product 失败: {e}")
+
+    # 一次性查出所有 product.template（仅用于规格）
+    templates_by_id = {}
+    tmpl_ids = {p["tmpl_id"] for p in products_by_id.values() if p.get("tmpl_id")}
+    if mode == "real" and client and tmpl_ids:
+        try:
+            trows = client.read(
+                "product.template",
+                list(tmpl_ids),
+                ["id", "spec_info"]
+            )
+            for tr in trows:
+                templates_by_id[tr["id"]] = {
+                    "spec": tr.get("spec_info", "") or "",
+                }
+        except Exception as e:
+            logger.warning(f"获取 product.template 失败: {e}")
+
+    # 一次性查出所有供应商（product.supplierinfo），通过 partner_id 取供应商名称
+    supplier_name_by_pid = {}  # {product.product.id: 供应商名称}
+    all_seller_ids = []
+    for pdata in products_by_id.values():
+        for sid in pdata.get("seller_ids", []):
+            if sid not in all_seller_ids:
+                all_seller_ids.append(sid)
+    if mode == "real" and client and all_seller_ids:
+        try:
+            srows = client.read(
+                "product.supplierinfo",
+                all_seller_ids,
+                ["id", "product_id", "partner_id"]
+            )
+            # 建立 supplierinfo_id -> partner_name 映射
+            sinfo_to_partner = {}
+            for sr in srows:
+                p = sr.get("partner_id", "")
+                if isinstance(p, (list, tuple)) and len(p) > 1:
+                    sinfo_to_partner[sr["id"]] = p[1]
+            # 反向映射：product.product.id -> 供应商名称
+            for pdata in products_by_id.values():
+                for sid in pdata.get("seller_ids", []):
+                    if sid in sinfo_to_partner and pdata["code"]:
+                        supplier_name_by_pid[pdata["code"]] = sinfo_to_partner[sid]
+                        break
+        except Exception as e:
+            logger.warning(f"获取 product.supplierinfo 失败: {e}")
+
+    items = []
+    for i, code in enumerate(codes):
+        excel = excel_items[i] if i < len(excel_items) else {}
+
+        # 从查询结果中找匹配 code 的 product
+        matched_product = None
+        for pid, pdata in products_by_id.items():
+            if pdata["code"] == code:
+                matched_product = (pid, pdata)
+                break
+
+        # 默认值（Odoo 读不到时回退到 Excel）
+        product_name = excel.get("name", "")
+        spec = excel.get("spec", "")
+        # 类别固定显示 Excel 中的"主机配件"，不读 Odoo categ_id
+        category_name = excel.get("category", "主机配件")
+        # 供应商优先读 Odoo 的 seller_ids，Odoo 没有时回退到 Excel
+        brand_name = supplier_name_by_pid.get(code, excel.get("brand", ""))
+        pid = 0
+        tmpl_id = 0
+
+        if matched_product:
+            pid, pdata = matched_product
+            tmpl_id = pdata.get("tmpl_id") or 0
+            product_name = pdata.get("name", "") or product_name
+            # 模板数据（仅规格）
+            if tmpl_id and tmpl_id in templates_by_id:
+                spec = templates_by_id[tmpl_id].get("spec", "") or spec
+
+        # 清理供应商名称（去掉 [P00202] 前缀，只保留"淘宝电商公司"或类似纯名称）
+        if brand_name and brand_name.startswith("["):
+            # 格式: [P00202] 淘宝电商公司 → 淘宝电商公司
+            m = re.match(r"^\[[^\]]+\]\s*(.+)$", brand_name)
+            if m:
+                brand_full = m.group(1).strip()
+                # 简化: 淘宝电商公司 → 淘宝
+                if "淘宝" in brand_full:
+                    brand_name = "淘宝"
+                else:
+                    brand_name = brand_full
+
+        # 获取库存
+        available_qty = 0
+        if mode == "real" and client and pid:
+            try:
+                stock = client.search_read("stock.quant",
+                                           [("product_id", "=", pid), ("quantity", ">", 0)],
+                                           ["quantity", "reserved_quantity", "available_quantity"], 10)
+                if stock:
+                    available_qty = sum(number(s.get("available_quantity", 0)) for s in stock)
+            except Exception:
+                available_qty = 0
+
+        bom_line_id = bom_line_ids.get(code, 0)
+
+        item = {
+            "bomLineId": bom_line_id,
+            "productId": pid,
+            "productTemplateId": tmpl_id,
+            "defaultCode": code,
+            "name": product_name,
+            "specification": spec,
+            "uomId": 1,
+            "uomName": "pcs",
+            "bomQty": excel.get("qty", 1),
+            "categoryName": category_name,
+            "brandSupplierName": brand_name,
+            "availableQty": available_qty,
+            "selected": True,
+            "actualQty": excel.get("qty", 1),
+            "meta": {"mode": mode, "source": "odoo" if mode == "real" else "mock"},
+        }
+        items.append(item)
+
+    return items
+
+
+def get_workorders_data():
+    """
+    获取工单列表
+    从 Odoo mrp.workorder 读取（非 sale.order）
+    """
+    mode = get_odoo_mode()
     try:
-        data = load_dashboard()
-        ids = {row["order"] for row in data.get("deliveryRows", [])}
-        with _order_ids_lock:
-            _order_ids_cache["ids"] = ids
-            _order_ids_cache["ts"] = time.time()
-        return ids
-    except Exception:
-        with _order_ids_lock:
-            return _order_ids_cache["ids"]
+        client = get_odoo()
+        wo_fields = ["id", "name", "production_id", "workcenter_id", "operation_id",
+                     "product_id", "state", "qty_production", "qty_produced",
+                     "qty_remaining", "duration_expected"]
+        wo_rows = client.search_read(
+            "mrp.workorder",
+            [("state", "not in", ["done", "cancel"])],
+            wo_fields, limit=50, order="id desc"
+        )
 
+        # 获取生产单信息
+        mo_ids = set()
+        for wo in wo_rows:
+            pid = rel_id(wo.get("production_id"))
+            if pid:
+                mo_ids.add(pid)
 
-VALID_OPERATIONS = {"assembly", "testing", "qc", "packing", "debug", "other"}
+        mo_data = {}
+        if mo_ids:
+            mo_rows = client.read("mrp.production", list(mo_ids),
+                                  ["id", "name", "product_id", "product_qty", "state", "origin"])
+            for mo in mo_rows:
+                mo_data[mo["id"]] = mo
+
+        workorders = []
+        # 状态翻译
+        WO_STATE_MAP = {
+            "draft": "草稿", "pending": "待处理", "ready": "就绪",
+            "waiting": "等待中", "progress": "生产中", "done": "完成",
+            "cancel": "已取消", "to_close": "待关闭",
+        }
+        for wo in wo_rows:
+            mo_id = rel_id(wo.get("production_id"))
+            mo = mo_data.get(mo_id, {})
+            pid = rel_id(wo.get("product_id"))
+
+            # 确定主机类型
+            host_type = None
+            if pid == 11632:
+                host_type = "tape"
+            elif pid == 11633:
+                host_type = "splitter"
+
+            raw_state = wo.get("state", "")
+            state_cn = WO_STATE_MAP.get(raw_state, raw_state)
+            # 净化产品名（去掉 [编码] 前缀）
+            raw_product = rel_name(wo.get("product_id"), "")
+            product_name = re.sub(r"^\[[^\]]+\]\s*", "", raw_product).strip()
+
+            workorders.append({
+                "workorderId": wo["id"],
+                "workorderName": wo.get("name", ""),
+                "productionId": mo_id,
+                "productionName": mo.get("name", ""),
+                "productId": pid,
+                "productName": product_name or raw_product,
+                "workcenterId": rel_id(wo.get("workcenter_id")),
+                "workcenterName": rel_name(wo.get("workcenter_id"), ""),
+                "operationId": rel_id(wo.get("operation_id")),
+                "state": raw_state,
+                "stateLabel": state_cn,
+                "qtyProduction": number(wo.get("qty_production")),
+                "qtyProduced": number(wo.get("qty_produced")),
+                "remainingQty": number(wo.get("qty_remaining")),
+                "hostType": host_type,
+            })
+        return workorders
+    except Exception as e:
+        logger.warning(f"获取工单失败: {e}")
+        raise
 
 
 # ============================================================
@@ -630,7 +1154,6 @@ class Handler(SimpleHTTPRequestHandler):
 
     @staticmethod
     def _allowed_origin(origin):
-        """检查 origin 是否属于内网/本机白名单"""
         if not origin:
             return None
         for prefix in ("http://192.168.", "http://127.0.0.", "http://localhost"):
@@ -654,28 +1177,32 @@ class Handler(SimpleHTTPRequestHandler):
         self.send_header("Access-Control-Allow-Headers", "Content-Type, X-API-Key")
         self.end_headers()
 
-    # ---- 静态文件白名单 ----
-    def translate_path(self, path):
-        p = super().translate_path(path)
-        return p
-
     def do_GET(self):
         path = urlparse(self.path).path
+        qs = urlparse(self.path).query
+        params = {}
+        if qs:
+            for pair in qs.split("&"):
+                if "=" in pair:
+                    k, v = pair.split("=", 1)
+                    params[k] = v
+
         if path.startswith("/api/"):
-            return self._route_get_api(path)
-        # 只看 href 部分忽略 query
+            return self._route_get_api(path, params)
         ext = os.path.splitext(path)[1].lower()
         if path == "/" or ext in WHITE_EXT:
             return super().do_GET()
         self.send_error(HTTPStatus.NOT_FOUND)
 
-    def _route_get_api(self, path):
+    def _route_get_api(self, path, params):
         if path == "/api/dashboard":
             self.write_json(self.dashboard_payload())
         elif path == "/api/health":
-            self.write_json({"ok": True})
+            self.write_json({"ok": True, "mode": get_odoo_mode()})
         elif path == "/api/workers":
-            self.write_json({"ok": True, "data": load_workers()})
+            workers = load_workers()
+            self.write_json({"ok": True, "data": workers,
+                             "meta": {"mode": get_odoo_mode(), "count": len(workers)}})
         elif path == "/api/reports":
             reports = load_reports()
             self.write_json({"ok": True, "data": [_normalize_report(r) for r in reports]})
@@ -683,13 +1210,47 @@ class Handler(SimpleHTTPRequestHandler):
             self.write_json(self.order_summary_payload())
         elif path == "/api/report-stats":
             self.write_json(self.report_stats_payload())
+        elif path == "/api/operations":
+            ops = get_operations()
+            self.write_json({"ok": True, "data": ops,
+                             "meta": {"mode": get_odoo_mode(), "count": len(ops)}})
+        elif path == "/api/workorders":
+            try:
+                wos = get_workorders_data()
+                self.write_json({"ok": True, "data": wos,
+                                 "meta": {"mode": get_odoo_mode(), "count": len(wos)}})
+            except Exception as e:
+                self.write_json({"ok": False, "error": f"获取工单失败: {e}"},
+                                status=HTTPStatus.INTERNAL_SERVER_ERROR)
+        elif path == "/api/bom":
+            host_type = params.get("hostType", params.get("host_type", ""))
+            workorder_id = params.get("workorderId", params.get("workorder_id", ""))
+            if not host_type and workorder_id:
+                # 根据工单 ID 推断主机类型
+                try:
+                    wos = get_workorders_data()
+                    for wo in wos:
+                        if str(wo.get("workorderId")) == str(workorder_id):
+                            host_type = wo.get("hostType", "")
+                            break
+                except Exception:
+                    pass
+            if host_type not in ("tape", "splitter"):
+                self.write_json({"ok": False, "error": "需要指定 hostType=tape 或 hostType=splitter"},
+                                status=HTTPStatus.BAD_REQUEST)
+                return
+            items = get_bom_data(host_type)
+            self.write_json({"ok": True, "data": items,
+                             "meta": {"mode": get_odoo_mode(), "hostType": host_type,
+                                      "count": len(items)}})
         else:
             self.send_error(HTTPStatus.NOT_FOUND)
 
     def do_POST(self):
         path = urlparse(self.path).path
         if not check_auth(self):
-            self.write_json({"ok": False, "error": "未授权：缺少或无效的 API Key"}, status=HTTPStatus.UNAUTHORIZED)
+            self.write_json({"ok": False, "error": "未授权：缺少或无效的 API Key"},
+                            status=HTTPStatus.UNAUTHORIZED)
             return
         if path == "/api/reports":
             self.handle_report_post()
@@ -722,7 +1283,8 @@ class Handler(SimpleHTTPRequestHandler):
                 "priority": row.get("priority", ""),
                 "status": row.get("delivery", ""),
             } for row in data.get("deliveryRows", [])]
-            return {"ok": True, "data": orders}
+            return {"ok": True, "data": orders,
+                    "meta": {"mode": get_odoo_mode(), "source": "odoo"}}
         except Exception as exc:
             return {"ok": False, "error": f"{type(exc).__name__}: {exc}"}
 
@@ -732,69 +1294,153 @@ class Handler(SimpleHTTPRequestHandler):
             body = self.rfile.read(length).decode("utf-8")
             report = json.loads(body)
 
+            mode = get_odoo_mode()
+
+            # === 幂等检查 ===
+            idempotency_key = report.get("idempotencyKey", "")
+            if idempotency_key:
+                existing = db_get_report_by_idempotency(idempotency_key)
+                if existing:
+                    logger.info(f"幂等请求: {idempotency_key} - 返回已有结果")
+                    self.write_json({
+                        "ok": True,
+                        "data": _normalize_report(existing),
+                        "meta": {"mode": mode, "source": "idempotent_replay",
+                                 "message": "该报工已处理过，返回已有结果"}
+                    })
+                    return
+
             # === 输入校验 ===
-            required = ["workerId", "workerName", "orderId", "operation", "qty", "date", "time"]
+            required = ["workerId", "workerName", "operation", "qty", "date", "time"]
             for field in required:
                 if not report.get(field):
-                    self.write_json({"ok": False, "error": f"缺少必填字段: {field}"}, status=HTTPStatus.BAD_REQUEST)
+                    self.write_json({"ok": False, "error": f"缺少必填字段: {field}"},
+                                    status=HTTPStatus.BAD_REQUEST)
                     return
 
             worker_id = str(report["workerId"])
             if worker_id not in get_valid_worker_ids():
-                self.write_json({"ok": False, "error": f"工人 {worker_id} 不存在"}, status=HTTPStatus.BAD_REQUEST)
+                self.write_json({"ok": False, "error": f"工人 {worker_id} 不存在"},
+                                status=HTTPStatus.BAD_REQUEST)
                 return
 
-            order_id = str(report["orderId"])
-            valid_orders = get_valid_order_ids()
-            if valid_orders and order_id not in valid_orders:
-                self.write_json({"ok": False, "error": f"工单 {order_id} 不存在"}, status=HTTPStatus.BAD_REQUEST)
-                return
+            # 新字段: 工单ID
+            workorder_id = str(report.get("workorderId", report.get("orderId", "")))
+            production_id = str(report.get("productionId", ""))
 
             operation = str(report["operation"])
-            if operation not in VALID_OPERATIONS:
-                self.write_json({"ok": False, "error": f"无效工序: {operation}"}, status=HTTPStatus.BAD_REQUEST)
+            op_info = OPERATION_MAP.get(operation)
+            if not op_info:
+                self.write_json({"ok": False, "error": f"无效工序: {operation}"},
+                                status=HTTPStatus.BAD_REQUEST)
                 return
 
             qty = report["qty"]
-            if not isinstance(qty, int) or qty <= 0:
-                self.write_json({"ok": False, "error": "数量必须是正整数"}, status=HTTPStatus.BAD_REQUEST)
+            if not isinstance(qty, (int, float)) or qty <= 0:
+                self.write_json({"ok": False, "error": "数量必须是正数"},
+                                status=HTTPStatus.BAD_REQUEST)
                 return
 
-            hours = report.get("hours", 0)
-            if not isinstance(hours, (int, float)) or hours < 0:
-                self.write_json({"ok": False, "error": "工时不能为负数"}, status=HTTPStatus.BAD_REQUEST)
-                return
+            # === 物料校验 ===
+            materials = report.get("materials", [])
+            host_type = op_info.get("hostType")
+            if host_type and materials:
+                # 验证物料是否属于当前主机类型
+                valid_codes = TAPE_BOM_CODES if host_type == "tape" else SPLITTER_BOM_CODES
+                for mat in materials:
+                    code = mat.get("defaultCode", "")
+                    if code and code.upper() not in valid_codes:
+                        self.write_json({
+                            "ok": False,
+                            "error": f"物料 {code} 不属于当前主机类型 ({host_type})"
+                        }, status=HTTPStatus.BAD_REQUEST)
+                        return
+                    actual_qty = mat.get("actualQty", 0)
+                    if not isinstance(actual_qty, (int, float)) or actual_qty <= 0:
+                        self.write_json({"ok": False, "error": f"物料 {code} 实际使用数量必须为正数"},
+                                        status=HTTPStatus.BAD_REQUEST)
+                        return
 
-            # 日期格式校验
+            # === 日期格式校验 ===
             date_str = str(report["date"])
             try:
                 datetime.strptime(date_str, "%Y-%m-%d")
             except ValueError:
-                self.write_json({"ok": False, "error": "日期格式错误，需要 YYYY-MM-DD"}, status=HTTPStatus.BAD_REQUEST)
+                self.write_json({"ok": False, "error": "日期格式错误，需要 YYYY-MM-DD"},
+                                status=HTTPStatus.BAD_REQUEST)
                 return
 
-            # 构建记录
+            # === 构建记录 ===
             report["id"] = str(uuid.uuid4())
             report["timestamp"] = int(datetime.now(LOCAL_TZ).timestamp() * 1000)
-            report.setdefault("operationLabel", report["operation"])
+            report.setdefault("operationLabel", op_info.get("name", report["operation"]))
             report.setdefault("qualified", qty)
             report.setdefault("hours", 0)
             report.setdefault("remark", "")
             report.setdefault("workerTeam", "")
             report.setdefault("orderCustomer", "")
             report.setdefault("orderProduct", "")
+            report.setdefault("productionId", production_id)
+            report.setdefault("workorderId", workorder_id)
+            report.setdefault("odooEmployeeId", report.get("odooEmployeeId", 0))
+            report.setdefault("idempotencyKey", idempotency_key)
+            report.setdefault("odooReportId", "")
+            report.setdefault("odooStockMoveIds", "")
+            report.setdefault("syncStatus", "local")
+            report.setdefault("errorMessage", "")
 
-            if db_add_report(report):
-                # 只查刚插入的记录
+            # 兼容旧格式: orderId
+            if not report.get("orderId"):
+                report["orderId"] = workorder_id or production_id or "unknown"
+
+            # === Mock 模式 ===
+            if mode == "mock":
+                if db_add_report(report, materials):
+                    saved = db_get_report(report["id"]) or report
+                    result = _normalize_report(saved) if isinstance(saved, dict) else saved
+                    self.write_json({
+                        "ok": True,
+                        "data": result,
+                        "meta": {
+                            "mode": "mock",
+                            "source": "fake_odoo",
+                            "message": "模拟报工成功，未写入 Odoo",
+                        },
+                    })
+                else:
+                    self.write_json({
+                        "ok": False,
+                        "error": "重复报工：该工人已对此工单、此工序报过工"
+                    }, status=HTTPStatus.CONFLICT)
+                return
+
+            # === 真实模式 (当前仅保存本地) ===
+            # 注: 真实 Odoo 写入需用户明确授权后才能执行
+            if db_add_report(report, materials):
                 saved = db_get_report(report["id"]) or report
-                self.write_json({"ok": True, "data": _normalize_report(saved) if isinstance(saved, dict) else saved})
+                result = _normalize_report(saved) if isinstance(saved, dict) else saved
+                self.write_json({
+                    "ok": True,
+                    "data": result,
+                    "meta": {
+                        "mode": "real",
+                        "source": "local_only",
+                        "message": "报工已保存到本地数据库（未写入 Odoo - 需用户明确授权）",
+                        "warning": "Odoo write not authorized yet. Run with explicit permission to enable real Odoo writes.",
+                    },
+                })
             else:
-                self.write_json({"ok": False, "error": "重复报工：该工人已对此工单、此工序报过工，请勿重复提交"}, status=HTTPStatus.CONFLICT)
+                self.write_json({
+                    "ok": False,
+                    "error": "重复报工：该工人已对此工单、此工序报过工"
+                }, status=HTTPStatus.CONFLICT)
+
         except json.JSONDecodeError:
             self.write_json({"ok": False, "error": "无效的 JSON 格式"}, status=HTTPStatus.BAD_REQUEST)
         except Exception as exc:
             logger.error(f"handle_report_post 异常: {exc}", exc_info=True)
-            self.write_json({"ok": False, "error": f"服务器错误: {exc}"}, status=HTTPStatus.INTERNAL_SERVER_ERROR)
+            self.write_json({"ok": False, "error": f"服务器错误: {exc}"},
+                            status=HTTPStatus.INTERNAL_SERVER_ERROR)
 
     def handle_worker_post(self):
         try:
@@ -807,17 +1453,21 @@ class Handler(SimpleHTTPRequestHandler):
             wid = worker.get("id", "").strip() or f"WK{uuid.uuid4().hex[:3].upper()}"
             name = worker["name"].strip()
             team = worker.get("team", "").strip()
+            source = worker.get("source", "local")
+            odoo_eid = worker.get("odooEmployeeId", 0)
             existing = get_valid_worker_ids()
             if wid in existing:
                 self.write_json({"ok": False, "error": f"工号 {wid} 已存在"}, status=HTTPStatus.CONFLICT)
                 return
-            db_add_worker(wid, name, team)
-            self.write_json({"ok": True, "data": {"id": wid, "name": name, "team": team}})
+            db_add_worker(wid, name, team, source, odoo_eid)
+            self.write_json({"ok": True, "data": {"id": wid, "name": name, "team": team,
+                                                   "source": source, "odooEmployeeId": odoo_eid}})
         except json.JSONDecodeError:
             self.write_json({"ok": False, "error": "无效的 JSON 格式"}, status=HTTPStatus.BAD_REQUEST)
         except Exception as exc:
             logger.error(f"handle_worker_post 异常: {exc}", exc_info=True)
-            self.write_json({"ok": False, "error": f"服务器错误: {exc}"}, status=HTTPStatus.INTERNAL_SERVER_ERROR)
+            self.write_json({"ok": False, "error": f"服务器错误: {exc}"},
+                            status=HTTPStatus.INTERNAL_SERVER_ERROR)
 
     def dashboard_payload(self):
         try:
@@ -832,6 +1482,7 @@ class Handler(SimpleHTTPRequestHandler):
             total_qty = sum(int(r.get("qty", 0)) for r in reports)
             total_hours = sum(float(r.get("hours", 0)) for r in reports)
             unique_workers = len({r.get("worker_name") for r in reports})
+            mode = get_odoo_mode()
             return {
                 "ok": True,
                 "data": {
@@ -846,6 +1497,7 @@ class Handler(SimpleHTTPRequestHandler):
                         "hours": r["hours"], "time": r["time"],
                     } for r in reports[-8:]],
                 },
+                "meta": {"mode": mode, "source": "odoo" if mode == "real" else "mock"},
             }
         except Exception as exc:
             return {"ok": False, "error": str(exc)}
@@ -881,10 +1533,11 @@ def main():
     port = int(os.getenv("PORT", "8090"))
     server = ThreadingHTTPServer(("0.0.0.0", port), Handler)
     server.timeout = 2
-    logger.info(f"production dashboard: http://0.0.0.0:{port}")
+    logger.info(f"生产员工报工系统: http://0.0.0.0:{port}")
     logger.info(f"Odoo: {ODOO_URL} db={ODOO_DB} user={ODOO_USER}")
-    logger.info(f"Auth: {'已启用' if API_KEY else '未启用（警告：POST 接口无保��）'}")
-    logger.info(f"存储: SQLite ({DB_FILE})")
+    logger.info(f"模式: {'模拟 (MOCK)' if MOCK_MODE else '真实 (REAL)'}")
+    logger.info(f"数据库: {DB_FILE}")
+    logger.info(f"Auth: {'已启用' if API_KEY else '未启用（POST 接口无保护）'}")
 
     try:
         while _running:

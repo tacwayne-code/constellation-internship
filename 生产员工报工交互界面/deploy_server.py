@@ -153,14 +153,13 @@ def start_nohup(client):
     remote = shlex.quote(REMOTE_DIR)
     start = (
         f"test -x \"$(command -v python3)\"; "
-        f"if test -f {remote}/server.pid; then "
-        f"pid=$(cat {remote}/server.pid 2>/dev/null || true); "
-        f"if test -n \"$pid\" && ps -p \"$pid\" -o args= 2>/dev/null | grep -Fq {shlex.quote(REMOTE_DIR)}; "
-        f"then kill \"$pid\"; sleep 1; fi; fi; "
+        # Kill any process on the target port (more reliable than pid-file matching)
+        f"lsof -ti:{PORT} | xargs kill -9 2>/dev/null || true; "
+        f"sleep 2; "
         f"cd {remote}; set -a; . {shlex.quote(ENV_FILE)}; set +a; "
         f"nohup python3 {remote}/server.py "
         f"> {remote}/server.log 2>&1 < /dev/null & echo $! > {remote}/server.pid; "
-        f"sleep 1; curl -fsS http://127.0.0.1:{PORT}/api/health >/dev/null; "
+        f"sleep 2; curl -fsS http://127.0.0.1:{PORT}/api/health >/dev/null; "
         f"printf 'DEPLOYED pid='; cat {remote}/server.pid"
     )
     print(run(client, start))
