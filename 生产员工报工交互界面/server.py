@@ -1279,7 +1279,7 @@ def odoo_deduct_materials(materials, idempotency_key):
                 "location_dest_id": DEST_LOCATION_ID,
                 "name": f"报工消耗 {code} [{idempotency_key[:8]}]", "state": "draft",
             }])
-            stock_move_ids.append(move_id)
+            logger.info(f"物料 {code}({product_id}): stock.move#{move_id} 已创建 qty={actual_qty}")
 
             remaining = actual_qty
             quant_ids = client.call("stock.quant", "search", [
@@ -1316,6 +1316,9 @@ def odoo_deduct_materials(materials, idempotency_key):
                 client.call("stock.move", "write", [[move_id], {"state": "done", "quantity": actual_qty}])
             except Exception:
                 pass
+
+            # quant 扣减成功后才计入成功列表
+            stock_move_ids.append(move_id)
 
         except Exception as e:
             errors.append(f"物料 {code}: {e}")
