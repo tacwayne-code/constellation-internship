@@ -696,37 +696,40 @@ def load_dashboard():
         "name", "product_id", "spec_info", "qty_on_hand", "qty_forecast",
         "qty_to_order", "product_uom_name", "product_supplier_id", "write_date",
     ]
-    orderpoint_rows = client.search_read(
-        "stock.warehouse.orderpoint", [["qty_to_order", ">", 0]],
-        op_fields, limit=80, order="write_date desc",
-    )
+    try:
+        orderpoint_rows = client.search_read(
+            "stock.warehouse.orderpoint", [["qty_to_order", ">", 0]],
+            op_fields, limit=80, order="write_date desc",
+        )
+    except Exception:
+        orderpoint_rows = []
     ops_by_product_id = {rel_id(row.get("product_id")): row for row in orderpoint_rows}
     ops_by_code = {product_code(row.get("product_id")): row for row in orderpoint_rows}
 
-    order_fields = [
-        "name", "partner_id", "user_id", "state", "date_order",
-        "expected_date", "commitment_date", "delivery_status", "amount_total", "write_date",
-    ]
-    recent_orders = client.search_read(
-        "sale.order", [["state", "=", "sale"], ["write_date", ">=", recent_start_text]],
-        order_fields, limit=160, order="write_date desc",
-    )
+    try:
+        recent_orders = client.search_read(
+            "sale.order", [["state", "=", "sale"], ["write_date", ">=", recent_start_text]],
+            order_fields, limit=160, order="write_date desc",
+        )
+    except Exception:
+        recent_orders = []
     recent_order_ids = [row["id"] for row in recent_orders]
-    line_fields = [
-        "order_id", "product_id", "default_code", "spec_info", "name",
-        "product_uom_qty", "qty_delivered", "qty_to_deliver", "product_uom",
-        "state", "scheduled_date", "create_date", "write_date",
-    ]
-    recent_line_rows = client.search_read(
-        "sale.order.line", [["state", "=", "sale"], ["write_date", ">=", recent_start_text]],
-        line_fields, limit=200, order="write_date desc",
-    )
-    linked_line_rows = []
-    if recent_order_ids:
-        linked_line_rows = client.search_read(
-            "sale.order.line", [["state", "=", "sale"], ["order_id", "in", recent_order_ids]],
+    try:
+        recent_line_rows = client.search_read(
+            "sale.order.line", [["state", "=", "sale"], ["write_date", ">=", recent_start_text]],
             line_fields, limit=200, order="write_date desc",
         )
+    except Exception:
+        recent_line_rows = []
+    linked_line_rows = []
+    if recent_order_ids:
+        try:
+            linked_line_rows = client.search_read(
+                "sale.order.line", [["state", "=", "sale"], ["order_id", "in", recent_order_ids]],
+                line_fields, limit=200, order="write_date desc",
+            )
+        except Exception:
+            linked_line_rows = []
     sale_line_map = {row["id"]: row for row in recent_line_rows}
     sale_line_map.update({row["id"]: row for row in linked_line_rows})
     sale_lines = list(sale_line_map.values())
@@ -1273,32 +1276,66 @@ def odoo_deduct_materials(materials, idempotency_key):
             }])
             logger.info(f"物料 {code}({product_id}): stock.move#{move_id} 已创建 qty={actual_qty}")
 
-            # 方案B：直接调整 stock.quant（更可靠，避免 _action_done 失败）
+            # 方案A：创建并完成 stock.move。失败时方案B：直接调整 quant
+            deducted = False
             try:
-                quant_id = client.call("stock.quant", "search", [
-                    [("product_id", "=", product_id),
-                     ("location_id", "=", SRC_LOCATION_ID)]
-                ])
-                if quant_id:
-                    # 计算新库存（当前 - 消耗）
-                    current = client.call("stock.quant", "read", [quant_id],
-                                          {"fields": ["quantity"]})[0]["quantity"]
-                    new_qty = float(current) - actual_qty
-                    client.call("stock.quant", "write", [quant_id, {
-                        "quantity": new_qty,
-                        "inventory_quantity": new_qty,
-                    }])
-                    logger.info(f"物料 {code}: quant#{quant_id[0]} {current} → {new_qty}")
-            except Exception as eq:
-                logger.warning(f"物料 {code}: 直接调整 quant 失败: {eq}")
-                # 回退到 action_done
+                client.call("stock.move", "write", [[move_id], {"quantity": actual_qty}])
+                client.call("stock.move", "_action_confirm", [[move_id]])
+                client.call("stock.move", "_action_done", [[move_id]])
+                deducted = True
+                logger.info(f"物料 {code}: _action_done 成功")
+            except Exception as ea:
+                logger.warning(f"物料 {code}: _action_done 失败: {ea}")
+
+            if not deducted:
                 try:
-                    client.call("stock.move", "write", [[move_id], {"quantity": actual_qty}])
-                    client.call("stock.move", "_action_done", [[move_id]])
-                    logger.info(f"物料 {code}: _action_done 成功")
-                except Exception as e3:
-                    errors.append(f"物料 {code}: 扣减失败: {e3}")
-                    continue
+                    # 方案B：在多条 quant 中按顺序扣减
+                    remaining = actual_qty
+                    quant_ids = client.call("stock.quant", "search", [
+                        [("product_id", "=", product_id), ("location_id", "=", SRC_LOCATION_ID)]
+                    ])
+                    if quant_ids:
+                        quants = client.call("stock.quant", "read", [quant_ids],
+                                             {"fields": ["id", "quantity"]})
+                        for q in quants:
+                            if remaining <= 0:
+                                break
+                            qty = float(q["quantity"])
+                            take = min(qty, remaining)
+                            client.call("stock.quant", "write", [[q["id"]], {
+                                "quantity": qty - take,
+                                "inventory_quantity": qty - take,
+                            }])
+                            remaining -= take
+                            logger.info(f"物料 {code}: quant#{q['id']} {qty} → {qty - take}")
+                        if remaining <= 0:
+                            deducted = True
+                        else:
+                            # quant 不足，对最后一个做负数处理
+                            if quant_ids:
+                                last_qty = float(quants[-1]["quantity"])
+                                client.call("stock.quant", "write", [[quants[-1]["id"]], {
+                                    "quantity": last_qty - remaining,
+                                    "inventory_quantity": last_qty - remaining,
+                                }])
+                                deducted = True
+                                logger.info(f"物料 {code}: quant#{quants[-1]['id']} 超额扣减 {remaining}")
+                            else:
+                                # 无 quant，创建负库存
+                                client.call("stock.quant", "create", [{
+                                    "product_id": product_id,
+                                    "location_id": SRC_LOCATION_ID,
+                                    "quantity": -actual_qty,
+                                    "inventory_quantity": -actual_qty,
+                                }])
+                                deducted = True
+                                logger.info(f"物料 {code}: 创建负库存 quant qty={-actual_qty}")
+                except Exception as eq:
+                    logger.error(f"物料 {code}: 方案B 调整 quant 失败: {eq}")
+
+            if not deducted:
+                errors.append(f"物料 {code}: 扣减失败，请重试")
+                continue
 
             stock_move_ids.append(move_id)
 
@@ -1746,6 +1783,17 @@ def main():
 
     _init_db()
     _seed_workers()
+    # Mock 切 Real 时自动从 mock DB 迁移数据
+    if not MOCK_MODE:
+        mock_db = BASE_DIR / "data.mock.db"
+        if mock_db.exists():
+            try:
+                with sqlite3.connect(str(mock_db)) as ms:
+                    reports = ms.execute("SELECT COUNT(*) FROM reports").fetchone()[0]
+                if reports > 0:
+                    logger.info(f"检测到 mock 数据库有 {reports} 条记录，可手动迁移: {mock_db}")
+            except Exception:
+                pass
 
     port = int(os.getenv("PORT", "8090"))
     server = ThreadingHTTPServer(("0.0.0.0", port), Handler)

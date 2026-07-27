@@ -569,16 +569,16 @@ function closeBomModal() {
 
 function confirmBom() {
   // 验证所有选中项的数量
-  const invalid = S.bomItems.filter((item) => item.selected && item.actualQty <= 0);
+  const invalid = S.bomItems.filter((item) => item.selected && (item.actualQty === undefined || item.actualQty <= 0));
   if (invalid.length > 0) {
-    toast("请确保所有选中物料的数量大于0", "error");
+    toast("请确保所有勾选物料的数量 ≥ 1，当前有 " + invalid.length + " 项数量为 0", "error");
     return;
   }
 
   S.bomConfirmed = true;
   closeBomModal();
   updateSubmit();
-  toast("物料已确认，请选择工单并提交报工", "success");
+  toast("物料已确认，请设置完成数量并提交报工", "success");
 }
 
 // ====== BOM 事件 ======
@@ -602,8 +602,9 @@ function setupBomEvents() {
     if (e.target.classList.contains("bom-qty-input")) {
       const i = parseInt(e.target.dataset.bi);
       if (i >= 0 && i < S.bomItems.length) {
-        const val = parseInt(e.target.value) || 0;
-        S.bomItems[i].actualQty = Math.max(0, val);
+        let val = parseInt(e.target.value);
+        if (isNaN(val) || val < 0) val = 0;
+        S.bomItems[i].actualQty = val;
         updateBomConfirmBtn();
       }
     }
@@ -847,9 +848,12 @@ async function submitReport() {
 
     if (response.data) {
       S.reports.push(response.data);
-    } else {
-      S.reports = (await apiGet("/api/reports")).data || S.reports;
     }
+    // 尝试刷新列表（失败不影响已成功的提交）
+    try {
+      const refreshed = await apiGet("/api/reports");
+      if (refreshed && refreshed.data) S.reports = refreshed.data;
+    } catch (_) { /* 提交已成功，刷新列表失败不影响 */ }
 
     showSuccessMsg(worker.name, S.qty, mode);
     renderKpis();
@@ -974,7 +978,11 @@ async function init() {
   setupEvents();
   await loadAll();
 
-  setInterval(() => { loadAll().catch(() => {}); }, 180000);
+  // 定时刷新（用户操作中不刷新，避免打断操作）
+  setInterval(() => {
+    if (S.submitting || S.selWorkerIdx >= 0) return; // 正在操作，跳过刷新
+    loadAll().catch(() => {});
+  }, 180000);
 }
 
 document.addEventListener("DOMContentLoaded", init);
