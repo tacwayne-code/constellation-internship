@@ -48,7 +48,7 @@ WHITE_EXT = {".html", ".css", ".js", ".svg", ".ico", ".png"}
 # ============================================================
 
 logging.basicConfig(
-    level=logging.INFO,
+    level=getattr(logging, os.getenv("LOG_LEVEL", "INFO")),
     format="%(asctime)s [%(levelname)s] %(message)s",
     datefmt="%Y-%m-%d %H:%M:%S",
 )
@@ -78,6 +78,9 @@ class OdooError(RuntimeError):
 class OdooClient:
     def __init__(self):
         self._uid = None
+        # 设置 30 秒超时避免无限等待
+        import socket
+        socket.setdefaulttimeout(30)
         self.common = xmlrpc.client.ServerProxy(
             f"{ODOO_URL}/xmlrpc/2/common", allow_none=True
         )
@@ -495,11 +498,24 @@ def get_operations():
 # 认证校验
 # ============================================================
 
+# 内网IP白名单（当 API_KEY 未配置时使用）
+_ALLOWED_IPS = {"127.0.0.1", "localhost", "::1"}  # 本机
+_ALLOWED_PREFIXES = ("192.168.", "10.", "172.16.", "172.17.", "172.18.", "172.19.",
+                     "172.20.", "172.21.", "172.22.", "172.23.", "172.24.", "172.25.",
+                     "172.26.", "172.27.", "172.28.", "172.29.", "172.30.", "172.31.")
+
+
 def check_auth(handler):
-    if not API_KEY:
+    """API Key 或内网 IP 白名单认证"""
+    if API_KEY:
+        provided = handler.headers.get("X-API-Key", "")
+        return provided == API_KEY
+    # 无 API_KEY 时：只允许本机和内网
+    client_ip = handler.client_address[0]
+    if client_ip in _ALLOWED_IPS or any(client_ip.startswith(p) for p in _ALLOWED_PREFIXES):
         return True
-    provided = handler.headers.get("X-API-Key", "")
-    return provided == API_KEY
+    logger.warning(f"拒绝来自 {client_ip} 的 POST 请求 (无 API_KEY 且不在白名单)")
+    return False
 
 
 _worker_ids_lock = threading.Lock()
@@ -915,27 +931,24 @@ EXCEL_BOM = {
 
 
 # ============================================================
-# BOM 数据缓存（30秒TTL，避免重复Odoo查询）
+# BOM 数据缓存（线程安全）
 # ============================================================
 _BOM_CACHE = {"data": None, "ts": 0, "key": None}
-_BOM_CACHE_TTL = 300  # 5分钟缓存，减少重复Odoo查询
+_BOM_CACHE_LOCK = threading.Lock()
+_BOM_CACHE_TTL = 300
 
 
 def get_bom_data(host_type):
-    """
-    获取 BOM 数据
-    全部从 Odoo 实时查询：物料编码 → product.product → product.template
-    host_type: "tape" (编带主机) 或 "splitter" (分光主机)
-    """
+    """获取 BOM 数据（缓存 + 线程安全）"""
     if host_type not in ("tape", "splitter"):
         return []
 
-    # 检查缓存
     now = time.time()
     cache_key = f"{get_odoo_mode()}:{host_type}"
-    if _BOM_CACHE["key"] == cache_key and _BOM_CACHE["data"] is not None and (now - _BOM_CACHE["ts"]) < _BOM_CACHE_TTL:
-        logger.info(f"BOM缓存命中 [{host_type}]")
-        return _BOM_CACHE["data"]
+    with _BOM_CACHE_LOCK:
+        if _BOM_CACHE["key"] == cache_key and _BOM_CACHE["data"] is not None and (now - _BOM_CACHE["ts"]) < _BOM_CACHE_TTL:
+            logger.info(f"BOM缓存命中 [{host_type}]")
+            return _BOM_CACHE["data"]
 
     codes = TAPE_BOM_CODES if host_type == "tape" else SPLITTER_BOM_CODES
     excel_items = EXCEL_BOM.get(host_type, [])
@@ -1096,10 +1109,11 @@ def get_bom_data(host_type):
         }
         items.append(item)
 
-    # 写入缓存（30秒TTL）
-    _BOM_CACHE["data"] = items
-    _BOM_CACHE["ts"] = time.time()
-    _BOM_CACHE["key"] = cache_key
+    # 写入缓存（线程安全）
+    with _BOM_CACHE_LOCK:
+        _BOM_CACHE["data"] = items
+        _BOM_CACHE["ts"] = time.time()
+        _BOM_CACHE["key"] = cache_key
     return items
 
 
@@ -1207,23 +1221,29 @@ DEST_LOCATION_ID = 15     # Virtual Locations/Production
 
 def odoo_deduct_materials(materials, idempotency_key):
     """
-    直接扣减物料库存（不依赖工单）
-    
-    参数:
-        materials (list): [{"productId": int, "actualQty": float, "uomId": int, "defaultCode": str}, ...]
-        idempotency_key (str): 幂等键
-    
-    返回:
-        dict: {"ok": bool, "stock_move_ids": [int], "message": str}
+    直接扣减物料库存（不依赖工单），幂等保护
     """
     if MOCK_MODE:
         logger.info(f"[MOCK] 模拟物料扣减: {len(materials)}项")
-        return {
-            "ok": True,
-            "stock_move_ids": [900000 + i for i in range(len(materials))],
-            "message": "模拟物料扣减成功",
-            "meta": {"mode": "mock", "source": "fake_odoo"},
-        }
+        return {"ok": True, "stock_move_ids": [900000 + i for i in range(len(materials))],
+                "message": "模拟物料扣减成功", "meta": {"mode": "mock", "source": "fake_odoo"}}
+
+    # 幂等检查：已扣减过则直接返回
+    if idempotency_key:
+        try:
+            with DB_LOCK:
+                c = sqlite3.connect(str(DB_FILE))
+                row = c.execute(
+                    "SELECT id FROM reports WHERE idempotency_key=? AND sync_status='odoo_synced'",
+                    (idempotency_key,)
+                ).fetchone()
+                c.close()
+                if row:
+                    logger.info(f"Odoo 物料扣减幂等跳过: {idempotency_key}")
+                    return {"ok": True, "stock_move_ids": [], "message": "已扣减过（幂等）",
+                            "meta": {"mode": "real", "source": "idempotent"}}
+        except Exception:
+            pass
 
     client = get_odoo()
     mode = "real"
@@ -1404,6 +1424,11 @@ class Handler(SimpleHTTPRequestHandler):
 
     def do_POST(self):
         path = urlparse(self.path).path
+        # 请求体大小限制 64KB
+        length = int(self.headers.get("Content-Length", 0))
+        if length > 65536:
+            self.send_error(HTTPStatus.REQUEST_ENTITY_TOO_LARGE, "Body too large")
+            return
         if not check_auth(self):
             self.write_json({"ok": False, "error": "未授权：缺少或无效的 API Key"},
                             status=HTTPStatus.UNAUTHORIZED)
@@ -1545,9 +1570,9 @@ class Handler(SimpleHTTPRequestHandler):
             report.setdefault("syncStatus", "local")
             report.setdefault("errorMessage", "")
 
-            # 兼容旧格式: orderId
-            if not report.get("orderId"):
-                report["orderId"] = workorder_id or production_id or "unknown"
+            # 兼容旧格式: orderId 用 report UUID 避免唯一约束冲突
+            if not report.get("orderId") or report.get("orderId") == "":
+                report["orderId"] = f"direct-{report['id'][:8]}"
 
             # === Mock 模式 ===
             if mode == "mock":
@@ -1591,9 +1616,10 @@ class Handler(SimpleHTTPRequestHandler):
             if odoo_result and odoo_result.get("ok"):
                 report["syncStatus"] = "odoo_synced"
                 report["odooReportId"] = str(odoo_result.get("workorder_id", workorder_id))
-                # 清除所有缓存，下次加载时重新查询Odoo
+                # 清除所有缓存（线程安全）
+                with _BOM_CACHE_LOCK:
+                    _BOM_CACHE["data"] = None
                 _DASH_CACHE["data"] = None
-                _BOM_CACHE["data"] = None
                 _WO_CACHE["data"] = None
             elif odoo_result:
                 report["syncStatus"] = "odoo_failed"

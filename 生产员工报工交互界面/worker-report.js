@@ -72,6 +72,9 @@ function unitText(value) {
 
 // ====== UUID v4 ======
 function generateUUID() {
+  if (typeof crypto !== "undefined" && crypto.randomUUID) {
+    return crypto.randomUUID();
+  }
   return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
     var r = Math.random() * 16 | 0, v = c === 'x' ? r : (r & 0x3 | 0x8);
     return v.toString(16);
@@ -147,8 +150,7 @@ async function loadAll() {
   if (reportsResp) {
     S.reports = (reportsResp.data || []);
   } else {
-    try { S.reports = JSON.parse(localStorage.getItem("wr_reports") || "[]"); }
-    catch { S.reports = []; }
+    S.reports = [];
   }
 
   if (opsResp && opsResp.data) {
@@ -825,11 +827,10 @@ async function submitReport() {
     if (apiOnline) {
       response = await apiPost("/api/reports", report);
     } else {
-      report.id = Date.now().toString(36);
-      report.timestamp = Date.now();
-      S.reports.push(report);
-      try { localStorage.setItem("wr_reports", JSON.stringify(S.reports)); } catch (_) {}
-      response = { ok: true, meta: { mode: "offline", source: "localStorage" } };
+      toast("网络不可用，请检查连接后重试", "error");
+      S.submitting = false;
+      updateSubmit();
+      return;
     }
 
     // 根据模式显示不同的成功信息
