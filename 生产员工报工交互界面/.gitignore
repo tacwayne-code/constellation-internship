@@ -1,0 +1,6 @@
+.env
+*.db
+__pycache__/
+*.pyc
+deploy_*.py
+启动*.bat

@@ -706,6 +706,16 @@ def load_dashboard():
     ops_by_product_id = {rel_id(row.get("product_id")): row for row in orderpoint_rows}
     ops_by_code = {product_code(row.get("product_id")): row for row in orderpoint_rows}
 
+    order_fields = [
+        "name", "partner_id", "user_id", "state", "date_order",
+        "expected_date", "commitment_date", "delivery_status", "amount_total", "write_date",
+    ]
+    line_fields = [
+        "order_id", "product_id", "default_code", "spec_info", "name",
+        "product_uom_qty", "qty_delivered", "qty_to_deliver", "product_uom",
+        "state", "scheduled_date", "create_date", "write_date",
+    ]
+
     try:
         recent_orders = client.search_read(
             "sale.order", [["state", "=", "sale"], ["write_date", ">=", recent_start_text]],
@@ -736,7 +746,10 @@ def load_dashboard():
     order_ids = sorted({rel_id(line.get("order_id")) for line in sale_lines if rel_id(line.get("order_id"))})
     orders = {row["id"]: row for row in recent_orders}
     missing_order_ids = [oid for oid in order_ids if oid not in orders]
-    orders.update({row["id"]: row for row in client.read("sale.order", missing_order_ids, order_fields)})
+    try:
+        orders.update({row["id"]: row for row in client.read("sale.order", missing_order_ids, order_fields)})
+    except Exception:
+        pass
 
     mrp_rows = []
     try:
@@ -899,7 +912,7 @@ MOCK_BOM_LINE_IDS = {
 # Excel BOM 数据（来自主机BOM物料清单登记表.xlsx）
 EXCEL_BOM = {
     "tape": [
-        {"seq": 1, "defaultCode": "p04725", "name": "编带机箱", "spec": "黑色:4U300",
+        {"seq": 1, "defaultCode": "P04725", "name": "编带机箱", "spec": "黑色:4U300",
          "uom": "pcs", "qty": 1, "category": "主机配件", "brand": "淘宝"},
         {"seq": 2, "defaultCode": "P05346", "name": "cpu", "spec": "I3-3220",
          "uom": "pcs", "qty": 1, "category": "主机配件", "brand": "淘宝"},
