@@ -111,40 +111,56 @@ function updateModeBadge() {
 
 // ====== 数据加载 ======
 async function loadAll() {
-  try {
-    const r = await fetch(API_BASE + "/api/dashboard", { cache: "no-store" });
-    const p = await r.json();
-    if (p.ok) S.dashboard = p.data;
-  } catch { S.dashboard = null; }
+  // 并行调用所有 API（之前是串行，/api/dashboard 慢时整个加载很慢）
+  const settled = await Promise.allSettled([
+    fetch(API_BASE + "/api/dashboard", { cache: "no-store" }).then(r => r.json()).catch(() => null),
+    apiGet("/api/workers").catch(() => null),
+    apiGet("/api/order-summary").catch(() => null),
+    apiGet("/api/reports").catch(() => null),
+    apiGet("/api/operations").catch(() => null),
+    apiGet("/api/workorders").catch(() => null),
+  ]);
 
-  try {
-    const resp = await apiGet("/api/workers");
-    S.workers = resp.data || [];
-    // 检测模式
-    if (resp.meta && resp.meta.mode) S.runtimeMode = resp.meta.mode;
-  } catch { S.workers = defaultWorkers(); }
+  // Promise.allSettled 返回 [{status, value}, ...]，需要解包 .value
+  const unpack = (s) => (s && s.status === "fulfilled" ? s.value : null);
+  const dashboardResp = unpack(settled[0]);
+  const workersResp = unpack(settled[1]);
+  const ordersResp = unpack(settled[2]);
+  const reportsResp = unpack(settled[3]);
+  const opsResp = unpack(settled[4]);
+  const woResp = unpack(settled[5]);
 
-  try { S.orders = (await apiGet("/api/order-summary")).data || []; }
-  catch { S.orders = []; }
+  // 处理结果
+  if (dashboardResp && dashboardResp.ok) S.dashboard = dashboardResp.data;
+  else S.dashboard = null;
 
-  try { S.reports = (await apiGet("/api/reports")).data || []; }
-  catch {
+  if (workersResp) {
+    S.workers = workersResp.data || [];
+    if (workersResp.meta && workersResp.meta.mode) S.runtimeMode = workersResp.meta.mode;
+  } else {
+    S.workers = defaultWorkers();
+  }
+
+  if (ordersResp) S.orders = (ordersResp.data || []);
+  else S.orders = [];
+
+  if (reportsResp) {
+    S.reports = (reportsResp.data || []);
+  } else {
     try { S.reports = JSON.parse(localStorage.getItem("wr_reports") || "[]"); }
     catch { S.reports = []; }
   }
 
-  // V2: 加载工序
-  try {
-    const opResp = await apiGet("/api/operations");
-    S.operations = opResp.data || [];
-    if (opResp.meta && opResp.meta.mode) S.runtimeMode = opResp.meta.mode;
-  } catch { /* 使用默认 */ }
+  if (opsResp && opsResp.data) {
+    S.operations = opsResp.data;
+    if (opsResp.meta && opsResp.meta.mode) S.runtimeMode = opsResp.meta.mode;
+  }
 
-  // V2: 加载工单
-  try {
-    const woResp = await apiGet("/api/workorders");
-    S.workorders = woResp.data || [];
-  } catch { S.workorders = []; }
+  if (woResp && woResp.data) {
+    S.workorders = woResp.data;
+  } else {
+    S.workorders = [];
+  }
 
   apiOnline = true;
   updateApiBadge();
@@ -420,16 +436,12 @@ function updateSubmit() {
   const btn = $("#submitBtn");
   if (!btn) return;
   const hostOp = S.selOperation && S.selOperation.includes("pc_assembly");
-  let can = S.selWorkerIdx >= 0 && (S.selOrder || S.selectedWorkorder) && S.selOperation && S.qty > 0 && !S.submitting;
+  // 工单不再必需，工人+工序+qty>0 即可提交
+  let can = S.selWorkerIdx >= 0 && S.selOperation && S.qty > 0 && !S.submitting;
   if (can && hostOp && !S.bomConfirmed) {
-    can = false; // 需要先确认BOM
+    can = false;
   }
   btn.disabled = !can;
-  if (hostOp && !S.bomConfirmed && can) {
-    btn.title = "请先确认物料清单";
-  } else {
-    btn.title = "";
-  }
 }
 
 // ====== BOM 弹窗逻辑 ======
@@ -756,7 +768,6 @@ function changeQty(delta) {
 async function submitReport() {
   if (S.submitting) return;
   if (S.selWorkerIdx < 0) { toast("请先选择工人", "error"); return; }
-  if (!S.selectedWorkorder && !S.selOrder) { toast("请先选择工单", "error"); return; }
   if (!S.selOperation) { toast("请先选择工序", "error"); return; }
   if (S.qty <= 0) { toast("请设置完成数量", "error"); return; }
 
@@ -770,8 +781,6 @@ async function submitReport() {
   const idempotencyKey = generateUUID();
 
   const opInfo = S.selectedOperation || { code: S.selOperation, name: OP[S.selOperation] || S.selOperation };
-  const woId = S.selectedWorkorder ? String(S.selectedWorkorder.workorderId) : (S.selOrder ? S.selOrder.id : "");
-  const prodId = S.selectedWorkorder ? String(S.selectedWorkorder.productionId || "") : "";
 
   // 构建物料数据
   let materials = [];
@@ -792,11 +801,11 @@ async function submitReport() {
     workerId: worker.id,
     workerTeam: worker.team || "",
     odooEmployeeId: worker.odooEmployeeId || 0,
-    orderId: woId,
-    orderCustomer: S.selOrder ? S.selOrder.customer || "" : "",
-    orderProduct: S.selOrder ? S.selOrder.product || "" : "",
-    productionId: prodId,
-    workorderId: woId,
+    orderId: "",
+    orderCustomer: "",
+    orderProduct: "",
+    productionId: "",
+    workorderId: "",
     operation: S.selOperation,
     operationLabel: opInfo.name || OP[S.selOperation] || S.selOperation,
     qty: S.qty,

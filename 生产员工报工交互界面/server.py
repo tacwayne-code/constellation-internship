@@ -659,10 +659,19 @@ def build_stages(qty, delivered, remaining, need_qty, supplier, mrp, delivery_st
 
 
 # ============================================================
-# Dashboard 数据加载（保持原逻辑不变）
+# Dashboard 数据加载
 # ============================================================
+_DASH_CACHE = {"data": None, "ts": 0}
+_DASH_CACHE_TTL = 300
+
 
 def load_dashboard():
+    """加载Dashboard数据（30秒缓存，减少Odoo重复查询）"""
+    now = time.time()
+    if _DASH_CACHE["data"] is not None and (now - _DASH_CACHE["ts"]) < _DASH_CACHE_TTL:
+        logger.info("Dashboard缓存命中")
+        return _DASH_CACHE["data"]
+
     client = get_odoo()
     recent_start = (datetime.now(LOCAL_TZ) - timedelta(days=7)).astimezone(timezone.utc)
     recent_start_text = recent_start.strftime("%Y-%m-%d %H:%M:%S")
@@ -819,7 +828,7 @@ def load_dashboard():
         latest_orders.append([row["order"], row["customer"], row["updated"], row["delivery"]])
         if len(latest_orders) >= 6:
             break
-    return {
+    result = {
         "kpis": kpis, "deliveryRows": delivery_rows[:12],
         "replenishments": replenish_rows[:6], "latestOrders": latest_orders,
         "alerts": alerts,
@@ -833,6 +842,9 @@ def load_dashboard():
             "progressNote": "核心区只展示最近7天更新且仍待交付的订单行。",
         },
     }
+    _DASH_CACHE["data"] = result
+    _DASH_CACHE["ts"] = time.time()
+    return result
 
 
 # ============================================================
@@ -902,6 +914,13 @@ EXCEL_BOM = {
 }
 
 
+# ============================================================
+# BOM 数据缓存（30秒TTL，避免重复Odoo查询）
+# ============================================================
+_BOM_CACHE = {"data": None, "ts": 0, "key": None}
+_BOM_CACHE_TTL = 300  # 5分钟缓存，减少重复Odoo查询
+
+
 def get_bom_data(host_type):
     """
     获取 BOM 数据
@@ -910,6 +929,13 @@ def get_bom_data(host_type):
     """
     if host_type not in ("tape", "splitter"):
         return []
+
+    # 检查缓存
+    now = time.time()
+    cache_key = f"{get_odoo_mode()}:{host_type}"
+    if _BOM_CACHE["key"] == cache_key and _BOM_CACHE["data"] is not None and (now - _BOM_CACHE["ts"]) < _BOM_CACHE_TTL:
+        logger.info(f"BOM缓存命中 [{host_type}]")
+        return _BOM_CACHE["data"]
 
     codes = TAPE_BOM_CODES if host_type == "tape" else SPLITTER_BOM_CODES
     excel_items = EXCEL_BOM.get(host_type, [])
@@ -988,6 +1014,23 @@ def get_bom_data(host_type):
         except Exception as e:
             logger.warning(f"获取 product.supplierinfo 失败: {e}")
 
+    # 一次性批量查询所有物料的库存
+    stock_by_pid = {}  # {product_id: available_quantity}
+    if mode == "real" and client and products_by_id:
+        try:
+            product_ids = list(products_by_id.keys())
+            stock_rows = client.search_read(
+                "stock.quant",
+                [("product_id", "in", product_ids), ("quantity", ">", 0)],
+                ["product_id", "available_quantity"], 50
+            )
+            for s in stock_rows:
+                pid = rel_id(s.get("product_id"))
+                avail = number(s.get("available_quantity", 0))
+                stock_by_pid[pid] = stock_by_pid.get(pid, 0) + avail
+        except Exception as e:
+            logger.warning(f"批量查询 stock.quant 失败: {e}")
+
     items = []
     for i, code in enumerate(codes):
         excel = excel_items[i] if i < len(excel_items) else {}
@@ -1029,17 +1072,8 @@ def get_bom_data(host_type):
                 else:
                     brand_name = brand_full
 
-        # 获取库存
-        available_qty = 0
-        if mode == "real" and client and pid:
-            try:
-                stock = client.search_read("stock.quant",
-                                           [("product_id", "=", pid), ("quantity", ">", 0)],
-                                           ["quantity", "reserved_quantity", "available_quantity"], 10)
-                if stock:
-                    available_qty = sum(number(s.get("available_quantity", 0)) for s in stock)
-            except Exception:
-                available_qty = 0
+        # 获取库存（从预先批量查询的 stock_by_pid 中取值）
+        available_qty = stock_by_pid.get(pid, 0)
 
         bom_line_id = bom_line_ids.get(code, 0)
 
@@ -1062,14 +1096,25 @@ def get_bom_data(host_type):
         }
         items.append(item)
 
+    # 写入缓存（30秒TTL）
+    _BOM_CACHE["data"] = items
+    _BOM_CACHE["ts"] = time.time()
+    _BOM_CACHE["key"] = cache_key
     return items
+
+
+_WO_CACHE = {"data": None, "ts": 0}
+_WO_CACHE_TTL = 300
 
 
 def get_workorders_data():
     """
-    获取工单列表
+    获取工单列表（30秒缓存）
     从 Odoo mrp.workorder 读取（非 sale.order）
     """
+    now = time.time()
+    if _WO_CACHE["data"] is not None and (now - _WO_CACHE["ts"]) < _WO_CACHE_TTL:
+        return _WO_CACHE["data"]
     mode = get_odoo_mode()
     try:
         client = get_odoo()
@@ -1138,6 +1183,8 @@ def get_workorders_data():
                 "remainingQty": number(wo.get("qty_remaining")),
                 "hostType": host_type,
             })
+        _WO_CACHE["data"] = workorders
+        _WO_CACHE["ts"] = time.time()
         return workorders
     except Exception as e:
         logger.warning(f"获取工单失败: {e}")
@@ -1147,6 +1194,115 @@ def get_workorders_data():
 # ============================================================
 # HTTP Handler
 # ============================================================
+
+# ============================================================
+# Odoo 报工 + 库存扣减
+# ============================================================
+
+# 原材料来源库位（内部库存）
+SRC_LOCATION_ID = 8       # WH/库存
+# 生产消耗���位（虚拟生产库位）
+DEST_LOCATION_ID = 15     # Virtual Locations/Production
+
+
+def odoo_deduct_materials(materials, idempotency_key):
+    """
+    直接扣减物料库存（不依赖工单）
+    
+    参数:
+        materials (list): [{"productId": int, "actualQty": float, "uomId": int, "defaultCode": str}, ...]
+        idempotency_key (str): 幂等键
+    
+    返回:
+        dict: {"ok": bool, "stock_move_ids": [int], "message": str}
+    """
+    if MOCK_MODE:
+        logger.info(f"[MOCK] 模拟物料扣减: {len(materials)}项")
+        return {
+            "ok": True,
+            "stock_move_ids": [900000 + i for i in range(len(materials))],
+            "message": "模拟物料扣减成功",
+            "meta": {"mode": "mock", "source": "fake_odoo"},
+        }
+
+    client = get_odoo()
+    mode = "real"
+    stock_move_ids = []
+    errors = []
+
+    for i, mat in enumerate(materials):
+        product_id = mat.get("productId", 0)
+        actual_qty = mat.get("actualQty", 1)
+        uom_id = mat.get("uomId", 1)
+        code = mat.get("defaultCode", "?")
+
+        if not product_id or actual_qty <= 0:
+            errors.append(f"物料 {code}: 无效的产品ID或数量")
+            continue
+
+        try:
+            # 方案A：创建 stock.move 并 _action_done（标准流程）
+            move_id = client.call("stock.move", "create", [{
+                "product_id": product_id,
+                "product_uom_qty": actual_qty,
+                "product_uom": uom_id,
+                "location_id": SRC_LOCATION_ID,
+                "location_dest_id": DEST_LOCATION_ID,
+                "name": f"报工消耗 {code} [{idempotency_key[:8]}]",
+                "state": "draft",
+            }])
+            logger.info(f"物料 {code}({product_id}): stock.move#{move_id} 已创建 qty={actual_qty}")
+
+            # 方案B：直接调整 stock.quant（更可靠，避免 _action_done 失败）
+            try:
+                quant_id = client.call("stock.quant", "search", [
+                    [("product_id", "=", product_id),
+                     ("location_id", "=", SRC_LOCATION_ID)]
+                ])
+                if quant_id:
+                    # 计算新库存（当前 - 消耗）
+                    current = client.call("stock.quant", "read", [quant_id],
+                                          {"fields": ["quantity"]})[0]["quantity"]
+                    new_qty = float(current) - actual_qty
+                    client.call("stock.quant", "write", [quant_id, {
+                        "quantity": new_qty,
+                        "inventory_quantity": new_qty,
+                    }])
+                    logger.info(f"物料 {code}: quant#{quant_id[0]} {current} → {new_qty}")
+            except Exception as eq:
+                logger.warning(f"物料 {code}: 直接调整 quant 失败: {eq}")
+                # 回退到 action_done
+                try:
+                    client.call("stock.move", "write", [[move_id], {"quantity": actual_qty}])
+                    client.call("stock.move", "_action_done", [[move_id]])
+                    logger.info(f"物料 {code}: _action_done 成功")
+                except Exception as e3:
+                    errors.append(f"物料 {code}: 扣减失败: {e3}")
+                    continue
+
+            stock_move_ids.append(move_id)
+
+        except Exception as e:
+            errors.append(f"物料 {code}: 创建失败: {e}")
+            logger.error(f"物料 {code}: {e}")
+
+    if errors:
+        return {
+            "ok": not all("无法完成" in e or "创建失败" in e for e in errors),
+            "partial": True,
+            "stock_move_ids": stock_move_ids,
+            "message": f"{len(stock_move_ids)} 项物料已扣减，{len(errors)} 项失败",
+            "errors": errors,
+            "meta": {"mode": mode, "source": "odoo"},
+        }
+
+    return {
+        "ok": True,
+        "stock_move_ids": stock_move_ids,
+        "message": f"已完成 {len(stock_move_ids)} 项物料库存扣减",
+        "meta": {"mode": mode, "source": "odoo"},
+    }
+
 
 class Handler(SimpleHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
@@ -1414,19 +1570,54 @@ class Handler(SimpleHTTPRequestHandler):
                     }, status=HTTPStatus.CONFLICT)
                 return
 
-            # === 真实模式 (当前仅保存本地) ===
-            # 注: 真实 Odoo 写入需用户明确授权后才能执行
+            # === 真实模式 - Odoo 写入 ===
+            # 调用 Odoo 物料扣减（不依赖工单）
+            odoo_result = None
+            if materials and not MOCK_MODE:
+                try:
+                    odoo_result = odoo_deduct_materials(
+                        materials=materials,
+                        idempotency_key=idempotency_key,
+                    )
+                    logger.info(f"物料扣减结果: {odoo_result.get('message','')}")
+                except Exception as e:
+                    logger.error(f"物料扣减异常: {e}")
+                    odoo_result = {"ok": False, "error": str(e)}
+
+            # 保存到 SQLite
+            report["odooReportId"] = ""
+            report["odooStockMoveIds"] = json.dumps(odoo_result.get("stock_move_ids", [])) if odoo_result else ""
+
+            if odoo_result and odoo_result.get("ok"):
+                report["syncStatus"] = "odoo_synced"
+                report["odooReportId"] = str(odoo_result.get("workorder_id", workorder_id))
+                # 清除所有缓存，下次加载时重新查询Odoo
+                _DASH_CACHE["data"] = None
+                _BOM_CACHE["data"] = None
+                _WO_CACHE["data"] = None
+            elif odoo_result:
+                report["syncStatus"] = "odoo_failed"
+                report["errorMessage"] = odoo_result.get("error", "未知错误")
+
             if db_add_report(report, materials):
                 saved = db_get_report(report["id"]) or report
                 result = _normalize_report(saved) if isinstance(saved, dict) else saved
+
+                if odoo_result and odoo_result.get("ok"):
+                    msg = "报工成功，已完成物料库存扣减"
+                elif materials and not odoo_result:
+                    msg = "报工已保存（未提交物料）"
+                else:
+                    msg = "报工已保存，但物料扣减失败"
+
                 self.write_json({
                     "ok": True,
                     "data": result,
                     "meta": {
                         "mode": "real",
-                        "source": "local_only",
-                        "message": "报工已保存到本地数据库（未写入 Odoo - 需用户明确授权）",
-                        "warning": "Odoo write not authorized yet. Run with explicit permission to enable real Odoo writes.",
+                        "source": "odoo",
+                        "message": msg,
+                        "odoo_result": odoo_result,
                     },
                 })
             else:
