@@ -32,7 +32,7 @@
             </div>
             <div class="collapse" id="addConfigForm">
                 <div class="card-body">
-                    <form method="POST" action="{{ url_for('integrations.create_integration') }}">
+                    <form method="POST" action="#">
                         <div class="row g-3">
                             <div class="col-md-6">
                                 <label class="form-label">名称 <span class="text-danger">*</span></label>
@@ -114,7 +114,7 @@
 
                 {% if cfg.system_type == 'odoo' %}
                 {# Odoo 专用：批量推送 mBOM #}
-                <form method="POST" action="{{ url_for('integrations.sync_odoo', id=cfg.id) }}" class="mb-2">
+                <form method="POST" action="{{ '#' }}" class="mb-2">
                     <input type="hidden" name="direction" value="export">
                     <button type="submit" class="btn btn-dark btn-sm w-100"
                             onclick="return confirm('确认推送全部待同步的 mBOM 到 Odoo？\n\n这是单向操作（PLM → Odoo），不会拉取任何数据。');">
@@ -131,7 +131,13 @@
                 </span>
                 {% endif %}
 
-                <form method="POST" action="{{ url_for('integrations.delete_integration', id=cfg.id) }}" class="mt-2"
+                <form method="POST" action="{{ '#' }}" class="mt-2">
+                    <button type="submit" class="btn btn-outline-info btn-sm w-100">
+                        <i class="bi bi-wifi me-1"></i>测试连接
+                    </button>
+                </form>
+
+                <form method="POST" action="{{ '#' }}" class="mt-2"
                       onsubmit="return confirm('确认删除配置「{{ cfg.name }}」？');">
                     <button type="submit" class="btn btn-outline-danger btn-sm w-100">
                         <i class="bi bi-trash me-1"></i>删除配置

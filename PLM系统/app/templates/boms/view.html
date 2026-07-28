@@ -20,6 +20,25 @@
             </button>
         </form>
         {% endif %}
+        {% if bom.status == 'approved' %}
+        <form method="post" action="{{ url_for('boms.release_bom', id=bom.id) }}" style="display:inline;">
+            <button type="submit" class="btn btn-success btn-sm">
+                <i class="bi bi-rocket-takeoff me-1"></i>发布
+            </button>
+        </form>
+        {% endif %}
+        {% if bom.status == 'released' and bom.bom_type == 'EBOM' %}
+        <a href="{{ url_for('boms.convert_to_mbom', id=bom.id) }}" class="btn btn-primary btn-sm">
+            <i class="bi bi-arrow-right-circle me-1"></i>转为 mBOM
+        </a>
+        {% endif %}
+        {% if bom.status == 'released' and bom.bom_type == 'MBOM' %}
+        <form method="post" action="{{ url_for('boms.push_to_odoo', id=bom.id) }}" style="display:inline;">
+            <button type="submit" class="btn btn-outline-primary btn-sm">
+                <i class="bi bi-cloud-upload me-1"></i>推送 Odoo
+            </button>
+        </form>
+        {% endif %}
     </div>
 </div>
 
@@ -35,6 +54,23 @@
             {{ status_map.get(bom.status, bom.status) }}
         </span>
     </div>
+    {% if bom.bom_type == 'MBOM' and bom.status == 'released' %}
+    <div class="col-md-3"><span class="text-muted">Odoo 同步:</span>
+        {% if bom.sync_status == 'not_synced' or not bom.sync_status %}
+            <span class="badge bg-secondary ms-1">未同步</span>
+        {% elif bom.sync_status == 'synced' %}
+            <span class="badge bg-success ms-1">✓ 已同步</span>
+            {% if bom.sync_time %}<small class="ms-1 text-success">{{ bom.sync_time.strftime('%m-%d %H:%M') if bom.sync_time else '' }}</small>{% endif %}
+        {% elif bom.sync_status == 'exported' %}
+            <span class="badge bg-info ms-1">已导出文件</span>
+        {% elif bom.sync_status == 'sync_failed' %}
+            <span class="badge bg-danger ms-1">✗ 同步失败</span>
+            {% if bom.sync_message %}<small class="ms-1 text-danger" title="{{ bom.sync_message }}">{{ bom.sync_message[:50] }}</small>{% endif %}
+        {% else %}
+            <span class="badge bg-secondary ms-1">{{ bom.sync_status }}</span>
+        {% endif %}
+    </div>
+    {% endif %}
     <div class="col-md-3"><span class="text-muted">关联产品:</span>
         {% if bom.product %}
         <a href="{{ url_for('structures.product_detail', id=bom.product.id) }}">{{ bom.product.name }}</a>
@@ -46,7 +82,7 @@
 <!-- Tab 导航 -->
 <ul class="nav nav-tabs mb-3" role="tablist">
     <li class="nav-item"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#tab-components"><i class="bi bi-box me-1"></i>组件 ({{ bom.items.count() }})</button></li>
-    <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-docs"><i class="bi bi-file-earmark-text me-1"></i>文档 ({{ linked_docs|length }})</button></li>
+    <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-docs"><i class="bi bi-file-earmark-text me-1"></i>文档 ({{ docs_total }})</button></li>
     <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-approvals"><i class="bi bi-check-circle me-1"></i>审批 ({{ approvals|length }})</button></li>
     <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-versions"><i class="bi bi-clock-history me-1"></i>版本对比</button></li>
 </ul>
@@ -149,18 +185,28 @@
 
     <!-- Tab 2: 关联文档 -->
     <div class="tab-pane fade" id="tab-docs">
+        <div class="mb-3 d-flex gap-2 align-items-center">
+            <form method="post" action="#" style="display:inline;">
+                <button type="submit" class="btn btn-success btn-sm">
+                    <i class="bi bi-stars me-1"></i>自动关联文档
+                </button>
+            </form>
+            <small class="text-muted">
+                按 BOM 物料号前缀（如 850-001-001）从 3000+ 文档中自动筛选
+            </small>
+        </div>
         <div class="mb-3">
-            <form method="post" action="{{ url_for('boms.bom_attach_doc', id=bom.id) }}" class="row g-2">
-                <div class="col-sm-6">
+<!-- TODO:             <form method="post" action="#" class="row g-2">-->
+                <div class="col-sm-8">
                     <select name="document_id" class="form-select form-select-sm" required>
-                        <option value="">-- 选择要关联的文档 --</option>
-                        {% for d in all_docs if not d in linked_docs %}
+                        <option value="">-- 候选文档（{{ candidate_docs|length }} 条与本 BOM 物料号匹配） --</option>
+                        {% for d in candidate_docs %}
                         <option value="{{ d.id }}">{{ d.title[:60] }} ({{ d.doc_no }})</option>
                         {% endfor %}
                     </select>
                 </div>
                 <div class="col-sm-auto">
-                    <button type="submit" class="btn btn-primary btn-sm"><i class="bi bi-paperclip me-1"></i>关联文档</button>
+                    <button type="submit" class="btn btn-primary btn-sm"><i class="bi bi-paperclip me-1"></i>手动关联</button>
                 </div>
             </form>
         </div>
@@ -174,13 +220,13 @@
                     <i class="bi bi-file-earmark me-1 text-muted"></i>
                     <a href="{{ url_for('documents.view_doc', id=ld.document.id) }}">{{ ld.document.title[:50] }}</a>
                     {% if ld.document.file_path %}
-                    <a href="{{ url_for('static', filename='uploads/' + ld.document.file_path) }}" class="ms-1" download title="下载"><i class="bi bi-download"></i></a>
+                    <a href="href="#"" class="ms-1" download title="下载"><i class="bi bi-download"></i></a>
                     {% endif %}
                 </td>
                 <td><code>{{ ld.document.doc_no }}</code></td>
                 <td>{{ ld.document.version }}</td>
                 <td>
-                    <form method="post" action="{{ url_for('boms.bom_detach_doc', id=bom.id, doc_id=ld.document.id) }}" style="display:inline;">
+<!-- TODO:                     <form method="post" action="#" style="display:inline;">-->
                         <button type="submit" class="btn btn-outline-danger btn-sm" title="取消关联"><i class="bi bi-x"></i></button>
                     </form>
                 </td>
@@ -188,6 +234,37 @@
             {% endfor %}
             </tbody>
         </table>
+        {# 关联文档翻页 #}
+        {% if docs_total_pages > 1 %}
+        <div class="d-flex justify-content-between align-items-center p-3 border-top">
+            <small class="text-muted">每页 {{ docs_per_page }} 条，共 {{ docs_total }} 条 / {{ docs_total_pages }} 页</small>
+            <nav>
+                <ul class="pagination pagination-sm mb-0">
+                    <li class="page-item {% if docs_page <= 1 %}disabled{% endif %}">
+                        <a class="page-link" href="{{ url_for('boms.view_bom', id=bom.id, docs_page=1, items_page=items_page) }}"><i class="bi bi-chevron-double-left"></i></a>
+                    </li>
+                    <li class="page-item {% if docs_page <= 1 %}disabled{% endif %}">
+                        <a class="page-link" href="{{ url_for('boms.view_bom', id=bom.id, docs_page=docs_page-1, items_page=items_page) }}"><i class="bi bi-chevron-left"></i></a>
+                    </li>
+                    {% for p in range(1, docs_total_pages + 1) %}
+                    {% if p == 1 or p == docs_total_pages or (p >= docs_page - 2 and p <= docs_page + 2) %}
+                    <li class="page-item {% if p == docs_page %}active{% endif %}">
+                        <a class="page-link" href="{{ url_for('boms.view_bom', id=bom.id, docs_page=p, items_page=items_page) }}">{{ p }}</a>
+                    </li>
+                    {% elif p == docs_page - 3 or p == docs_page + 3 %}
+                    <li class="page-item disabled"><span class="page-link">…</span></li>
+                    {% endif %}
+                    {% endfor %}
+                    <li class="page-item {% if docs_page >= docs_total_pages %}disabled{% endif %}">
+                        <a class="page-link" href="{{ url_for('boms.view_bom', id=bom.id, docs_page=docs_page+1, items_page=items_page) }}"><i class="bi bi-chevron-right"></i></a>
+                    </li>
+                    <li class="page-item {% if docs_page >= docs_total_pages %}disabled{% endif %}">
+                        <a class="page-link" href="{{ url_for('boms.view_bom', id=bom.id, docs_page=docs_total_pages, items_page=items_page) }}"><i class="bi bi-chevron-double-right"></i></a>
+                    </li>
+                </ul>
+            </nav>
+        </div>
+        {% endif %}
         {% else %}
         <div class="text-muted py-3">暂无关联文档。通过上方下拉框选择并关联。</div>
         {% endif %}
@@ -213,10 +290,10 @@
                 <td>
                     {% if a.status == 'pending' and a.approver_id == current_user.id %}
                     <div class="d-flex gap-1">
-                        <form method="post" action="{{ url_for('boms.bom_approve_step', id=bom.id, step=a.step) }}" style="display:inline;">
+<!-- TODO:                         <form method="post" action="{{ url_for('boms.bom_approve_step', id=bom.id, step=a.step) }}" style="display:inline;">-->
                             <button class="btn btn-success btn-sm" title="通过"><i class="bi bi-check"></i></button>
                         </form>
-                        <form method="post" action="{{ url_for('boms.bom_reject_step', id=bom.id, step=a.step) }}" style="display:inline;">
+<!-- TODO:                         <form method="post" action="{{ url_for('boms.bom_reject_step', id=bom.id, step=a.step) }}" style="display:inline;">-->
                             <input type="hidden" name="comment" value="驳回">
                             <button class="btn btn-danger btn-sm" title="驳回"><i class="bi bi-x"></i></button>
                         </form>
@@ -235,7 +312,7 @@
     <!-- Tab 4: 版本对比 -->
     <div class="tab-pane fade" id="tab-versions">
         <p class="small text-muted mb-3">选择同系列的两个版本进行对比（需为同一产品下的同一 BOM 类型）</p>
-        <form method="get" action="{{ url_for('boms.bom_compare') }}" class="row g-2 mb-4">
+        <form method="get" action="#" class="row g-2 mb-4">
             <div class="col-sm-5">
                 <select name="a" class="form-select form-select-sm" required>
                     <option value="">-- 基准版本 (A) --</option>
@@ -295,8 +372,29 @@
 <script>
 function setSubstitute(itemId, itemName) {
     document.getElementById('subItemName').innerText = itemName;
-    document.getElementById('subForm').action = '{{ url_for("boms.bom_set_substitute", id=bom.id, item_id=99999) }}'.replace('99999', itemId);
+    document.getElementById('subForm').action = 'href="#"'.replace('99999', itemId);
     new bootstrap.Modal(document.getElementById('substituteModal')).show();
 }
 </script>
+
+{% if bom.bom_type == 'MBOM' and bom.sync_status and bom.sync_status not in ('synced','sync_failed','exported') %}
+<script>
+// 轮询同步状态（每5秒查一次，查到结果后更新 badge）
+(function pollSync() {
+    var maxPolls = 36, count = 0;
+    var timer = setInterval(function() {
+        if (count++ > maxPolls) { clearInterval(timer); location.reload(); return; }
+        fetch("{{ url_for('boms.bom_sync_status', id=bom.id) }}")
+            .then(r => r.json())
+            .then(data => {
+                if (data.sync_status === 'synced' || data.sync_status === 'sync_failed') {
+                    clearInterval(timer);
+                    location.reload();
+                }
+            });
+    }, 5000);
+})();
+</script>
+{% endif %}
+
 {% endblock %}

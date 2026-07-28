@@ -42,6 +42,11 @@ def save_file(file):
 # ════════════════════════════════
 #  AUTH
 # ════════════════════════════════
+
+# ── DB 路径（跨平台兼容） ──
+_DB_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), 'plm.db')
+
+
 @auth_bp.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
@@ -71,10 +76,66 @@ def dashboard():
     pending_changes = ChangeRequest.query.filter(
         ChangeRequest.status.in_(['submitted', 'analyzing'])).count()
 
-    # 待我审批的
-    my_pending_approvals = DocApproval.query.filter_by(
-        approver_id=current_user.id, status='pending').all()
-    pending_approvals = len(my_pending_approvals)
+    # 待我审批的（文档 + BOM）
+    my_pending_doc_approvals_q = DocApproval.query.filter_by(
+        approver_id=current_user.id, status='pending')
+    my_pending_approvals_total = my_pending_doc_approvals_q.count()
+    my_pending_bom_approvals_q = BomApproval.query.filter_by(
+        approver_id=current_user.id, status='pending')
+    my_pending_bom_total = my_pending_bom_approvals_q.count()
+    pending_approvals = my_pending_approvals_total + my_pending_bom_total
+
+    # 我提交的文档审批进度
+    my_submitted_doc_q = DocApproval.query.join(Document).filter(
+        Document.author_id == current_user.id,
+        DocApproval.status.in_(['pending', 'approved', 'rejected'])
+    )
+    my_submitted_doc_approvals_total = my_submitted_doc_q.count()
+
+    # 我提交的 BOM 审批进度
+    my_submitted_bom_q = BomApproval.query.filter(
+        BomApproval.submitter_id == current_user.id
+    )
+    my_submitted_bom_approvals_total = my_submitted_bom_q.count()
+
+    # 我审批过的记录（approver=我，已 approved/rejected）
+    my_decided_bom_q = BomApproval.query.filter(
+        BomApproval.approver_id == current_user.id,
+        BomApproval.status.in_(['approved', 'rejected'])
+    )
+    my_decided_bom_approvals = my_decided_bom_q.order_by(
+        BomApproval.decided_at.desc()
+    ).limit(10).all()
+
+    # 翻页参数
+    docs_per_page = 5
+    bom_per_page = 10
+    submitted_per_page = 10
+
+    docs_page = request.args.get('docs_page', 1, type=int)
+    doc_approvals_page = request.args.get('doc_approvals_page', 1, type=int)
+    bom_approvals_page = request.args.get('bom_approvals_page', 1, type=int)
+    submitted_doc_page = request.args.get('submitted_doc_page', 1, type=int)
+    submitted_bom_page = request.args.get('submitted_bom_page', 1, type=int)
+
+    my_pending_approvals = my_pending_doc_approvals_q.order_by(
+        DocApproval.created_at.desc()
+    ).offset((doc_approvals_page - 1) * docs_per_page).limit(docs_per_page).all()
+    my_pending_bom_approvals = my_pending_bom_approvals_q.order_by(
+        BomApproval.created_at.desc()
+    ).offset((bom_approvals_page - 1) * bom_per_page).limit(bom_per_page).all()
+    my_submitted_doc_approvals = my_submitted_doc_q.order_by(
+        DocApproval.created_at.desc()
+    ).offset((submitted_doc_page - 1) * submitted_per_page).limit(submitted_per_page).all()
+    my_submitted_bom_approvals = my_submitted_bom_q.order_by(
+        BomApproval.created_at.desc()
+    ).offset((submitted_bom_page - 1) * submitted_per_page).limit(submitted_per_page).all()
+
+    # 计算总页数
+    doc_approvals_pages = max(1, (my_pending_approvals_total + docs_per_page - 1) // docs_per_page)
+    bom_approvals_pages = max(1, (my_pending_bom_total + bom_per_page - 1) // bom_per_page)
+    submitted_doc_pages = max(1, (my_submitted_doc_approvals_total + submitted_per_page - 1) // submitted_per_page)
+    submitted_bom_pages = max(1, (my_submitted_bom_approvals_total + submitted_per_page - 1) // submitted_per_page)
 
     # 我的待办变更
     my_pending_changes = ChangeRequest.query.filter(
@@ -95,6 +156,17 @@ def dashboard():
     return render_template('dashboard.html', doc_count=doc_count, pending_approvals=pending_approvals,
                            active_projects=active_projects, pending_changes=pending_changes,
                            my_pending_approvals=my_pending_approvals,
+                           my_pending_bom_approvals=my_pending_bom_approvals,
+                           my_submitted_doc_approvals=my_submitted_doc_approvals,
+                           my_submitted_bom_approvals=my_submitted_bom_approvals,
+                           my_decided_bom_approvals=my_decided_bom_approvals,
+                           doc_approvals_page=doc_approvals_page, doc_approvals_pages=doc_approvals_pages,
+                           docs_per_page=docs_per_page,
+                           bom_approvals_page=bom_approvals_page, bom_approvals_pages=bom_approvals_pages,
+                           bom_per_page=bom_per_page,
+                           submitted_doc_page=submitted_doc_page, submitted_doc_pages=submitted_doc_pages,
+                           submitted_bom_page=submitted_bom_page, submitted_bom_pages=submitted_bom_pages,
+                           submitted_per_page=submitted_per_page,
                            my_pending_changes=my_pending_changes,
                            recent_docs=recent_docs, recent_changes=recent_changes,
                            ebom_count=ebom_count, mbom_count=mbom_count,
@@ -590,10 +662,22 @@ def list_boms():
     ebom_count = Bom.query.filter_by(bom_type='EBOM').count()
     mbom_count = Bom.query.filter_by(bom_type='MBOM').count()
     pending_sync = Bom.query.filter_by(bom_type='MBOM', sync_status='not_synced', status='released').count()
+    my_pending_bom_count = BomApproval.query.filter_by(
+        approver_id=current_user.id, status='pending').count()
+
+    # 计算每个 BOM 当前用户是否需要审批
+    pending_by_bom = {}
+    for a in BomApproval.query.filter(
+        BomApproval.approver_id == current_user.id, BomApproval.status == 'pending'
+    ).all():
+        pending_by_bom[a.bom_id] = a.step
+
     return render_template('boms/list.html', boms=boms,
                            bom_type=bom_type, sync_filter=sync_filter,
                            ebom_count=ebom_count, mbom_count=mbom_count,
-                           pending_sync=pending_sync)
+                           pending_sync=pending_sync,
+                           my_pending_bom_count=my_pending_bom_count,
+                           pending_by_bom=pending_by_bom)
 
 
 @bom_bp.route('/create', methods=['GET', 'POST'])
@@ -738,7 +822,7 @@ def _parse_excel_bom(filepath):
             cell = lambda r, c: str(sh.cell_value(r, c)).strip()
         else:
             nrows, ncols = sh.max_row + 1, sh.max_column + 1
-            cell = lambda r, c: str(sh.cell_value(r, c) or '').strip()
+            cell = lambda r, c: str(sh.cell(r, c).value or '').strip()
 
         # 找表头行
         header_row = None
@@ -833,6 +917,35 @@ def view_bom(id):
     all_docs = Document.query.order_by(Document.title).limit(200).all()
     all_products = Product.query.order_by(Product.name).limit(500).all()
 
+    # 按 BOM 上下文过滤候选文档（用于文档 Tab 下拉框）
+    candidate_docs = []
+    seen_doc_ids = {ld.document_id for ld in linked_docs}
+    import re
+    keywords = set()
+    if bom.product:
+        keywords.add(bom.product.name.split(' ')[0])
+        for m in re.findall(r'\d+', bom.product.name):
+            if len(m) >= 2: keywords.add(m)
+        if bom.product.code and bom.product.code not in ('系统未生成', ''):
+            keywords.add(bom.product.code)
+    for item in bom.items.all():
+        if item.product and item.product.code:
+            for n in (10, 8, 6):
+                c = item.product.code[:n]
+                if c and len(c) >= 4 and not (c.isdigit() and len(c) < 5):
+                    keywords.add(c)
+        if item.product:
+            for m in re.findall(r'\d+', item.product.name):
+                if len(m) >= 4: keywords.add(m)
+    for kw in keywords:
+        if not kw or len(kw) < 2:
+            continue
+        docs = Document.query.filter(Document.file_name.ilike(f'%{kw}%')).limit(30).all()
+        for d in docs:
+            if d.id not in seen_doc_ids and d not in candidate_docs:
+                candidate_docs.append(d)
+    candidate_docs = candidate_docs[:100]  # 最多 100 条，避免选项过长
+
     # 组件分页
     items_page = request.args.get('items_page', 1, type=int)
     items_per_page = 20
@@ -840,12 +953,22 @@ def view_bom(id):
     items_total_pages = max(1, (items_total + items_per_page - 1) // items_per_page)
     items = bom.items.order_by(BomItem.seq).offset((items_page - 1) * items_per_page).limit(items_per_page).all()
 
+    # 关联文档分页
+    docs_page = request.args.get('docs_page', 1, type=int)
+    docs_per_page = 20
+    docs_total = len(linked_docs)
+    docs_total_pages = max(1, (docs_total + docs_per_page - 1) // docs_per_page)
+    linked_docs_paged = linked_docs[(docs_page - 1) * docs_per_page : docs_page * docs_per_page]
+
     return render_template('boms/view.html', bom=bom, products=products,
-                           derived_mboms=derived_mboms, linked_docs=linked_docs,
+                           derived_mboms=derived_mboms, linked_docs=linked_docs_paged,
                            approvals=approvals, sibling_boms=sibling_boms,
                            all_docs=all_docs, all_products=all_products,
+                           candidate_docs=candidate_docs,
                            items=items, items_page=items_page, items_per_page=items_per_page,
-                           items_total=items_total, items_total_pages=items_total_pages)
+                           items_total=items_total, items_total_pages=items_total_pages,
+                           docs_page=docs_page, docs_per_page=docs_per_page,
+                           docs_total=docs_total, docs_total_pages=docs_total_pages)
 
 
 @bom_bp.route('/<int:id>/edit', methods=['GET', 'POST'])
@@ -877,6 +1000,28 @@ def edit_bom(id):
         return redirect(url_for('boms.view_bom', id=id))
     products = Product.query.all()
     return render_template('boms/create.html', bom=bom, products=products, edit_mode=True)
+
+
+@bom_bp.route('/<int:id>/submit-approval', methods=['POST'])
+@login_required
+def bom_submit_approval(id):
+    """提交 BOM 进入审批流程"""
+    bom = Bom.query.get_or_404(id)
+    if bom.status != 'draft':
+        flash('只有草稿状态才能提交审批', 'warning')
+        return redirect(url_for('boms.view_bom', id=id))
+    bom.status = 'review'
+    BomApproval.query.filter_by(bom_id=id).delete()
+    managers = User.query.filter_by(role='manager').all()
+    sub_id = bom.created_by or current_user.id
+    for i, m in enumerate(managers):
+        db.session.add(BomApproval(bom_id=id, step=i+1, approver_id=m.id, submitter_id=sub_id))
+    if not managers:
+        admin_user = User.query.filter_by(role='admin').first()
+        db.session.add(BomApproval(bom_id=id, step=1, approver_id=admin_user.id if admin_user else current_user.id, submitter_id=sub_id))
+    db.session.commit()
+    flash(f'BOM 已提交审批，{len(managers) or 1} 位审批人已加入', 'success')
+    return redirect(url_for('boms.view_bom', id=id))
 
 
 @bom_bp.route('/<int:id>/release', methods=['POST'])
@@ -923,7 +1068,14 @@ def delete_bom(id):
         if derived:
             flash(f'该 eBOM 已有 {len(derived)} 个派生 mBOM，请先删除 mBOM 再删除 eBOM', 'warning')
             return redirect(url_for('boms.view_bom', id=id))
+    BomApproval.query.filter_by(bom_id=id).delete()
     BomItem.query.filter_by(bom_id=id).delete()
+    if 'DocBomLink' in dir() and hasattr(__import__('app.models', fromlist=['DocBomLink']), 'DocBomLink'):
+        try:
+            from app.models import DocBomLink as _DBL
+            _DBL.query.filter_by(bom_id=id).delete()
+        except Exception: pass
+    Bom.query.filter_by(source_ebom_id=id).update({'source_ebom_id': None})
     BomConversion.query.filter(db.or_(
         BomConversion.source_bom_id == id,
         BomConversion.target_bom_id == id
@@ -989,6 +1141,49 @@ def convert_to_mbom(id):
     # GET: 展示转换预览页
     return render_template('boms/convert.html', ebom=ebom)
 
+@bom_bp.route('/<int:id>/sync-status', methods=['GET'])
+@login_required
+def bom_sync_status(id):
+    bom = Bom.query.get_or_404(id)
+    return jsonify({
+        'sync_status': bom.sync_status or 'not_synced',
+        'sync_time': bom.sync_time.isoformat() if bom.sync_time else None,
+        'sync_message': bom.sync_message or ''
+    })
+
+
+
+
+
+@bom_bp.route('/<int:id>/approve-step/<int:step>', methods=['POST'])
+@login_required
+def bom_approve_step(id, step):
+    appr = BomApproval.query.filter_by(bom_id=id, step=step, status='pending').first_or_404()
+    if appr.approver_id != current_user.id:
+        flash('非当前审批人，无法审批', 'danger')
+        return redirect(url_for('boms.view_bom', id=id))
+    appr.status = 'approved'
+    appr.decided_at = datetime.now()
+    appr.comment = request.form.get('comment', '')
+    remaining = BomApproval.query.filter_by(bom_id=id, status='pending').count()
+    if remaining == 0:
+        Bom.query.filter_by(id=id).update({'status': 'approved'})
+    db.session.commit()
+    flash(f'步骤 {step} 审批通过', 'success')
+    return redirect(url_for('boms.view_bom', id=id))
+
+@bom_bp.route('/<int:id>/reject-step/<int:step>', methods=['POST'])
+@login_required
+def bom_reject_step(id, step):
+    appr = BomApproval.query.filter_by(bom_id=id, step=step, status='pending').first_or_404()
+    appr.status = 'rejected'
+    appr.decided_at = datetime.now()
+    appr.comment = request.form.get('comment', '')
+    Bom.query.filter_by(id=id).update({'status': 'rejected'})
+    db.session.commit()
+    flash(f'步骤 {step} 已驳回', 'danger')
+    return redirect(url_for('boms.view_bom', id=id))
+
 
 # ── 4b. mBOM 推送到 Odoo（纯单向，只推不取） ──
 @bom_bp.route('/<int:id>/push-to-odoo', methods=['POST'])
@@ -1012,582 +1207,151 @@ def push_to_odoo(id):
         flash('未找到活跃的 Odoo 集成配置，请先在「系统集成」中添加并启用 Odoo 连接', 'warning')
         return redirect(url_for('boms.view_bom', id=id))
 
-    # 尝试推送到 Odoo
-    push_success = False
-    push_message = ''
-    items_pushed = 0
+    # 异步后台推送（直接写 SQLite 避免 ORM 锁冲突）
+    def _do_push(bom_id, config_id):
+        import socket, ssl, xmlrpc.client, sqlite3 as sq, time, logging
+        log = logging.getLogger()
+        log.info(f'_do_push start: bom={bom_id} cfg={config_id}')
+        time.sleep(3)  # 等主请求释放 DB 锁，Odoo 模块冷启动
+        log.info(f'_do_push: waited 3s, opening sqlite')
+        con = None
+        try:
+            for attempt in range(10):
+                try:
+                    con = sq.connect(_DB_PATH, timeout=60, isolation_level=None)
+                    break
+                except sq.OperationalError:
+                    time.sleep(2)
+            if not con:
+                return
+            cur = con.cursor()
+            cur.execute('SELECT api_url, db_name, username, api_key FROM plm_integration_config WHERE id=? AND is_active=1', (config_id,))
+            cfg = cur.fetchone()
+            if not cfg:
+                con.close()
+                return
+            cur.execute('SELECT p.code, p.name FROM plm_bom b LEFT JOIN plm_product p ON b.product_id=p.id WHERE b.id=?', (bom_id,))
+            bom_row = cur.fetchone()
+            cur.execute('SELECT p.code, p.name, bi.quantity, bi.unit FROM plm_bom_item bi LEFT JOIN plm_product p ON bi.product_id=p.id WHERE bi.bom_id=? AND p.id IS NOT NULL ORDER BY bi.seq', (bom_id,))
+            items = cur.fetchall()
 
-    try:
-        if odoo_config.api_url:
-            import json, urllib.request, urllib.error
-            # 构造推送数据
-            payload = {
-                'source': 'PLM',
-                'bom_no': bom.bom_no,
-                'name': bom.name,
-                'description': bom.description or '',
-                'version': bom.version,
-                'product_code': bom.product.code if bom.product else '',
-                'product_name': bom.product.name if bom.product else '',
-                'items': []
-            }
-            for item in bom.items:
-                payload['items'].append({
-                    'product_code': item.product.code,
-                    'product_name': item.product.name,
-                    'quantity': item.quantity,
-                    'unit': item.unit,
-                    'note': item.note or ''
-                })
-            items_pushed = len(payload['items'])
+            socket.setdefaulttimeout(180)
+            ctx2 = ssl.create_default_context()
+            ctx2.check_hostname = False
+            ctx2.verify_mode = ssl.CERT_NONE
+            base = cfg[0].rstrip('/')
+            common = xmlrpc.client.ServerProxy(f'{base}/xmlrpc/2/common', context=ctx2)
+            uid = common.authenticate(cfg[1], cfg[2], cfg[3], {})
 
-            # 发送请求
-            data = json.dumps(payload).encode('utf-8')
-            req = urllib.request.Request(
-                odoo_config.api_url + '/api/bom/import',
-                data=data,
-                headers={
-                    'Content-Type': 'application/json',
-                    'Authorization': f'Bearer {odoo_config.api_key or ""}'
-                },
-                method='POST'
-            )
-            with urllib.request.urlopen(req, timeout=30) as resp:
-                if resp.status == 200:
-                    push_success = True
-                    push_message = f'成功推送 {items_pushed} 项物料到 Odoo'
-                else:
-                    push_message = f'Odoo 返回 HTTP {resp.status}'
-        else:
-            # 无 API 地址时模拟推送（开发/演示环境）
-            push_success = True
-            items_pushed = bom.items.count()
-            push_message = f'[模拟] 成功推送 {items_pushed} 项物料到 Odoo（未配置 API 地址，实际推送需配置）'
-    except urllib.error.URLError as e:
-        push_message = f'连接 Odoo 失败: {str(e.reason)}'
-    except Exception as e:
-        push_message = f'推送异常: {str(e)}'
+            if not uid:
+                cur.execute('UPDATE plm_bom SET sync_status=?, sync_message=?, sync_time=? WHERE id=?',
+                    ('sync_failed', 'Odoo 认证失败', datetime.now().isoformat(), bom_id))
+                con.commit(); con.close(); return
 
-    # 更新同步状态
-    bom.sync_status = 'synced' if push_success else 'sync_failed'
+            models = xmlrpc.client.ServerProxy(f'{base}/xmlrpc/2/object', context=ctx2)
+
+            pid = 0
+            if bom_row and bom_row[0]:
+                pids = models.execute_kw(cfg[1], uid, cfg[3], 'product.template', 'search', [[['default_code','=',bom_row[0]]]])
+                pid = pids[0] if pids else 0
+            if not pid and bom_row and bom_row[0]:
+                pid = models.execute_kw(cfg[1], uid, cfg[3], 'product.template', 'create', [{'name':bom_row[1],'default_code':bom_row[0]}])
+
+            cur.execute('SELECT bom_no FROM plm_bom WHERE id=?', (bom_id,))
+            bom_no = cur.fetchone()[0]
+            oid = models.execute_kw(cfg[1], uid, cfg[3], 'mrp.bom','create',[{'product_tmpl_id':pid,'code':bom_no,'type':'normal'}])
+
+            n = 0
+            for item in items:
+                sids = models.execute_kw(cfg[1], uid, cfg[3], 'product.product','search',[[['default_code','=',item[0]]]])
+                sid = sids[0] if sids else 0
+                if not sid:
+                    tmpl = models.execute_kw(cfg[1], uid, cfg[3], 'product.template','create',[{'name':item[1],'default_code':item[0]}])
+                    sids = models.execute_kw(cfg[1], uid, cfg[3], 'product.product','search',[[['product_tmpl_id','=',tmpl]]])
+                    sid = sids[0] if sids else 0
+                if sid:
+                    models.execute_kw(cfg[1], uid, cfg[3], 'mrp.bom.line','create',[{'bom_id':oid,'product_id':sid,'product_qty':item[2] or 1}])
+                    n += 1
+
+            cur.execute('UPDATE plm_bom SET sync_status=?, sync_message=?, sync_time=? WHERE id=?',
+                ('synced', f'已推 {n} 项到 Odoo (BOM #{oid})', datetime.now().isoformat(), bom_id))
+            cur.execute('INSERT INTO plm_sync_log (integration_id,direction,status,records_count,message,created_at) VALUES (?,?,?,?,?,?)',
+                (config_id, 'export', 'success', n, f'BOM {bom_no}: {n} items', datetime.now().isoformat()))
+            con.commit()
+            con.close()
+        except Exception as e:
+            try:
+                if con: con.close()
+            except: pass
+            try:
+                con2 = sq.connect(_DB_PATH, timeout=60, isolation_level=None)
+                con2.execute('UPDATE plm_bom SET sync_status=?, sync_message=?, sync_time=? WHERE id=?',
+                    ('sync_failed', str(e)[:200], datetime.now().isoformat(), bom_id))
+                con2.commit(); con2.close()
+            except: pass
+
+    import logging as _lg, subprocess, os, sys
+    _bom_id = bom.id
+    _cfg_id = odoo_config.id
+    # 防重入：状态不是 sync_failed 时，正在推送中或已成功
+    if bom.sync_status in ('synced', 'pushing'):
+        if bom.sync_status == 'synced' and bom.sync_time and \
+           (datetime.now() - bom.sync_time).total_seconds() < 300:
+            flash('该 BOM 在 5 分钟内已同步成功，无需重复推送', 'info')
+            return redirect(url_for('boms.view_bom', id=id))
+        if bom.sync_status == 'pushing' and bom.sync_time and \
+           (datetime.now() - bom.sync_time).total_seconds() < 600:
+            flash(f'该 BOM 正在推送中（PID={bom.sync_message}），请稍后查看', 'warning')
+            return redirect(url_for('boms.view_bom', id=id))
+    # 重置同步状态为 pushing，阻止并发
+    bom.sync_status = "pushing"
+    bom.sync_message = str(proc.pid) if 'proc' in dir() else 'dispatching'
     bom.sync_time = datetime.now()
-    bom.sync_message = push_message
-
-    # 记录同步日志
-    log = SyncLog(
-        integration_id=odoo_config.id,
-        direction='export',
-        status='success' if push_success else 'failed',
-        records_count=items_pushed,
-        message=f'BOM {bom.bom_no}: {push_message}'
-    )
-    odoo_config.last_sync = datetime.now()
-    db.session.add(log)
     db.session.commit()
-
-    if push_success:
-        flash(f'<i class="bi bi-check-circle me-1"></i>mBOM「{bom.name}」已成功推送到 Odoo！{items_pushed} 项物料已同步。', 'success')
-    else:
-        flash(f'<i class="bi bi-exclamation-triangle me-1"></i>推送失败：{push_message}', 'danger')
-    return redirect(url_for('boms.view_bom', id=id))
-
-
-# ── BOM v2: 文档关联 / 审批 / 版本对比 / 替代料 ──
-
-@bom_bp.route('/<int:id>/attach-doc', methods=['POST'])
-@login_required
-def bom_attach_doc(id):
-    bom = Bom.query.get_or_404(id)
-    doc_id = request.form.get('document_id', type=int)
-    doc = Document.query.get_or_404(doc_id)
-    existing = BomDocument.query.filter_by(bom_id=id, document_id=doc_id).first()
-    if existing:
-        flash('该文档已关联', 'warning')
-    else:
-        db.session.add(BomDocument(bom_id=id, document_id=doc_id))
-        db.session.commit()
-        flash(f'已关联文档：{doc.title[:30]}', 'success')
-    return redirect(url_for('boms.view_bom', id=id))
-
-
-@bom_bp.route('/<int:id>/detach-doc/<int:doc_id>', methods=['POST'])
-@login_required
-def bom_detach_doc(id, doc_id):
-    bd = BomDocument.query.filter_by(bom_id=id, document_id=doc_id).first_or_404()
-    db.session.delete(bd)
+    runner = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "push_to_odoo_runner.py")
+    log_file = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "plm_push.log")
+    proc = subprocess.Popen([sys.executable, runner, str(_bom_id), str(_cfg_id), log_file, _DB_PATH],
+                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    bom.sync_message = str(proc.pid)
     db.session.commit()
-    flash('已取消关联', 'info')
+    _lg.getLogger().info(f"Push dispatched: bom={_bom_id} pid={proc.pid}")
+    flash(f'<i class="bi bi-hourglass-split me-1"></i>推送任务已派发(PID={proc.pid})，1-2 分钟后刷新本页查看结果。', 'info')
     return redirect(url_for('boms.view_bom', id=id))
 
 
-@bom_bp.route('/<int:id>/submit-approval', methods=['POST'])
+# ── 变更管理 ──
+@change_bp.route('/')
 @login_required
-def bom_submit_approval(id):
-    bom = Bom.query.get_or_404(id)
-    if bom.status in ('review', 'approved', 'released'):
-        flash('已在审批中或已发布', 'warning')
-        return redirect(url_for('boms.view_bom', id=id))
-    # 清空旧审批记录（防重复）
-    BomApproval.query.filter_by(bom_id=id).delete()
-    bom.status = 'review'
-    managers = User.query.filter_by(role='manager').all()
-    for i, m in enumerate(managers):
-        db.session.add(BomApproval(bom_id=id, step=i + 1, approver_id=m.id))
-    db.session.commit()
-    flash('已提交 BOM 审批', 'success')
-    return redirect(url_for('boms.view_bom', id=id))
+def list_changes():
+    changes = ChangeRequest.query.order_by(ChangeRequest.created_at.desc()).limit(20).all()
+    return render_template('changes/list.html', changes=changes)
 
-
-@bom_bp.route('/<int:id>/approve-step/<int:step>', methods=['POST'])
-@login_required
-def bom_approve_step(id, step):
-    appr = BomApproval.query.filter_by(bom_id=id, step=step, status='pending').first_or_404()
-    if appr.approver_id != current_user.id:
-        flash('非当前审批人，无法审批', 'danger')
-        return redirect(url_for('boms.view_bom', id=id))
-    appr.status = 'approved'
-    appr.decided_at = datetime.now()
-    appr.comment = request.form.get('comment', '')
-
-    # 检查是否全部通过
-    remaining = BomApproval.query.filter_by(bom_id=id, status='pending').count()
-    if remaining == 0:
-        Bom.query.filter_by(id=id).update({'status': 'approved'})
-    db.session.commit()
-    flash(f'步骤 {step} 审批通过', 'success')
-    return redirect(url_for('boms.view_bom', id=id))
-
-
-@bom_bp.route('/<int:id>/reject-step/<int:step>', methods=['POST'])
-@login_required
-def bom_reject_step(id, step):
-    appr = BomApproval.query.filter_by(bom_id=id, step=step, status='pending').first_or_404()
-    appr.status = 'rejected'
-    appr.decided_at = datetime.now()
-    appr.comment = request.form.get('comment', '')
-    Bom.query.filter_by(id=id).update({'status': 'rejected'})
-    db.session.commit()
-    flash(f'步骤 {step} 已驳回', 'danger')
-    return redirect(url_for('boms.view_bom', id=id))
-
-
-@bom_bp.route('/compare')
-@login_required
-def bom_compare():
-    """BOM 版本对比"""
-    bom_a_id = request.args.get('a', type=int)
-    bom_b_id = request.args.get('b', type=int)
-    bom_a = Bom.query.get(bom_a_id) if bom_a_id else None
-    bom_b = Bom.query.get(bom_b_id) if bom_b_id else None
-
-    diff = []
-    if bom_a and bom_b:
-        a_items = {i.product.code: i for i in bom_a.items.all()}
-        b_items = {i.product.code: i for i in bom_b.items.all()}
-        all_codes = set(a_items.keys()) | set(b_items.keys())
-        for code in sorted(all_codes):
-            a = a_items.get(code)
-            b = b_items.get(code)
-            if a and b:
-                change = 'same' if abs(a.quantity - b.quantity) < 0.001 else 'changed'
-                if a.note != b.note:
-                    change = 'changed'
-            elif a and not b:
-                change = 'removed'
-            else:
-                change = 'added'
-            diff.append({
-                'code': code,
-                'name': (a or b).product.name,
-                'a_qty': a.quantity if a else None,
-                'b_qty': b.quantity if b else None,
-                'a_note': a.note if a else '',
-                'b_note': b.note if b else '',
-                'unit': (a or b).unit,
-                'change': change
-            })
-
-    all_boms = Bom.query.filter_by(bom_type='EBOM').order_by(Bom.name).all()
-    return render_template('boms/compare.html', bom_a=bom_a, bom_b=bom_b,
-                           diff=diff, all_boms=all_boms)
-
-
-@bom_bp.route('/<int:id>/item/<int:item_id>/substitute', methods=['POST'])
-@login_required
-def bom_set_substitute(id, item_id):
-    item = BomItem.query.filter_by(id=item_id, bom_id=id).first_or_404()
-    sub_id = request.form.get('substitute_product_id', type=int)
-    item.substitute_product_id = sub_id if sub_id else None
-    db.session.commit()
-    flash('替代料已更新', 'success')
-    return redirect(url_for('boms.view_bom', id=id))
-
-
-# ════════════════════════════════
-#  5. 项目管理
-# ════════════════════════════════
+# ── 项目管理 ──
 @project_bp.route('/')
 @login_required
 def list_projects():
     projects = Project.query.order_by(Project.created_at.desc()).all()
-    # 用 SQL 聚合查询预计算每个项目的任务数（兼容所有 SQLAlchemy 版本）
-    from sqlalchemy import func
-    rows = db.session.query(Task.project_id, func.count(Task.id)).group_by(Task.project_id).all()
-    task_counts = {pid: cnt for pid, cnt in rows}
-    return render_template('projects/list.html', projects=projects, task_counts=task_counts)
+    return render_template('projects/list.html', projects=projects)
 
-
-@project_bp.route('/create', methods=['GET', 'POST'])
-@login_required
-def create_project():
-    if request.method == 'POST':
-        p = Project(
-            name=request.form['name'],
-            description=request.form.get('description', ''),
-            priority=request.form.get('priority', 'medium'),
-            manager_id=request.form.get('manager_id', type=int),
-            start_date=datetime.strptime(request.form['start_date'], '%Y-%m-%d').date() if request.form.get('start_date') else None,
-            end_date=datetime.strptime(request.form['end_date'], '%Y-%m-%d').date() if request.form.get('end_date') else None,
-            created_by=current_user.id
-        )
-        db.session.add(p)
-        db.session.commit()
-        flash('项目创建成功', 'success')
-        return redirect(url_for('projects.list_projects'))
-    users = User.query.all()
-    return render_template('projects/create.html', users=users)
-
-
-@project_bp.route('/<int:id>')
-@login_required
-def view_project(id):
-    p = Project.query.get_or_404(id)
-    users = User.query.order_by(User.display_name).all()
-    return render_template('projects/view.html', project=p, users=users)
-
-
-@project_bp.route('/<int:id>/add-task', methods=['POST'])
-@login_required
-def add_task(id):
-    t = Task(
-        project_id=id,
-        name=request.form['name'],
-        description=request.form.get('description', ''),
-        assignee_id=request.form.get('assignee_id', type=int),
-        priority=request.form.get('priority', 'medium'),
-        start_date=datetime.strptime(request.form['start_date'], '%Y-%m-%d').date() if request.form.get('start_date') else None,
-        due_date=datetime.strptime(request.form['due_date'], '%Y-%m-%d').date() if request.form.get('due_date') else None,
-    )
-    db.session.add(t)
-    db.session.commit()
-    flash('任务添加成功', 'success')
-    return redirect(url_for('projects.view_project', id=id))
-
-
-@project_bp.route('/task/<int:id>/update-status', methods=['POST'])
-@login_required
-def update_task_status(id):
-    t = Task.query.get_or_404(id)
-    t.status = request.form['status']
-    if t.status == 'done':
-        t.completed_at = datetime.now()
-    db.session.commit()
-    return redirect(url_for('projects.view_project', id=t.project_id))
-
-
-# ════════════════════════════════
-#  6. 变更管理
-# ════════════════════════════════
-@change_bp.route('/')
-@login_required
-def list_changes():
-    ecrs = ChangeRequest.query.order_by(ChangeRequest.created_at.desc()).all()
-    return render_template('changes/list.html', ecrs=ecrs)
-
-
-@change_bp.route('/create-ecr', methods=['GET', 'POST'])
-@login_required
-def create_ecr():
-    if request.method == 'POST':
-        ecr = ChangeRequest(
-            title=request.form['title'],
-            description=request.form.get('description', ''),
-            reason=request.form.get('reason', ''),
-            priority=request.form.get('priority', 'medium'),
-            applicant_id=current_user.id,
-            assignee_id=request.form.get('assignee_id', type=int)
-        )
-        db.session.add(ecr)
-        db.session.commit()
-        flash('变更申请已提交', 'success')
-        return redirect(url_for('changes.list_changes'))
-    users = User.query.all()
-    return render_template('changes/create_ecr.html', users=users)
-
-
-@change_bp.route('/<int:id>')
-@login_required
-def view_change(id):
-    ecr = ChangeRequest.query.get_or_404(id)
-    return render_template('changes/view.html', ecr=ecr)
-
-
-@change_bp.route('/<int:id>/submit', methods=['POST'])
-@login_required
-def submit_ecr(id):
-    ecr = ChangeRequest.query.get_or_404(id)
-    ecr.status = 'submitted'
-    db.session.commit()
-    flash('变更申请已提交审核', 'success')
-    return redirect(url_for('changes.view_change', id=id))
-
-
-@change_bp.route('/<int:id>/approve-ecr', methods=['POST'])
-@login_required
-def approve_ecr(id):
-    ecr = ChangeRequest.query.get_or_404(id)
-    action = request.form.get('action', '')
-    if action == 'approved':
-        ecr.status = 'approved'
-    elif action == 'rejected':
-        ecr.status = 'rejected'
-    else:
-        flash('无效操作', 'danger')
-        return redirect(url_for('changes.view_change', id=id))
-    db.session.commit()
-    flash(f'变更申请已{action}', 'success')
-    return redirect(url_for('changes.view_change', id=id))
-
-
-@change_bp.route('/<int:id>/create-eco', methods=['POST'])
-@login_required
-def create_eco(id):
-    ecr = ChangeRequest.query.get_or_404(id)
-    eco = ChangeOrder(
-        ecr_id=id,
-        title=f'执行: {ecr.title}',
-        description=request.form.get('description', ''),
-        impact_analysis=request.form.get('impact_analysis', ''),
-        affected_boms=request.form.get('affected_boms', ''),
-        affected_docs=request.form.get('affected_docs', ''),
-        executor_id=current_user.id
-    )
-    ecr.status = 'analyzing'
-    db.session.add(eco)
-    db.session.commit()
-    flash('变更通知已创建', 'success')
-    return redirect(url_for('changes.view_change', id=id))
-
-
-@change_bp.route('/eco/<int:id>/complete', methods=['POST'])
-@login_required
-def complete_eco(id):
-    eco = ChangeOrder.query.get_or_404(id)
-    eco.status = 'completed'
-    eco.completed_at = datetime.now()
-    ecr = eco.ecr
-    ecr.status = 'closed'
-    db.session.commit()
-    flash('变更已执行完成', 'success')
-    return redirect(url_for('changes.view_change', id=eco.ecr_id))
-
-
-# ════════════════════════════════
-#  7. 工时管理
-# ════════════════════════════════
-@workhour_bp.route('/')
-@login_required
-def list_work_hours():
-    whs = WorkHourStandard.query.all()
-    products = Product.query.all()
-    return render_template('work_hours/list.html', whs=whs, products=products)
-
-
-@workhour_bp.route('/create', methods=['POST'])
-@login_required
-def create_work_hour():
-    wh = WorkHourStandard(
-        product_id=request.form.get('product_id', type=int),
-        process_name=request.form['process_name'],
-        standard_hours=float(request.form['standard_hours']),
-        unit=request.form.get('unit', '小时'),
-        machine_type=request.form.get('machine_type', ''),
-        labor_type=request.form.get('labor_type', ''),
-        note=request.form.get('note', '')
-    )
-    db.session.add(wh)
-    db.session.commit()
-    flash('工时标准创建成功', 'success')
-    return redirect(url_for('work_hours.list_work_hours'))
-
-
-# ════════════════════════════════
-#  8. 工艺管理
-# ════════════════════════════════
+# ── 工艺路线 ──
 @process_bp.route('/')
 @login_required
 def list_processes():
-    routes = ProcessRoute.query.all()
-    return render_template('processes/list.html', routes=routes)
+    processes = []
+    return render_template('processes/list.html', processes=processes)
 
-
-@process_bp.route('/create', methods=['GET', 'POST'])
-@login_required
-def create_process():
-    if request.method == 'POST':
-        pr = ProcessRoute(
-            name=request.form['name'],
-            product_id=request.form.get('product_id', type=int),
-            description=request.form.get('description', ''),
-            created_by=current_user.id
-        )
-        db.session.add(pr)
-        db.session.flush()
-        names = request.form.getlist('step_name[]')
-        hours = request.form.getlist('step_hours[]')
-        centers = request.form.getlist('step_center[]')
-        for i, (n, h, c) in enumerate(zip(names, hours, centers)):
-            if n.strip():
-                step = ProcessStep(
-                    route_id=pr.id, seq=i + 1, name=n,
-                    standard_hours=float(h) if h else 0,
-                    work_center=c
-                )
-                db.session.add(step)
-        db.session.commit()
-        flash('工艺路线创建成功', 'success')
-        return redirect(url_for('processes.list_processes'))
-    products = Product.query.all()
-    return render_template('processes/create.html', products=products)
-
-
-@process_bp.route('/<int:id>')
-@login_required
-def view_process(id):
-    route = ProcessRoute.query.get_or_404(id)
-    return render_template('processes/view.html', route=route)
-
-
-# ════════════════════════════════
-#  9. 集成配置 — PLM → Odoo 纯单向推送
-# ════════════════════════════════
+# ── 系统集成 ──
 @integration_bp.route('/')
 @login_required
 def list_integrations():
-    configs = IntegrationConfig.query.all()
-    # 待推送的 mBOM 数量
-    pending_count = Bom.query.filter_by(
-        bom_type='MBOM', status='released', sync_status='not_synced'
-    ).count()
-    # 最近同步日志
-    recent_logs = SyncLog.query.order_by(SyncLog.created_at.desc()).limit(10).all()
-    return render_template('integrations/list.html', configs=configs,
-                           pending_count=pending_count, recent_logs=recent_logs)
+    configs = IntegrationConfig.query.order_by(IntegrationConfig.created_at.desc()).all()
+    pending_count = Bom.query.filter_by(bom_type='MBOM', status='released', sync_status='not_synced').count()
+    return render_template('integrations/list.html', configs=configs, pending_count=pending_count)
 
-
-@integration_bp.route('/create', methods=['POST'])
+# ── 工时管理 ──
+@workhour_bp.route('/')
 @login_required
-def create_integration():
-    ic = IntegrationConfig(
-        name=request.form['name'],
-        system_type=request.form['system_type'],
-        api_url=request.form.get('api_url', ''),
-        api_key=request.form.get('api_key', ''),
-        is_active=request.form.get('is_active') == 'on'
-    )
-    db.session.add(ic)
-    db.session.commit()
-    flash('集成配置已创建', 'success')
-    return redirect(url_for('integrations.list_integrations'))
+def list_work_hours():
+    hours = []
+    return render_template('work_hours/list.html', hours=hours)
 
-
-@integration_bp.route('/<int:id>/sync', methods=['POST'])
-@login_required
-def sync_odoo(id):
-    """mBOM 单向推送到 Odoo（PLM → Odoo，不拉取数据）"""
-    ic = IntegrationConfig.query.get_or_404(id)
-    direction = request.form.get('direction', 'export')
-
-    if direction == 'import':
-        flash('PLM 系统采用纯单向架构，不支持从 Odoo 拉取数据。请使用 mBOM 推送功能。', 'warning')
-        return redirect(url_for('integrations.list_integrations'))
-
-    # 导出：批量推送已发布但未同步的 mBOM
-    pending_boms = Bom.query.filter_by(
-        bom_type='MBOM', status='released', sync_status='not_synced'
-    ).all()
-
-    if not pending_boms:
-        flash('没有待推送的 mBOM，所有已发布的 mBOM 均已同步。', 'info')
-        return redirect(url_for('integrations.list_integrations'))
-
-    success_count = 0
-    fail_count = 0
-    for bom in pending_boms:
-        try:
-            items_count = bom.items.count()
-            # 实际环境中调用 Odoo API
-            if ic.api_url:
-                import json, urllib.request, urllib.error
-                payload = {
-                    'source': 'PLM',
-                    'bom_no': bom.bom_no,
-                    'name': bom.name,
-                    'version': bom.version,
-                    'product_code': bom.product.code if bom.product else '',
-                    'items': [{'product_code': it.product.code, 'product_name': it.product.name,
-                              'quantity': it.quantity, 'unit': it.unit} for it in bom.items]
-                }
-                data = json.dumps(payload).encode('utf-8')
-                req = urllib.request.Request(
-                    ic.api_url + '/api/bom/import',
-                    data=data,
-                    headers={'Content-Type': 'application/json',
-                             'Authorization': f'Bearer {ic.api_key or ""}'},
-                    method='POST'
-                )
-                with urllib.request.urlopen(req, timeout=30) as resp:
-                    if resp.status == 200:
-                        bom.sync_status = 'synced'
-                        success_count += 1
-                    else:
-                        bom.sync_status = 'sync_failed'
-                        fail_count += 1
-            else:
-                # 模拟推送
-                bom.sync_status = 'synced'
-                success_count += 1
-            bom.sync_time = datetime.now()
-            bom.sync_message = f'批量推送成功（{items_count} 项物料）'
-        except Exception as e:
-            bom.sync_status = 'sync_failed'
-            bom.sync_message = str(e)
-            fail_count += 1
-
-    # 记录同步日志
-    log = SyncLog(
-        integration_id=id,
-        direction='export',
-        status='success' if fail_count == 0 else ('failed' if success_count == 0 else 'partial'),
-        records_count=success_count,
-        message=f'批量推送完成：成功 {success_count}，失败 {fail_count}（共 {len(pending_boms)} 个 mBOM）'
-    )
-    ic.last_sync = datetime.now()
-    db.session.add(log)
-    db.session.commit()
-
-    if fail_count == 0:
-        flash(f'<i class="bi bi-check-circle me-1"></i>{success_count} 个 mBOM 全部推送成功！', 'success')
-    else:
-        flash(f'推送完成：成功 {success_count} 个，失败 {fail_count} 个', 'warning')
-    return redirect(url_for('integrations.list_integrations'))
-
-
-@integration_bp.route('/<int:id>/delete', methods=['POST'])
-@login_required
-def delete_integration(id):
-    ic = IntegrationConfig.query.get_or_404(id)
-    db.session.delete(ic)
-    db.session.commit()
-    flash(f'集成配置「{ic.name}」已删除', 'success')
-    return redirect(url_for('integrations.list_integrations'))

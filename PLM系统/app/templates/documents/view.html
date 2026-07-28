@@ -97,7 +97,7 @@
                                 <td>
                                     {% if doc.file_name %}
                                     {% if doc.file_path %}
-                                    <a href="{{ url_for('static', filename='uploads/' + doc.file_path) }}" class="btn btn-outline-primary btn-sm" download>
+                                    <a href="{{ '#' }}" class="btn btn-outline-primary btn-sm" download>
                                         <i class="bi bi-download me-1"></i>{{ doc.file_name }}
                                     </a>
                                     <small class="text-muted ms-1">
@@ -201,7 +201,7 @@
                                 <td>
                                     {% if ver.file_name %}
                                     {% if ver.file_path %}
-                                    <a href="{{ url_for('static', filename='uploads/' + ver.file_path) }}" download>
+                                    <a href="{{ '#' }}" download>
                                         <i class="bi bi-paperclip me-1"></i>{{ ver.file_name }}
                                     </a>
                                     {% else %}

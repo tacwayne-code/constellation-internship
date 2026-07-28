@@ -56,14 +56,14 @@
         <a href="{{ url_for('workflows.list_workflows') }}" class="nav-item {% if request.endpoint and request.endpoint.startswith('workflows.') %}active{% endif %}">
             <i class="bi bi-arrow-repeat"></i> 流程管理
         </a>
-        <a href="{{ url_for('changes.list_changes') }}" class="nav-item {% if request.endpoint and request.endpoint.startswith('changes.') %}active{% endif %}">
+        <a href="#" class="nav-item" onclick="return false;">
             <i class="bi bi-pencil-square"></i> 变更管理
         </a>
-        <a href="{{ url_for('projects.list_projects') }}" class="nav-item {% if request.endpoint and request.endpoint.startswith('projects.') %}active{% endif %}">
+        <a href="#" class="nav-item" onclick="return false;">
             <i class="bi bi-kanban"></i> 项目管理
         </a>
         <div class="nav-section">PLM → Odoo 单向推送</div>
-        <a href="{{ url_for('integrations.list_integrations') }}" class="nav-item {% if request.endpoint and request.endpoint.startswith('integrations.') %}active{% endif %}">
+        <a href="#" class="nav-item {% if request.endpoint and request.endpoint.startswith('integrations.') %}active{% endif %}">
             <i class="bi bi-cloud-upload"></i> 系统集成（只推不取）
         </a>
     </div>
@@ -117,7 +117,5 @@
     })();
     </script>
     {% block scripts %}{% endblock %}
-</body>
-</html>    <script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.3/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>

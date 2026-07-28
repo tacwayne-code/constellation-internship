@@ -4,8 +4,19 @@
 
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-4">
-    <h4 class="mb-0"><i class="bi bi-list-check me-2"></i>BOM 管理</h4>
+    <h4 class="mb-0"><i class="bi bi-list-check me-2"></i>BOM 管理
+    {% if my_pending_bom_count > 0 %}
+    <span class="badge bg-warning text-dark ms-2" title="有待审批的 BOM">
+        <i class="bi bi-bell-fill"></i> 待审批 {{ my_pending_bom_count }}
+    </span>
+    {% endif %}
+</h4>
     <div class="d-flex gap-2">
+        <form method="post" action="#" style="display:inline;">
+            <button type="submit" class="btn btn-success btn-sm">
+                <i class="bi bi-stars me-1"></i>批量自动关联全部 BOM
+            </button>
+        </form>
         <a href="{{ url_for('boms.create_bom') }}" class="btn btn-primary btn-sm">
             <i class="bi bi-plus-lg me-1"></i>新建 eBOM
         </a>
@@ -121,11 +132,16 @@
                 </thead>
                 <tbody>
                     {% for bom in boms %}
-                    <tr>
+                    <tr {% if bom.id in pending_by_bom %}class="table-warning"{% endif %}>
                         <td>
                             <a href="{{ url_for('boms.view_bom', id=bom.id) }}" class="text-decoration-none fw-semibold">
                                 {{ bom.bom_no }}
                             </a>
+                            {% if bom.id in pending_by_bom %}
+                            <a href="{{ url_for('boms.view_bom', id=bom.id) }}#tab-approvals" class="badge bg-danger ms-1" title="点击前往审批">
+                                <i class="bi bi-bell-fill"></i> 待我审 第{{ pending_by_bom[bom.id] }}步
+                            </a>
+                            {% endif %}
                         </td>
                         <td>
                             <a href="{{ url_for('boms.view_bom', id=bom.id) }}" class="text-decoration-none">

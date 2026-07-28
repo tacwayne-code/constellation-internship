@@ -29,10 +29,7 @@ def init_sample_data():
         users = [
             User(username='admin', display_name='系统管理员', role='admin', department='IT部'),
             User(username='manager1', display_name='王经理', role='manager', department='技术部'),
-            User(username='manager2', display_name='李经理', role='manager', department='质量部'),
             User(username='engineer1', display_name='张工', role='user', department='研发部'),
-            User(username='engineer2', display_name='陈工', role='user', department='工艺部'),
-            User(username='viewer1', display_name='赵工', role='viewer', department='生产部'),
         ]
         for u in users:
             u.set_password('123456')
@@ -64,4 +61,7 @@ if __name__ == '__main__':
     print(f'  访问地址: http://localhost:5000')
     print(f'  管理员账号: admin / admin123')
     print('=' * 50)
-    app.run(host='0.0.0.0', port=5000, debug=os.environ.get('FLASK_DEBUG', '0') == '1')
+    import logging
+    logging.basicConfig(filename='plm.log', level=logging.INFO,
+                        format='%(asctime)s %(levelname)s %(message)s')
+    app.run(host='0.0.0.0', port=5000, debug=False, use_reloader=False, threaded=False)

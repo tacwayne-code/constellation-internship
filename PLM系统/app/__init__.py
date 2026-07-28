@@ -48,7 +48,7 @@ def create_app(config_class=Config):
         """对 POST/PUT/DELETE 请求做简易 CSRF token 校验"""
         if request.method in ('GET', 'HEAD', 'OPTIONS'):
             return
-        if request.path.startswith('/api/') or request.path.startswith('/integrations/'):
+        if request.path.startswith('/api/') or request.path.startswith('/integrations/') or '/push-to-odoo' in request.path:
             return
         token = _ensure_csrf_token()
         if request.form:

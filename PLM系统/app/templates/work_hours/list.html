@@ -18,7 +18,7 @@
             </div>
             <div class="collapse" id="addForm">
                 <div class="card-body">
-                    <form method="POST" action="{{ url_for('work_hours.create_work_hour') }}">
+                    <form method="POST" action="#">
                         <div class="row g-3">
                             <div class="col-md-4">
                                 <label class="form-label">产品 <span class="text-danger">*</span></label>
@@ -87,7 +87,7 @@
                     {% for wh in whs %}
                     <tr>
                         <td>
-                            <a href="{{ url_for('products.view_product', id=wh.product_id) }}" class="text-decoration-none">
+                            <a href="{{ '#' }}" class="text-decoration-none">
                                 {{ wh.product.name }}
                             </a>
                         </td>

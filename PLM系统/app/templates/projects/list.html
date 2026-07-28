@@ -6,7 +6,7 @@
 <div class="container-fluid">
     <div class="d-flex justify-content-between align-items-center mb-4">
         <h2 class="mb-0">项目管理</h2>
-        <a href="{{ url_for('projects.create_project') }}" class="btn btn-primary">
+        <a href="#" class="btn btn-primary">
             <i class="bi bi-plus-lg"></i> 新建项目
         </a>
     </div>
@@ -15,7 +15,7 @@
     <div class="row row-cols-1 row-cols-md-2 row-cols-xl-3 g-4">
         {% for project in projects %}
         <div class="col">
-            <a href="{{ url_for('projects.view_project', id=project.id) }}" class="text-decoration-none">
+            <a href="{{ '#' }}" class="text-decoration-none">
                 <div class="card h-100 shadow-sm">
                     <div class="card-body">
                         <div class="d-flex justify-content-between align-items-start mb-2">
@@ -56,7 +56,7 @@
     {% else %}
     <div class="text-center py-5 text-muted">
         <p class="fs-5">暂无项目</p>
-        <a href="{{ url_for('projects.create_project') }}" class="btn btn-outline-primary">新建项目</a>
+        <a href="#" class="btn btn-outline-primary">新建项目</a>
     </div>
     {% endif %}
 </div>

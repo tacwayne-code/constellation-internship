@@ -6,7 +6,7 @@
 <div class="container-fluid">
     <div class="d-flex justify-content-between align-items-center mb-4">
         <h2 class="mb-0">变更申请详情</h2>
-        <a href="{{ url_for('changes.list_changes') }}" class="btn btn-outline-secondary">
+        <a href="#" class="btn btn-outline-secondary">
             <i class="bi bi-arrow-left"></i> 返回变更列表
         </a>
     </div>
@@ -73,7 +73,7 @@
         <!-- Submit for review -->
         <div class="card shadow-sm">
             <div class="card-body">
-                <form method="POST" action="{{ url_for('changes.submit_ecr', id=ecr.id) }}" class="d-inline">
+                <form method="POST" action="{{ '#' }}" class="d-inline">
                     <button type="submit" class="btn btn-primary">
                         <i class="bi bi-send"></i> 提交审核
                     </button>
@@ -86,13 +86,13 @@
         <!-- Approve and Reject -->
         <div class="card shadow-sm">
             <div class="card-body d-flex gap-2">
-                <form method="POST" action="{{ url_for('changes.approve_ecr', id=ecr.id) }}" class="d-inline">
+                <form method="POST" action="{{ '#' }}" class="d-inline">
                     <input type="hidden" name="action" value="approve">
                     <button type="submit" class="btn btn-success">
                         <i class="bi bi-check-lg"></i> 批准
                     </button>
                 </form>
-                <form method="POST" action="{{ url_for('changes.approve_ecr', id=ecr.id) }}" class="d-inline">
+                <form method="POST" action="{{ '#' }}" class="d-inline">
                     <input type="hidden" name="action" value="reject">
                     <button type="submit" class="btn btn-danger">
                         <i class="bi bi-x-lg"></i> 驳回
@@ -109,7 +109,7 @@
                 <h5 class="mb-0">创建变更通知 (ECO)</h5>
             </div>
             <div class="card-body">
-                <form method="POST" action="{{ url_for('changes.create_eco', id=ecr.id) }}">
+                <form method="POST" action="{{ '#' }}">
                     <div class="mb-3">
                         <label for="impact_analysis" class="form-label">影响分析 <span class="text-danger">*</span></label>
                         <textarea class="form-control" id="impact_analysis" name="impact_analysis" rows="3" required></textarea>
@@ -165,7 +165,7 @@
         </div>
         {% if eco.status == 'pending' or eco.status == 'executing' %}
         <div class="card-footer">
-            <form method="POST" action="{{ url_for('changes.complete_eco', id=eco.id) }}" class="d-inline">
+            <form method="POST" action="{{ '#' }}" class="d-inline">
                 <button type="submit" class="btn btn-success">
                     <i class="bi bi-check2-circle"></i> 执行完成
                 </button>

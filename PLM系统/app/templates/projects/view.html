@@ -75,7 +75,7 @@
 <div class="container-fluid">
     <div class="d-flex justify-content-between align-items-center mb-4">
         <h2 class="mb-0">{{ project.name }}</h2>
-        <a href="{{ url_for('projects.list_projects') }}" class="btn btn-outline-secondary">
+        <a href="#" class="btn btn-outline-secondary">
             <i class="bi bi-arrow-left"></i> 返回项目列表
         </a>
     </div>
@@ -174,7 +174,7 @@
                             </td>
                             <td>{{ task.due_date.strftime('%Y-%m-%d') if task.due_date else '-' }}</td>
                             <td>
-                                <form method="POST" action="{{ url_for('projects.update_task_status', id=task.id) }}" class="d-inline">
+                                <form method="POST" action="{{ '#' }}" class="d-inline">
                                     <div class="input-group input-group-sm">
                                         <select name="status" class="form-select form-select-sm" onchange="this.form.submit()">
                                             <option value="todo" {% if task.status == 'todo' %}selected{% endif %}>待办</option>
@@ -203,7 +203,7 @@
             <h5 class="mb-0">添加任务</h5>
         </div>
         <div class="card-body">
-            <form method="POST" action="{{ url_for('projects.add_task', id=project.id) }}">
+            <form method="POST" action="{{ '#' }}">
                 <div class="mb-3">
                     <label for="task_name" class="form-label">任务名称 <span class="text-danger">*</span></label>
                     <input type="text" class="form-control" id="task_name" name="name" required>

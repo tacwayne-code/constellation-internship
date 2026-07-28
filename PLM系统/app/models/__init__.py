@@ -291,7 +291,9 @@ class BomApproval(db.Model):
     bom_id = db.Column(db.Integer, db.ForeignKey('plm_bom.id'), nullable=False)
     step = db.Column(db.Integer, nullable=False)  # 审批步骤序号
     approver_id = db.Column(db.Integer, db.ForeignKey('plm_user.id'), nullable=False)
-    approver = db.relationship('User')
+    approver = db.relationship('User', foreign_keys=[approver_id])
+    submitter_id = db.Column(db.Integer, db.ForeignKey('plm_user.id'))  # 发起人（提交审批的工程师）
+    submitter = db.relationship('User', foreign_keys=[submitter_id])
     status = db.Column(db.String(20), default='pending')  # pending/approved/rejected
     comment = db.Column(db.Text, nullable=True)
     decided_at = db.Column(db.DateTime, nullable=True)
@@ -424,7 +426,9 @@ class IntegrationConfig(db.Model):
     name = db.Column(db.String(100), nullable=False)
     system_type = db.Column(db.String(30))  # odoo / cad / erp / mes
     api_url = db.Column(db.String(500))
-    _api_key = db.Column('api_key', db.String(500))  # 加密存储
+    db_name = db.Column(db.String(100))    # Odoo 账套名
+    username = db.Column(db.String(100))   # Odoo 登录用户名
+    _api_key = db.Column('api_key', db.String(500))  # 加密存储（Odoo密码）
     is_active = db.Column(db.Boolean, default=False)
     last_sync = db.Column(db.DateTime)
     sync_interval = db.Column(db.Integer, default=60)  # minutes
