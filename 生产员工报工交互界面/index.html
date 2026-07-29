@@ -39,7 +39,6 @@
             <strong id="clock">--:--:--</strong>
             <span id="dateLabel">----年--月--日</span>
           </div>
-          <a class="report-link" href="./worker-report.html" onclick="try{sessionStorage.setItem('wr_fullscreen_intent','1')}catch(_){}">生产报工</a>
           <button class="fullscreen-button" id="fullscreenButton" type="button">全屏</button>
         </div>
       </header>
@@ -82,19 +81,6 @@
                 <span class="oee-badge" id="hiddenCount">Odoo</span>
               </div>
               <div class="machine-grid" id="machineGrid"></div>
-            </article>
-
-            <article class="panel report-overview-panel">
-              <div class="panel-header compact">
-                <div>
-                  <p class="section-kicker">WORKER REPORT</p>
-                  <h2>今日报工概览</h2>
-                </div>
-                <a class="panel-report-link" href="./worker-report.html">去报工 →</a>
-              </div>
-              <div class="report-overview-content" id="reportOverviewContent">
-                <div class="empty-state">加载中...</div>
-              </div>
             </article>
           </div>
         </aside>

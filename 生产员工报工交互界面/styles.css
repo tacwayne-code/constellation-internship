@@ -285,3 +285,10 @@ body{overflow:hidden}.dashboard-shell{height:100vh;min-height:720px;overflow:hid
   from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }
 }
+/* === 未交付补充：填满底部剩余空间 === */
+.side-bottom .machine-panel{flex:1 1 auto;min-height:0}
+.side-bottom{display:flex;flex-direction:column;gap:10px;min-height:0}
+.side-bottom .process-panel{flex:0 0 auto}
+.side-bottom .machine-panel{display:flex;flex-direction:column}
+.side-bottom .machine-panel .panel-header{flex:0 0 auto}
+.side-bottom .machine-panel .machine-grid{flex:1 1 auto;min-height:0;overflow-y:auto}
