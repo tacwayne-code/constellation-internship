@@ -273,7 +273,7 @@ def _seed_workers():
         if count == 0:
             default = [
                 ("WK001", "张建国", "A班", "local", 0),
-                ("WK002", "��明辉", "A班", "local", 0),
+                ("WK002", "周明辉", "A班", "local", 0),
                 ("WK003", "王志强", "B班", "local", 0),
                 ("WK004", "陈晓峰", "B班", "local", 0),
                 ("WK005", "刘大伟", "C班", "local", 0),
@@ -1139,8 +1139,13 @@ _WO_CACHE_TTL = 300
 
 def get_workorders_data():
     """
-    获取工单列表（30秒缓存）
-    从 Odoo mrp.workorder 读取（非 sale.order）
+    获取今日工单列表（5分钟缓存）
+    严格过滤条件：
+      - 工单有 operation_id（已设置作业）
+      - 工单有 workcenter_id（已分配工作中心）
+      - 所属 MO 的 BOM 必须有 operation_ids（routing 工艺过程已配置）
+      - write_date 为今天
+      - 状态非 done/cancel
     """
     now = time.time()
     if _WO_CACHE["data"] is not None and (now - _WO_CACHE["ts"]) < _WO_CACHE_TTL:
@@ -1148,14 +1153,62 @@ def get_workorders_data():
     mode = get_odoo_mode()
     try:
         client = get_odoo()
+        today_start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+        today_start_text = today_start.strftime("%Y-%m-%d %H:%M:%S")
+
+        # 第一步：找出今天更新的、且所属 MO 的 BOM 有 routing 的 MO
+        mo_fields = ["id", "name", "bom_id", "product_id", "product_qty", "origin", "state"]
+        mo_rows = client.search_read(
+            "mrp.production",
+            [("write_date", ">=", today_start_text),
+             ("state", "not in", ["done", "cancel"])],
+            mo_fields, limit=200, order="id desc"
+        )
+        # 过滤：只保留 bom 有 routing 的 MO
+        bom_ids = set()
+        for mo in mo_rows:
+            bom_id = rel_id(mo.get("bom_id"))
+            if bom_id:
+                bom_ids.add(bom_id)
+        boms_with_routing = set()
+        if bom_ids:
+            bom_data = client.read("mrp.bom", list(bom_ids), ["id", "operation_ids"])
+            for b in bom_data:
+                if b.get("operation_ids"):
+                    boms_with_routing.add(b["id"])
+        valid_mo_ids = {mo["id"] for mo in mo_rows if rel_id(mo.get("bom_id")) in boms_with_routing}
+        logger.info(f"今日 MO 总数: {len(mo_rows)}, 含routing: {len(valid_mo_ids)}")
+
+        # 第二步：找出这些 MO 的工单，且必须有 operation_id 和 workcenter_id
         wo_fields = ["id", "name", "production_id", "workcenter_id", "operation_id",
                      "product_id", "state", "qty_production", "qty_produced",
-                     "qty_remaining", "duration_expected"]
+                     "qty_remaining", "duration_expected", "write_date"]
+        if not valid_mo_ids:
+            _WO_CACHE["data"] = []
+            _WO_CACHE["ts"] = time.time()
+            return []
         wo_rows = client.search_read(
             "mrp.workorder",
-            [("state", "not in", ["done", "cancel"])],
+            [("production_id", "in", list(valid_mo_ids)),
+             ("operation_id", "!=", False),
+             ("workcenter_id", "!=", False),
+             ("state", "not in", ["done", "cancel"])],
             wo_fields, limit=50, order="id desc"
         )
+        logger.info(f"工单候选: {len(wo_rows)}条")
+
+        # 第三步：检查工单对应的 routing.workcenter 是否有 PDF 文档（worksheet）
+        op_ids = {rel_id(wo.get("operation_id")) for wo in wo_rows if rel_id(wo.get("operation_id"))}
+        ops_with_pdf = set()
+        if op_ids:
+            op_data = client.read("mrp.routing.workcenter", list(op_ids),
+                                  ["id", "worksheet", "worksheet_type"])
+            for op in op_data:
+                if op.get("worksheet") or op.get("worksheet_type") == "pdf":
+                    ops_with_pdf.add(op["id"])
+        # 过滤掉没有 PDF 的工单
+        wo_rows = [wo for wo in wo_rows if rel_id(wo.get("operation_id")) in ops_with_pdf]
+        logger.info(f"工单含PDF工艺文档: {len(wo_rows)}条")
 
         # 获取生产单信息
         mo_ids = set()

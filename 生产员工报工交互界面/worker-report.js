@@ -197,7 +197,7 @@ function renderKpis() {
   const todayQty = todayR.reduce((s, r) => s + (parseInt(r.qty) || 0), 0);
   const todayPeople = new Set(todayR.map((r) => r.workerName)).size;
   const activeOrders = S.orders.filter((o) => parseFloat(o.remaining) > 0).length;
-  const workorderCount = S.workorders.length || activeOrders;
+  const workorderCount = S.workorders.filter((w) => w.remainingQty > 0).length;
 
   const kpis = [
     ["今日报工", String(todayR.length), "条", `已提交 ${todayQty}台`, "#10b981"],
@@ -317,13 +317,9 @@ function renderOrders() {
   const cnt = $("#orderCount");
   if (!el) return;
 
-  // 原有订单（保留不变）
-  const originalActive = S.orders.filter((o) => parseFloat(o.remaining) > 0);
-
-  // 新工单（额外加入，不替换原有订单）
+  // 只显示工单（不合并订单）
   const workorderActive = (S.workorders || []).filter((w) => w.remainingQty > 0);
-
-  const totalCount = originalActive.length + workorderActive.length;
+  const totalCount = workorderActive.length;
   if (cnt) cnt.textContent = totalCount + " 个";
 
   if (totalCount === 0) {
@@ -333,7 +329,7 @@ function renderOrders() {
 
   let html = "";
 
-  // 1. 先渲染新工单（放前面）
+  // 1. 先渲染工单（每个 MO 只显示一个卡片）
   html += workorderActive.map((w) => {
     const act = S.selectedWorkorder && S.selectedWorkorder.workorderId === w.workorderId ? " active" : "";
     const stCls = w.state === "progress" ? "running" : w.state === "ready" ? "progress" : "";
@@ -341,13 +337,13 @@ function renderOrders() {
 
     return '<div class="order-card' + act + '" data-woid="' + esc(w.workorderId) + '" data-pid="' + esc(w.productionId || "") + '">' +
       '<div class="oc-header">' +
-        '<span class="oc-tag-wo">工单</span>' +
         '<span class="oc-id">WO#' + esc(w.workorderId) + '</span>' +
         '<span class="oc-status ' + stCls + '">' + stLabel + '</span>' +
       '</div>' +
       '<div class="oc-product">' +
         '<div class="oc-prod-main">' +
-          '<strong>' + esc(w.productName || w.workorderName || "") + '</strong>' +
+          '<strong class="oc-op-name">' + esc(w.productName || "") + '</strong>' +
+          '<small class="oc-prod-name">' + esc(w.workorderName || "") + '</small>' +
         '</div>' +
       '</div>' +
       '<div class="oc-spec"><span>' + esc(w.productionName || "MO#" + w.productionId) + '</span><small>生产单</small></div>' +
@@ -362,38 +358,7 @@ function renderOrders() {
     '</div>';
   }).join("");
 
-  // 2. 再渲染原有订单（保留原始样式不变）
-  html += originalActive.map((o) => {
-    const rem = parseFloat(o.remaining) || 0;
-    const qty = parseFloat(o.qty) || 0;
-    const uom = unitText(o.uom);
-    const act = S.selOrder && S.selOrder.id === o.id ? " active" : "";
-    const stCls = (o.status || "").indexOf("逾期") > -1 ? "danger" : "progress";
-    const stText = (o.status || "").indexOf("逾期") > -1 ? "逾期" : "进行中";
-
-    return '<div class="order-card' + act + '" data-oid="' + esc(o.id) + '">' +
-      '<div class="oc-header">' +
-        '<span class="oc-customer-code">' + esc(o.customerCode ? "[" + o.customerCode + "]" : "") + '</span>' +
-        '<span class="oc-id">' + esc(o.id) + '</span>' +
-        '<span class="oc-status ' + stCls + '">' + stText + '</span>' +
-      '</div>' +
-      '<div class="oc-product">' +
-        '<div class="oc-prod-main">' +
-          '<strong>' + esc(o.product || "") + '</strong>' +
-          '<small>' + esc(o.code || "") + '</small>' +
-        '</div>' +
-      '</div>' +
-      '<div class="oc-spec"><span>' + esc(o.spec || "—") + '</span><small>规格型号</small></div>' +
-      '<div class="oc-qty-row">' +
-        '<span>' + esc(o.qty) + esc(uom) + '</span>' +
-        '<small>待交付 ' + esc(o.remaining) + esc(uom) + '</small>' +
-      '</div>' +
-      '<div class="oc-meta-row">' +
-        '<span class="oc-remark">' + esc(o.remark || "") + '</span>' +
-        '<span class="oc-delivery">' + esc(o.updated || o.date || "") + '</span>' +
-      '</div>' +
-    '</div>';
-  }).join("");
+  // 2. 原有订单渲染已移除（只显示工单）
 
   el.innerHTML = html;
 }
