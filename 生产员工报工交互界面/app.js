@@ -122,9 +122,6 @@ async function loadData() {
     renderBottom();
     updateBroadcast();
     updateRefreshTime();
-    const shift = $(".shift-chip span:last-child");
-    if (shift) shift.textContent = "Odoo · 实时订单";
-    updateReportOverview();
   } catch (error) {
     dashboard = {
       kpis: [["连接失败", "0", "", error.message, "#df313a"]],
@@ -137,35 +134,6 @@ async function loadData() {
     renderOrders();
     renderBottom();
     updateBroadcast();
-    updateReportOverview();
-  }
-}
-
-async function updateReportOverview() {
-  const container = $("#reportOverviewContent");
-  if (!container) return;
-  try {
-    const res = await fetch("./api/report-stats", { cache: "no-store" });
-    const payload = await res.json();
-    if (!payload.ok) throw new Error(payload.error);
-    const d = payload.data;
-
-    if (d.todayCount === 0) {
-      container.innerHTML = '<div class="empty-state">今日暂无报工记录</div>';
-      return;
-    }
-
-    let html = '<div class="report-stat-mini"><span>今日报工</span><strong>' + d.todayCount + '条</strong></div>';
-    html += '<div class="report-stat-mini"><span>今日产量</span><strong>' + d.todayOutput + '台</strong></div>';
-    html += '<div class="report-stat-mini"><span>在岗工人</span><strong>' + d.activeWorkers + '人</strong></div>';
-    if (d.recentReports && d.recentReports.length > 0) {
-      d.recentReports.slice(-4).reverse().forEach(function(r) {
-        html += '<div class="report-overview-card"><span class="ro-worker">' + esc(r.workerName) + '</span><span class="ro-detail">' + esc(r.operationLabel || r.operation) + '</span><span class="ro-qty">' + r.qty + '台</span></div>';
-      });
-    }
-    container.innerHTML = html;
-  } catch {
-    container.innerHTML = '<div class="empty-state">报工数据暂未同步</div>';
   }
 }
 
