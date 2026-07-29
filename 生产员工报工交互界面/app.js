@@ -209,6 +209,23 @@ document.addEventListener("fullscreenchange", updateFullscreenButton);
 document.addEventListener("webkitfullscreenchange", updateFullscreenButton);
 document.addEventListener("msfullscreenchange", updateFullscreenButton);
 
+// 手动刷新按钮
+const refreshBtn = $("#refreshBtn");
+if (refreshBtn) {
+  refreshBtn.addEventListener("click", async () => {
+    if (refreshBtn.classList.contains("refreshing")) return;
+    refreshBtn.classList.add("refreshing");
+    try {
+      await loadData();
+      updateRefreshTime();
+    } catch (e) {
+      console.error("刷新失败", e);
+    } finally {
+      setTimeout(() => refreshBtn.classList.remove("refreshing"), 600);
+    }
+  });
+}
+
 clock();
 loadData();
 setInterval(clock, 1000);

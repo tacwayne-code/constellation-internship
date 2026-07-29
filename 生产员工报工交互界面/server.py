@@ -1244,7 +1244,7 @@ def get_workorders_data():
             mo_id = rel_id(wo.get("production_id"))
             mo = mo_data.get(mo_id, {})
             pid = rel_id(wo.get("product_id"))
-            pcode = product_code(pid)  # 用 default_code 匹配，不硬编码 ID
+            pcode = product_code(wo.get("product_id"))  # 传入 tuple，不要传 pid(int)
 
             # 确定主机类型（用产品编码，不依赖固定 ID）
             host_type = None
@@ -1477,56 +1477,6 @@ class Handler(SimpleHTTPRequestHandler):
             self.write_json(self.dashboard_payload())
         elif path == "/api/health":
             self.write_json({"ok": True, "mode": get_odoo_mode()})
-        elif path == "/api/workers":
-            workers = load_workers()
-            self.write_json({"ok": True, "data": workers,
-                             "meta": {"mode": get_odoo_mode(), "count": len(workers)}})
-        elif path == "/api/reports":
-            reports = load_reports()
-            self.write_json({"ok": True, "data": [_normalize_report(r) for r in reports]})
-        elif path == "/api/order-summary":
-            self.write_json(self.order_summary_payload())
-        elif path == "/api/report-stats":
-            self.write_json(self.report_stats_payload())
-        elif path == "/api/operations":
-            ops = get_operations()
-            self.write_json({"ok": True, "data": ops,
-                             "meta": {"mode": get_odoo_mode(), "count": len(ops)}})
-        elif path == "/api/workorders":
-            try:
-                wos = get_workorders_data()
-                self.write_json({"ok": True, "data": wos,
-                                 "meta": {"mode": get_odoo_mode(), "count": len(wos)}})
-            except Exception as e:
-                self.write_json({"ok": False, "error": f"获取工单失败: {e}"},
-                                status=HTTPStatus.INTERNAL_SERVER_ERROR)
-        elif path == "/api/bom":
-            host_type = params.get("hostType", params.get("host_type", ""))
-            workorder_id = params.get("workorderId", params.get("workorder_id", ""))
-            if not host_type and workorder_id:
-                # 根据工单 ID 推断主机类型
-                try:
-                    wos = get_workorders_data()
-                    for wo in wos:
-                        if str(wo.get("workorderId")) == str(workorder_id):
-                            host_type = wo.get("hostType", "")
-                            break
-                except Exception:
-                    pass
-            if host_type not in ("tape", "splitter"):
-                self.write_json({"ok": False, "error": "需要指定 hostType=tape 或 hostType=splitter"},
-                                status=HTTPStatus.BAD_REQUEST)
-                return
-            try:
-                items = get_bom_data(host_type)
-                self.write_json({"ok": True, "data": items,
-                                 "meta": {"mode": get_odoo_mode(), "hostType": host_type,
-                                          "count": len(items)}})
-            except Exception as e:
-                logger.error(f"BOM 查询异常: {e}")
-                self.write_json({"ok": False, "error": f"BOM数据加载失败: {e}",
-                                 "data": [], "meta": {"mode": get_odoo_mode(), "hostType": host_type}},
-                                status=HTTPStatus.INTERNAL_SERVER_ERROR)
         else:
             self.send_error(HTTPStatus.NOT_FOUND)
 
@@ -1541,12 +1491,8 @@ class Handler(SimpleHTTPRequestHandler):
             self.write_json({"ok": False, "error": "未授权：缺少或无效的 API Key"},
                             status=HTTPStatus.UNAUTHORIZED)
             return
-        if path == "/api/reports":
-            self.handle_report_post()
-        elif path == "/api/workers":
-            self.handle_worker_post()
-        else:
-            self.send_error(HTTPStatus.NOT_FOUND)
+        # 细节版只看板，无报工 API
+        self.send_error(HTTPStatus.NOT_FOUND)
 
     def log_message(self, format, *args):
         logger.info("%s - %s", self.client_address[0], format % args)

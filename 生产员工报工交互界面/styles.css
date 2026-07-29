@@ -252,3 +252,36 @@ body{overflow:hidden}.dashboard-shell{height:100vh;min-height:720px;overflow:hid
 @media(max-height:850px) and (min-width:901px){
   .order-list{height:100%}
 }
+/* === 手动刷新按钮 === */
+.refresh-btn {
+  background: transparent;
+  border: 1px solid transparent;
+  cursor: pointer;
+  border-radius: 6px;
+  transition: background 0.15s, border-color 0.15s, transform 0.1s;
+  outline: none;
+}
+.refresh-btn:hover {
+  background: rgba(0,229,255,0.08);
+  border-color: rgba(0,229,255,0.25);
+}
+.refresh-btn:active {
+  transform: scale(0.97);
+}
+.refresh-btn.refreshing {
+  pointer-events: none;
+  opacity: 0.7;
+}
+.refresh-btn.refreshing .refresh-icon {
+  animation: refresh-spin 0.9s linear infinite;
+}
+.refresh-icon {
+  display: inline-block;
+  vertical-align: -2px;
+  margin-right: 4px;
+  color: var(--accent);
+}
+@keyframes refresh-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}

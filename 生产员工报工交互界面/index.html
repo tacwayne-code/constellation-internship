@@ -30,10 +30,11 @@
             <span class="status-dot"></span>
             <span>Odoo · 实时订单</span>
           </div>
-          <div class="refresh-chip">
+          <button class="refresh-chip refresh-btn" id="refreshBtn" type="button" title="点击手动从 Odoo 刷新数据">
+            <svg class="refresh-icon" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-3-6.7"/><polyline points="21 4 21 10 15 10"/></svg>
             <span>数据更新</span>
             <strong id="refreshTime">--:--</strong>
-          </div>
+          </button>
           <div class="clock-block">
             <strong id="clock">--:--:--</strong>
             <span id="dateLabel">----年--月--日</span>
