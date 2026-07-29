@@ -652,12 +652,16 @@ def delete_product(id):
 def list_boms():
     bom_type = request.args.get('type', '')  # EBOM / MBOM / all
     sync_filter = request.args.get('sync', '')  # not_synced / synced
+    page = max(1, int(request.args.get('page', 1)))
+    per_page = 20
     query = Bom.query
     if bom_type:
         query = query.filter_by(bom_type=bom_type)
     if sync_filter:
         query = query.filter_by(sync_status=sync_filter)
-    boms = query.order_by(Bom.updated_at.desc()).all()
+    total = query.count()
+    boms = query.order_by(Bom.updated_at.desc()).offset((page - 1) * per_page).limit(per_page).all()
+    total_pages = max(1, (total + per_page - 1) // per_page)
     # 统计数据
     ebom_count = Bom.query.filter_by(bom_type='EBOM').count()
     mbom_count = Bom.query.filter_by(bom_type='MBOM').count()
@@ -674,6 +678,7 @@ def list_boms():
 
     return render_template('boms/list.html', boms=boms,
                            bom_type=bom_type, sync_filter=sync_filter,
+                           page=page, per_page=per_page, total=total, total_pages=total_pages,
                            ebom_count=ebom_count, mbom_count=mbom_count,
                            pending_sync=pending_sync,
                            my_pending_bom_count=my_pending_bom_count,

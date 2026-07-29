@@ -241,6 +241,30 @@
                 </tbody>
             </table>
         </div>
+        {% if total_pages > 1 %}
+        <div class="d-flex justify-content-between align-items-center px-3 py-2 border-top bg-light">
+            <small class="text-muted">共 <strong>{{ total }}</strong> 条，第 <strong>{{ page }}</strong> / {{ total_pages }} 页</small>
+            <nav>
+                <ul class="pagination pagination-sm mb-0">
+                    <li class="page-item {% if page <= 1 %}disabled{% endif %}">
+                        <a class="page-link" href="{{ url_for('boms.list_boms', page=page-1, type=bom_type, sync=sync_filter) }}"><i class="bi bi-chevron-left"></i></a>
+                    </li>
+                    {% for p in range(1, total_pages+1) %}
+                        {% if p == 1 or p == total_pages or (p >= page-2 and p <= page+2) %}
+                            <li class="page-item {% if p == page %}active{% endif %}">
+                                <a class="page-link" href="{{ url_for('boms.list_boms', page=p, type=bom_type, sync=sync_filter) }}">{{ p }}</a>
+                            </li>
+                        {% elif p == page-3 or p == page+3 %}
+                            <li class="page-item disabled"><span class="page-link">…</span></li>
+                        {% endif %}
+                    {% endfor %}
+                    <li class="page-item {% if page >= total_pages %}disabled{% endif %}">
+                        <a class="page-link" href="{{ url_for('boms.list_boms', page=page+1, type=bom_type, sync=sync_filter) }}"><i class="bi bi-chevron-right"></i></a>
+                    </li>
+                </ul>
+            </nav>
+        </div>
+        {% endif %}
     </div>
 </div>
 {% endblock %}

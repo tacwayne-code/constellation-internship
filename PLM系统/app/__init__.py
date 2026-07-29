@@ -12,6 +12,11 @@ login_manager.login_view = 'auth.login'
 def create_app(config_class=Config):
     app = Flask(__name__)
     app.config.from_object(config_class)
+    # SQLite WAL + 超时：并行读写不阻塞
+    app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
+        'connect_args': {'timeout': 15, 'check_same_thread': False},
+        'pool_size': 5,
+    }
 
     db.init_app(app)
     login_manager.init_app(app)

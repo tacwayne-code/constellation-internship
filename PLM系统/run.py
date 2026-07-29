@@ -64,4 +64,4 @@ if __name__ == '__main__':
     import logging
     logging.basicConfig(filename='plm.log', level=logging.INFO,
                         format='%(asctime)s %(levelname)s %(message)s')
-    app.run(host='0.0.0.0', port=5000, debug=False, use_reloader=False, threaded=False)
+    app.run(host='0.0.0.0', port=5000, debug=False, use_reloader=False, threaded=True)
