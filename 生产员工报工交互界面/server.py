@@ -58,7 +58,8 @@ if MOCK_MODE:
     logger.warning("ODOO MOCK MODE ENABLED - NO REAL ODOO WRITES")
     logger.warning("=" * 60)
 else:
-    logger.info(f"Odoo: {ODOO_URL} db={ODOO_DB} user={ODOO_USER}")
+    logger.info(f"Odoo: {ODOO_URL}")
+    logger.debug(f"Odoo 连接详情: db={ODOO_DB} user={ODOO_USER}")
 
 # ============================================================
 # 并发锁
@@ -78,9 +79,11 @@ class OdooError(RuntimeError):
 class OdooClient:
     def __init__(self):
         self._uid = None
-        # 设置 30 秒超时避免无限等待
         import socket
-        socket.setdefaulttimeout(30)
+        # 设置 30 秒超时避免 Odoo 挂死时阻塞（单进程服务，无副作用）
+        if not hasattr(OdooClient, "_timeout_set"):
+            socket.setdefaulttimeout(30)
+            OdooClient._timeout_set = True
         self.common = xmlrpc.client.ServerProxy(
             f"{ODOO_URL}/xmlrpc/2/common", allow_none=True
         )
@@ -678,7 +681,7 @@ def build_stages(qty, delivered, remaining, need_qty, supplier, mrp, delivery_st
 # Dashboard 数据加载
 # ============================================================
 _DASH_CACHE = {"data": None, "ts": 0}
-_DASH_CACHE_TTL = 300
+_DASH_CACHE_TTL = 120  # 2分钟缓存，准实时
 
 
 def load_dashboard():
@@ -1134,18 +1137,18 @@ def get_bom_data(host_type):
 
 
 _WO_CACHE = {"data": None, "ts": 0}
-_WO_CACHE_TTL = 300
+_WO_CACHE_TTL = 60  # 30秒缓存，准实时
 
 
 def get_workorders_data():
     """
-    获取今日工单列表（5分钟缓存）
-    严格过滤条件：
-      - 工单有 operation_id（已设置作业）
-      - 工单有 workcenter_id（已分配工作中心）
-      - 所属 MO 的 BOM 必须有 operation_ids（routing 工艺过程已配置）
-      - write_date 为今天
-      - 状态非 done/cancel
+    获取活跃工单列表（60秒缓存，准实时）
+    过滤条件：
+      - 所属 MO 未完成（state 非 done/cancel）
+      - MO 从昨天开始（write_date >= 昨天 00:00，排除更早的历史数据）
+      - 工单有 operation_id + workcenter_id
+      - 所属 MO 的 BOM 必须有 routing（工艺过程已配置）
+      - 工序 PDF 优先但非必须
     """
     now = time.time()
     if _WO_CACHE["data"] is not None and (now - _WO_CACHE["ts"]) < _WO_CACHE_TTL:
@@ -1153,16 +1156,18 @@ def get_workorders_data():
     mode = get_odoo_mode()
     try:
         client = get_odoo()
-        today_start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
-        today_start_text = today_start.strftime("%Y-%m-%d %H:%M:%S")
 
-        # 第一步：找出今天更新的、且所属 MO 的 BOM 有 routing 的 MO
-        mo_fields = ["id", "name", "bom_id", "product_id", "product_qty", "origin", "state"]
+        # 日期下限：昨天 00:00 UTC（不显示更早的历史数据）
+        yesterday_start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(days=1)
+        yesterday_start_text = yesterday_start.strftime("%Y-%m-%d %H:%M:%S")
+
+        # 第一步：找未完成的 MO（不按日期过滤，方便实时同步新 MO）
+        mo_fields = ["id", "name", "bom_id", "product_id", "product_qty", "origin", "state", "write_date"]
         mo_rows = client.search_read(
             "mrp.production",
-            [("write_date", ">=", today_start_text),
+            [("write_date", ">=", yesterday_start_text),
              ("state", "not in", ["done", "cancel"])],
-            mo_fields, limit=200, order="id desc"
+            mo_fields, limit=200, order="write_date desc"
         )
         # 过滤：只保留 bom 有 routing 的 MO
         bom_ids = set()
@@ -1197,7 +1202,8 @@ def get_workorders_data():
         )
         logger.info(f"工单候选: {len(wo_rows)}条")
 
-        # 第三步：检查工单对应的 routing.workcenter 是否有 PDF 文档（worksheet）
+        # 第三步：检查工单对应的 routing.workcenter 是否有 PDF
+        # 优先显示有 PDF 的，没有 PDF 的也保留（运维可能还未上传）
         op_ids = {rel_id(wo.get("operation_id")) for wo in wo_rows if rel_id(wo.get("operation_id"))}
         ops_with_pdf = set()
         if op_ids:
@@ -1206,9 +1212,12 @@ def get_workorders_data():
             for op in op_data:
                 if op.get("worksheet") or op.get("worksheet_type") == "pdf":
                     ops_with_pdf.add(op["id"])
-        # 过滤掉没有 PDF 的工单
-        wo_rows = [wo for wo in wo_rows if rel_id(wo.get("operation_id")) in ops_with_pdf]
-        logger.info(f"工单含PDF工艺文档: {len(wo_rows)}条")
+        # 分类：有 PDF 的优先在前，没有的排在后面
+        wo_with_pdf = [wo for wo in wo_rows if rel_id(wo.get("operation_id")) in ops_with_pdf]
+        wo_without_pdf = [wo for wo in wo_rows if rel_id(wo.get("operation_id")) not in ops_with_pdf]
+        wo_rows = wo_with_pdf + wo_without_pdf  # 有PDF的优先
+        if wo_without_pdf:
+            logger.info(f"工单含PDF: {len(wo_with_pdf)}条, 暂缺PDF: {len(wo_without_pdf)}条（仍显示）")
 
         # 获取生产单信息
         mo_ids = set()
@@ -1235,12 +1244,13 @@ def get_workorders_data():
             mo_id = rel_id(wo.get("production_id"))
             mo = mo_data.get(mo_id, {})
             pid = rel_id(wo.get("product_id"))
+            pcode = product_code(pid)  # 用 default_code 匹配，不硬编码 ID
 
-            # 确定主机类型
+            # 确定主机类型（用产品编码，不依赖固定 ID）
             host_type = None
-            if pid == 11632:
+            if pcode == "P04725":
                 host_type = "tape"
-            elif pid == 11633:
+            elif pcode == "P04726":
                 host_type = "splitter"
 
             raw_state = wo.get("state", "")
@@ -1326,14 +1336,7 @@ def odoo_deduct_materials(materials, idempotency_key):
         try:
             _ensure_negative_stock_ok(client, product_id)
 
-            move_id = client.call("stock.move", "create", [{
-                "product_id": product_id, "product_uom_qty": actual_qty,
-                "product_uom": uom_id, "location_id": SRC_LOCATION_ID,
-                "location_dest_id": DEST_LOCATION_ID,
-                "name": f"报工消耗 {code} [{idempotency_key[:8]}]", "state": "draft",
-            }])
-            logger.info(f"物料 {code}({product_id}): stock.move#{move_id} 已创建 qty={actual_qty}")
-
+            # 先扣 quant
             remaining = actual_qty
             quant_ids = client.call("stock.quant", "search", [
                 [("product_id", "=", product_id), ("location_id", "=", SRC_LOCATION_ID)]
@@ -1365,12 +1368,16 @@ def odoo_deduct_materials(materials, idempotency_key):
                     }])
                 logger.info(f"物料 {code}: 超额/负库存扣减 {remaining}")
 
-            try:
-                client.call("stock.move", "write", [[move_id], {"state": "done", "quantity": actual_qty}])
-            except Exception:
-                pass
+            # quant 扣减成功后才创建 move（避免孤儿 draft move）
+            move_id = client.call("stock.move", "create", [{
+                "product_id": product_id, "product_uom_qty": actual_qty,
+                "product_uom": uom_id, "location_id": SRC_LOCATION_ID,
+                "location_dest_id": DEST_LOCATION_ID,
+                "name": f"报工消耗 {code} [{idempotency_key[:8]}]", "state": "done",
+                "quantity": actual_qty,
+            }])
+            logger.info(f"物料 {code}({product_id}): stock.move#{move_id} 已创建 done")
 
-            # quant 扣减成功后才计入成功列表
             stock_move_ids.append(move_id)
 
         except Exception as e:
@@ -1395,11 +1402,14 @@ def odoo_deduct_materials(materials, idempotency_key):
 
 
 def _ensure_negative_stock_ok(client, product_id):
-    """为产品模板启用负库存"""
-    if not hasattr(_ensure_negative_stock_ok, "_done"):
-        _ensure_negative_stock_ok._done = set()
-    if product_id in _ensure_negative_stock_ok._done:
-        return
+    """为产品模板启用负库存（线程安全）"""
+    _done_lock = getattr(_ensure_negative_stock_ok, "_lock",
+                         setattr(_ensure_negative_stock_ok, "_lock", threading.Lock()) or _ensure_negative_stock_ok._lock)
+    _done_set = getattr(_ensure_negative_stock_ok, "_done",
+                        setattr(_ensure_negative_stock_ok, "_done", set()) or _ensure_negative_stock_ok._done)
+    with _done_lock:
+        if product_id in _done_set:
+            return
     try:
         rows = client.call("product.product", "search_read", [[("id", "=", product_id)]],
                            {"fields": ["product_tmpl_id"], "limit": 1})
@@ -1408,7 +1418,8 @@ def _ensure_negative_stock_ok(client, product_id):
             if isinstance(tmpl, (list, tuple)):
                 tmpl = tmpl[0]
             client.call("product.template", "write", [[tmpl], {"allow_negative_stock": True}])
-            _ensure_negative_stock_ok._done.add(product_id)
+            with _done_lock:
+                _done_set.add(product_id)
             logger.info(f"物料 #{product_id} tmpl#{tmpl} 负库存已启用")
     except Exception:
         pass
@@ -1506,10 +1517,16 @@ class Handler(SimpleHTTPRequestHandler):
                 self.write_json({"ok": False, "error": "需要指定 hostType=tape 或 hostType=splitter"},
                                 status=HTTPStatus.BAD_REQUEST)
                 return
-            items = get_bom_data(host_type)
-            self.write_json({"ok": True, "data": items,
-                             "meta": {"mode": get_odoo_mode(), "hostType": host_type,
-                                      "count": len(items)}})
+            try:
+                items = get_bom_data(host_type)
+                self.write_json({"ok": True, "data": items,
+                                 "meta": {"mode": get_odoo_mode(), "hostType": host_type,
+                                          "count": len(items)}})
+            except Exception as e:
+                logger.error(f"BOM 查询异常: {e}")
+                self.write_json({"ok": False, "error": f"BOM数据加载失败: {e}",
+                                 "data": [], "meta": {"mode": get_odoo_mode(), "hostType": host_type}},
+                                status=HTTPStatus.INTERNAL_SERVER_ERROR)
         else:
             self.send_error(HTTPStatus.NOT_FOUND)
 
@@ -1568,11 +1585,11 @@ class Handler(SimpleHTTPRequestHandler):
 
             mode = get_odoo_mode()
 
-            # === 幂等检查 ===
+            # === 幂等检查（仅 sync_status=odoo_synced 才短路，允许失败重试） ===
             idempotency_key = report.get("idempotencyKey", "")
             if idempotency_key:
                 existing = db_get_report_by_idempotency(idempotency_key)
-                if existing:
+                if existing and existing.get("sync_status") == "odoo_synced":
                     logger.info(f"幂等请求: {idempotency_key} - 返回已有结果")
                     self.write_json({
                         "ok": True,
@@ -1710,8 +1727,9 @@ class Handler(SimpleHTTPRequestHandler):
                 # 清除所有缓存（线程安全）
                 with _BOM_CACHE_LOCK:
                     _BOM_CACHE["data"] = None
-                _DASH_CACHE["data"] = None
-                _WO_CACHE["data"] = None
+                with _BOM_CACHE_LOCK:
+                    _DASH_CACHE["data"] = None
+                    _WO_CACHE["data"] = None
             elif odoo_result:
                 report["syncStatus"] = "odoo_failed"
                 errors_list = odoo_result.get("errors", [odoo_result.get("error", "未知错误")])
@@ -1728,6 +1746,8 @@ class Handler(SimpleHTTPRequestHandler):
                         msg = "报工成功，已完成物料库存扣减"
                 elif materials and not odoo_result:
                     msg = "报工已保存（未提交物料）"
+                elif not materials:
+                    msg = "报工已保存（本次未选择物料，如需扣减库存请重新提交）"
                 else:
                     msg = "报工已保存，但物料扣减失败"
 
@@ -1857,7 +1877,8 @@ def main():
     server = ThreadingHTTPServer(("0.0.0.0", port), Handler)
     server.timeout = 2
     logger.info(f"生产员工报工系统: http://0.0.0.0:{port}")
-    logger.info(f"Odoo: {ODOO_URL} db={ODOO_DB} user={ODOO_USER}")
+    logger.info(f"Odoo: {ODOO_URL}")
+    logger.debug(f"Odoo 连接详情: db={ODOO_DB} user={ODOO_USER}")
     logger.info(f"模式: {'模拟 (MOCK)' if MOCK_MODE else '真实 (REAL)'}")
     logger.info(f"数据库: {DB_FILE}")
     logger.info(f"Auth: {'已启用' if API_KEY else '未启用（POST 接口无保护）'}")
