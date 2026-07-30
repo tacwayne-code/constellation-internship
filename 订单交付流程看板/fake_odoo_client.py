@@ -326,8 +326,7 @@ class FakeOdooClient:
         elif model == "mrp.bom.line":
             # 返回所有 BOM 行
             return self._tape_bom + self._splitter_bom
-        elif model == "stock.quant":
-            return self._stock
+
         elif model == "mrp.workcenter":
             return self._workcenters
         else:
