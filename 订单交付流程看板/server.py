@@ -1479,7 +1479,7 @@ class Handler(SimpleHTTPRequestHandler):
         ext = os.path.splitext(path)[1].lower()
         if path == "/":
             self.send_response(301)
-            self.send_header("Location", "/worker-report.html")
+            self.send_header("Location", "/index.html")
             self.end_headers()
             return
         if ext in WHITE_EXT:
