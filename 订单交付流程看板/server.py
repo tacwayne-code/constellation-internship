@@ -37,7 +37,6 @@ ODOO_USER = os.getenv("ODOO_USER", "ai_test")
 ODOO_PASSWORD = os.getenv("ODOO_PASSWORD", "")
 MOCK_MODE = os.getenv("ODOO_MOCK_MODE", "false").lower() == "true"
 LOCAL_TZ = timezone(timedelta(hours=8))
-API_KEY = os.getenv("API_KEY", "").strip()
 WHITE_EXT = {".html", ".css", ".js", ".svg", ".ico", ".png"}
 
 # ============================================================
@@ -151,29 +150,6 @@ def _init_db():
     """初始化（看板无需本地表）"""
     logger.info("看板模式：无本地数据表需求，直接使用 Odoo 数据")
 
-
-# ============================================================
-# 认证校验
-# ============================================================
-
-# 内网IP白名单（当 API_KEY 未配置时使用）
-_ALLOWED_IPS = {"127.0.0.1", "localhost", "::1"}  # 本机
-_ALLOWED_PREFIXES = ("192.168.", "10.", "172.16.", "172.17.", "172.18.", "172.19.",
-                     "172.20.", "172.21.", "172.22.", "172.23.", "172.24.", "172.25.",
-                     "172.26.", "172.27.", "172.28.", "172.29.", "172.30.", "172.31.")
-
-
-def check_auth(handler):
-    """API Key 或内网 IP 白名单认证"""
-    if API_KEY:
-        provided = handler.headers.get("X-API-Key", "")
-        return provided == API_KEY
-    # 无 API_KEY 时：只允许本机和内网
-    client_ip = handler.client_address[0]
-    if client_ip in _ALLOWED_IPS or any(client_ip.startswith(p) for p in _ALLOWED_PREFIXES):
-        return True
-    logger.warning(f"拒绝来自 {client_ip} 的 POST 请求 (无 API_KEY 且不在白名单)")
-    return False
 
 # ============================================================
 # Odoo 辅助函数
@@ -467,11 +443,6 @@ def load_dashboard():
         pending_order_count = len({row["order"] for row in pending_rows})
         replenish_qty = sum(number(r.get("qty_to_order")) for r in recent_orderpoint_rows)
         supplier_missing = sum(1 for r in recent_orderpoint_rows if number(r.get("qty_to_order")) > 0 and not r.get("product_supplier_id"))
-        active_mrp_count = 0
-        try:
-            active_mrp_count = client.call("mrp.production", "search_count", [[["state", "not in", ["done", "cancel"]]]], {})
-        except Exception:
-            active_mrp_count = 0
 
         mode = get_odoo_mode()
         kpis = [
@@ -524,20 +495,6 @@ def load_dashboard():
 # BOM 定义（基于真实 Odoo 调查 + Excel）
 TAPE_BOM_CODES = ["P04725", "P05346", "P05347", "P05350", "P05351", "P05352", "P05353"]
 SPLITTER_BOM_CODES = ["P04726", "P05346", "P05347", "P05348", "P05351", "P05352", "P05353"]
-
-# 真实 Odoo product ID 映射
-ODOO_PRODUCT_IDS = {
-    "P04725": 11632, "P05346": 12253, "P05347": 12254, "P05350": 12257,
-    "P05348": 12255, "P05351": 12258, "P05352": 12259, "P05353": 12260,
-    "P04726": 11633,
-}
-
-# 真实 Odoo product.template ID 映射
-ODOO_TMPL_IDS = {
-    "P04725": 12977, "P05346": 13001, "P05347": 13002, "P05350": 13005,
-    "P05348": 13003, "P05351": 13006, "P05352": 13007, "P05353": 13008,
-    "P04726": 12978,
-}
 
 # BOM Line ID 映射（Mock 模式下使用）
 MOCK_BOM_LINE_IDS = {
@@ -772,7 +729,8 @@ def get_bom_data(host_type):
 
 
 _WO_CACHE = {"data": None, "ts": 0}
-_WO_CACHE_TTL = 60  # 30秒缓存，准实时
+_WO_CACHE_TTL = 60  # 60秒缓存，准实时
+_WO_LOCK = threading.Lock()
 
 
 def get_workorders_data():
@@ -786,6 +744,7 @@ def get_workorders_data():
       - 工序 PDF 优先但非必须
     """
     now = time.time()
+    # 无锁快读
     if _WO_CACHE["data"] is not None and (now - _WO_CACHE["ts"]) < _WO_CACHE_TTL:
         return _WO_CACHE["data"]
     mode = get_odoo_mode()
@@ -824,8 +783,9 @@ def get_workorders_data():
                      "product_id", "state", "qty_production", "qty_produced",
                      "qty_remaining", "duration_expected", "write_date"]
         if not valid_mo_ids:
-            _WO_CACHE["data"] = []
-            _WO_CACHE["ts"] = time.time()
+            with _WO_LOCK:
+                _WO_CACHE["data"] = []
+                _WO_CACHE["ts"] = time.time()
             return []
         wo_rows = client.search_read(
             "mrp.workorder",
@@ -911,8 +871,9 @@ def get_workorders_data():
                 "remainingQty": number(wo.get("qty_remaining")),
                 "hostType": host_type,
             })
-        _WO_CACHE["data"] = workorders
-        _WO_CACHE["ts"] = time.time()
+        with _WO_LOCK:
+            _WO_CACHE["data"] = workorders
+            _WO_CACHE["ts"] = time.time()
         return workorders
     except Exception as e:
         logger.warning(f"获取工单失败: {e}")
