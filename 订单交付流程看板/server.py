@@ -407,6 +407,7 @@ def load_dashboard():
             qty = number(line.get("product_uom_qty"))
             delivered = min(max(number(line.get("qty_delivered")), 0), qty)
             remaining = min(max(number(line.get("qty_to_deliver")), qty - delivered, 0), qty)
+
             if remaining <= 0:
                 continue
             order = orders.get(rel_id(line.get("order_id")), {})
@@ -512,7 +513,7 @@ def load_dashboard():
             },
         }
         _DASH_CACHE["data"] = result
-    _DASH_CACHE["ts"] = time.time()
+        _DASH_CACHE["ts"] = time.time()
     return result
 
 

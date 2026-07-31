@@ -59,7 +59,7 @@ function renderOrders() {
         <div class="order-field"><span>${esc(row.spec)}</span><small>规格型号</small></div>
         <div class="order-field"><span>${esc(row.qty)}${esc(unitText(row.uom))}</span><small>待交付 ${esc(row.remaining)}${esc(unitText(row.uom))}</small></div>
         <div class="order-field"><span>${esc(row.remark)}</span><small>${esc(row.updated || row.date)}</small></div>
-        <div class="order-field due-field"><span>${esc(row.delivery)}</span><small>ERP实时</small></div>
+        <div class="order-field due-field"><span>${esc(row.delivery)}</span><small>odoo实时</small></div>
       </article>
     `).join("")}
   `;
