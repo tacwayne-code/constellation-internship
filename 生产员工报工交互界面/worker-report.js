@@ -897,13 +897,14 @@ async function submitReport() {
   // 构建物料数据
   let materials = [];
   if (S.bomConfirmed && S.bomItems.length > 0) {
+    // actualQty 是"单台用量"，提交时要乘以完成数量 S.qty
     materials = S.bomItems
       .filter((item) => item.selected)
       .map((item) => ({
         productId: item.productId || 0,
         bomLineId: item.bomLineId || 0,
         defaultCode: item.defaultCode || "",
-        actualQty: item.actualQty || 1,
+        actualQty: (item.actualQty || 1) * S.qty,
         uomId: item.uomId || 1,
       }));
   }
