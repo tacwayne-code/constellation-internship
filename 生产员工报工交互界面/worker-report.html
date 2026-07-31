@@ -6,6 +6,8 @@
   <meta name="theme-color" content="#f0f4f8" />
   <title>生产人员报工</title>
   <link rel="stylesheet" href="./worker-report.css" />
+  <!-- PDF.js for ESOP viewer -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 </head>
 <body>
 
@@ -24,10 +26,6 @@
       <span class="status-badge" id="apiStatus">● 在线</span>
       <span class="mode-badge" id="modeBadge" style="display:none;">模拟环境</span>
       <button class="btn-pill" id="fullscreenBtn" title="切换全屏">全屏</button>
-      <a class="btn-pill btn-primary" href="./index.html" title="返回订单看板">
-        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
-        <span>返回看板</span>
-      </a>
       <div class="topbar-clock">
         <strong id="clock">--:--:--</strong>
         <span id="dateLabel">----年--月--日</span>
@@ -59,11 +57,7 @@
           </div>
           <div class="card-body">
             <div class="op-row" id="operationChips">
-              <button class="chip op-chip" data-op="assembly">总装</button>
-              <button class="chip op-chip" data-op="testing">测试</button>
-              <button class="chip op-chip" data-op="qc">质检</button>
-              <button class="chip op-chip" data-op="packing">包装</button>
-              <button class="chip op-chip" data-op="debug">调试</button>
+              <!-- JS 渲染阶段会被替换为：电脑装机（编带主机）/ 电脑装机（分光主机） -->
             </div>
           </div>
         </div>
@@ -131,30 +125,31 @@
         </div>
       </div>
 
-      <!-- 中：今日报工统计 -->
+      <!-- 中：生产订单进度总览（替代原 班次状态） -->
       <div class="card flex-1">
         <div class="card-header">
           <div>
-            <p class="section-kicker">TODAY REPORT</p>
-            <h2>今日报工</h2>
+            <p class="section-kicker">MO PROGRESS</p>
+            <h2>生产订单进度</h2>
           </div>
-          <span class="badge-count" id="todayStat">0 台 / 0 人</span>
+          <span class="badge-count" id="moCount">0 单</span>
         </div>
         <div class="card-body scrollable">
-          <div id="reportOverview"></div>
+          <div class="mo-progress-list" id="moProgressList"></div>
         </div>
       </div>
 
-      <!-- 下：在岗工人 + 工序分布 -->
+      <!-- 下：实时报工人员 -->
       <div class="card">
         <div class="card-header">
           <div>
-            <p class="section-kicker">TEAM STATUS</p>
-            <h2>班次状态</h2>
+            <p class="section-kicker">ACTIVE WORKERS</p>
+            <h2>实时报工人员</h2>
           </div>
+          <span class="badge-count" id="activeWorkerCount">0 人</span>
         </div>
         <div class="card-body">
-          <div class="team-grid" id="teamGrid"></div>
+          <div class="worker-active-list" id="workerActiveList"></div>
         </div>
       </div>
 
@@ -185,7 +180,9 @@
     </div>
     <div class="bom-toolbar">
       <label class="bom-check-all"><input type="checkbox" id="bomSelectAll" checked /> 全选</label>
+      <a class="bom-sop-link" id="bomSopLink" style="display:none;color:var(--cyan);font-size:15px;font-weight:700;cursor:pointer;text-decoration:underline;">📖 查看当前工序作业指导书</a>
       <span class="bom-stock-warn" id="bomStockWarn" style="display:none;">⚠ 库存不足</span>
+      <button class="bom-refresh" id="bomRefresh" title="重新从 Odoo 拉取最新物料清单">⟳ 刷新物料</button>
     </div>
     <div class="bom-body scrollable" id="bomBody">
       <!-- 加载状态 -->
@@ -210,6 +207,35 @@
     <div class="bom-footer">
       <button class="bom-btn bom-btn-cancel" id="bomCancel">取消</button>
       <button class="bom-btn bom-btn-confirm" id="bomConfirm">确认物料</button>
+    </div>
+  </div>
+</div>
+
+<!-- SOP 查看弹窗 -->
+<div class="overlay" id="sopOverlay">
+  <div class="sop-dialog">
+    <div class="sop-header">
+      <h3 id="sopTitle">装配作业指导书</h3>
+      <span id="sopVersion">v--</span>
+      <button class="sop-close" id="sopClose">&times;</button>
+    </div>
+    <div class="sop-tabs-row" id="sopTabs" style="display:none;"></div>
+    <div class="sop-toolbar">
+      <span class="sop-current-page">第 <strong id="sopCurrentPage">--</strong> 页</span>
+      <span class="sop-spacer"></span>
+      <span class="sop-jump">跳转&nbsp;<input type="number" id="sopJumpInput" min="1" placeholder="页码" />&nbsp;<button id="sopJumpGo">GO</button></span>
+      <span class="sop-spacer"></span>
+      <button class="sop-btn-page" id="sopZoomOut">-</button>
+      <span id="sopZoomLevel">100%</span>
+      <button class="sop-btn-page" id="sopZoomIn">+</button>
+      <span class="sop-spacer"></span>
+      <button class="sop-btn-page" id="sopFullscreen" title="全屏查看">⛶</button>
+    </div>
+    <div class="sop-body" id="sopBody">
+      <div class="sop-state" id="sopLoading"><span class="spinner"></span>加载作业指导书...</div>
+      <div class="sop-state sop-error" id="sopError" style="display:none;"></div>
+      <div class="sop-state" id="sopEmpty" style="display:none;">该工单暂无附件作业指导书</div>
+      <canvas id="sopCanvas" style="display:none;"></canvas>
     </div>
   </div>
 </div>

@@ -70,6 +70,13 @@ function unitText(value) {
   return unit;
 }
 
+// 工单状态对应边框颜色 class
+function stateClsFromState(state) {
+  if (state === "progress") return "state-progress";
+  if (state === "ready" || state === "pending" || state === "to_close") return "state-ready";
+  return "";
+}
+
 // ====== UUID v4 ======
 function generateUUID() {
   if (typeof crypto !== "undefined" && crypto.randomUUID) {
@@ -168,11 +175,11 @@ async function loadAll() {
   updateApiBadge();
   updateModeBadge();
   renderKpis();
-  renderTeamStatus();
   renderWorkers();
   renderOperations();
   renderOrders();
-  renderReportOverview();
+  renderMOProgress();
+  renderActiveWorkers();
   updateSubmit();
 }
 
@@ -185,6 +192,26 @@ function defaultWorkers() {
     { name: "刘大伟", id: "WK005", team: "C班" },
     { name: "赵永刚", id: "WK006", team: "夜班" },
   ];
+}
+
+// ====== 报工后刷新工单 + 订单进度 ======
+async function refreshWorkordersAndProgress() {
+  try {
+    // 工单（Odoo 已更新 qty_produced + 后端缓存已清）
+    const woRes = await apiGet("/api/workorders");
+    if (woRes && woRes.data) {
+      S.workorders = woRes.data;
+      renderOrders();
+    }
+    // 订单进度（dashboard 摘要）
+    const dashRes = await apiGet("/api/order-summary");
+    if (dashRes && dashRes.data) {
+      S.orderSummary = dashRes.data;
+      renderMOProgress();
+    }
+  } catch (e) {
+    // 静默失败，不影响报工本身
+  }
 }
 
 // ====== KPI ======
@@ -203,7 +230,9 @@ function renderKpis() {
     ["今日报工", String(todayR.length), "条", `已提交 ${todayQty}台`, "#10b981"],
     ["今日产量", String(todayQty), "台", `在岗 ${todayPeople}人`, "#0ea5c9"],
     ["待处理工单", String(workorderCount), "个", "今日新增", "#f59e0b"],
-    ["可报工人", String(S.workers.length), "人", `共 ${S.workers.length}人`, "#4f8cf7"],
+    // 可报工人：与"选择工人"面板同步，只统计实际显示的工人（罗伟华）
+    ["可报工人", String(S.workers.filter((w) => w.name === "罗伟华").length), "人",
+     `共 ${S.workers.filter((w) => w.name === "罗伟华").length}人`, "#4f8cf7"],
   ];
 
   grid.innerHTML = kpis.map((k) => `
@@ -215,41 +244,98 @@ function renderKpis() {
   `).join("");
 }
 
-// ====== 班次状态 ======
-function renderTeamStatus() {
-  const grid = $("#teamGrid");
-  if (!grid) return;
+// ====== 生产订单进度总览 ======
+function renderMOProgress() {
+  const el = $("#moProgressList");
+  const cnt = $("#moCount");
+  if (!el) return;
 
-  const teamMap = {};
-  S.workers.forEach((w) => {
-    const t = w.team || "其他";
-    if (!teamMap[t]) teamMap[t] = { name: t, total: 0, active: 0 };
-    teamMap[t].total++;
-  });
+  // 每条工单（打包/组装）独立显示一项
+  const items = (S.workorders || []).slice();
+  if (cnt) cnt.textContent = items.length + " 单";
 
-  const today = new Date().toISOString().split("T")[0];
-  const todayR = S.reports.filter((r) => r.date === today);
-  todayR.forEach((r) => {
-    const w = S.workers.find((x) => x.name === r.workerName);
-    if (w && teamMap[w.team]) teamMap[w.team].active++;
-  });
-
-  const teams = Object.values(teamMap);
-  if (!teams.length) {
-    grid.innerHTML = '<div style="color:var(--muted);font-size:12px;text-align:center;padding:16px">暂无班次数据</div>';
+  if (!items.length) {
+    el.innerHTML = '<div class="mo-empty">暂无活跃生产订单</div>';
     return;
   }
 
-  grid.innerHTML = teams.map((t) => {
-    const cls = t.name.includes("A") ? "A" :
-                t.name.includes("B") ? "B" :
-                t.name.includes("C") ? "C" :
-                t.name.includes("夜") ? "night" :
-                t.name.includes("组装") ? "A" : "";
-    return '<div class="team-card ' + cls + '">' +
-      '<span class="team-name">' + esc(t.name) + '</span>' +
-      '<span class="team-count">' + t.active + '/' + t.total + '</span>' +
-      '<span class="team-sub">在岗 / 总数</span>' +
+  el.innerHTML = items.map((w) => {
+    const target = parseFloat(w.qtyProduction) || 0;
+    const produced = parseFloat(w.qtyProduced) || 0;
+    const remaining = parseFloat(w.remainingQty) || 0;
+    const pct = target > 0 ? Math.min(100, Math.round((produced / target) * 100)) : 0;
+
+    // 状态判断
+    let stateCls = "state-ready";
+    let stateLabel = "等待生产";
+    if (w.state === "progress") {
+      stateCls = "state-progress";
+      stateLabel = "正常生产";
+    } else if (w.state === "ready" || w.state === "pending") {
+      stateCls = "state-ready";
+      stateLabel = "等待生产";
+    } else {
+      stateCls = "state-ready";
+      stateLabel = "待开工";
+    }
+
+    return '<div class="mo-card ' + stateCls + '">' +
+      '<div class="mo-header">' +
+        '<span class="mo-name">' + esc(w.productionName || "") + ' · ' + esc(w.workorderName || "") + '</span>' +
+        '<span class="mo-status">' + stateLabel + '</span>' +
+      '</div>' +
+      '<div class="mo-product">' + esc(w.productName || "") + ' · ' + esc(w.workcenterName || "") + '</div>' +
+      '<div class="progress-row">' +
+        '<div class="progress-bar"><div class="progress-fill" style="width:' + pct + '%"></div></div>' +
+        '<span class="progress-pct">' + pct + '%</span>' +
+      '</div>' +
+      '<div class="mo-qty">已产 ' + produced + ' / ' + target + ' 台 · 剩余 ' + remaining + '</div>' +
+    '</div>';
+  }).join("");
+}
+
+// ====== 实时报工人员 ======
+function renderActiveWorkers() {
+  const el = $("#workerActiveList");
+  const cnt = $("#activeWorkerCount");
+  if (!el) return;
+
+  // 取今天报过工的员工 + 当前工单
+  const today = new Date().toISOString().split("T")[0];
+  const todayReports = (S.reports || []).filter((r) => r.date === today);
+  // 同员工最新报工 = 实时任务
+  const lastByWorker = new Map();
+  todayReports.forEach((r) => {
+    const cur = lastByWorker.get(r.workerName);
+    if (!cur || (r.time || "") > (cur.time || "")) lastByWorker.set(r.workerName, r);
+  });
+
+  const list = Array.from(lastByWorker.values()).filter((r) => r.qty > 0 || r.operation);
+  if (cnt) cnt.textContent = list.length + " 人";
+
+  if (!list.length) {
+    el.innerHTML = '<div class="worker-empty">暂无今日报工人员</div>';
+    return;
+  }
+
+  el.innerHTML = list.slice(0, 8).map((r) => {
+    const initial = (r.workerName || "?").slice(0, 1);
+    // 从工单列表查找对应的工单名称
+    let woInfo = "";
+    if (r.workorderId != null && r.workorderId !== "") {
+      const wo = (S.workorders || []).find((w) => String(w.workorderId) === String(r.workorderId));
+      const wname = r.workorderName || (wo && wo.workorderName) || "工单";
+      woInfo = "WO#" + r.workorderId + " · " + esc(wname);
+    } else {
+      woInfo = "未选择工单";
+    }
+    return '<div class="worker-active-row">' +
+      '<div class="worker-active-avatar">' + esc(initial) + '</div>' +
+      '<div class="worker-active-info">' +
+        '<div class="worker-active-name">' + esc(r.workerName || "") + '</div>' +
+        '<div class="worker-active-task">' + woInfo + '</div>' +
+      '</div>' +
+      '<div class="worker-active-qty">+' + (parseInt(r.qty) || 0) + '台</div>' +
     '</div>';
   }).join("");
 }
@@ -259,18 +345,21 @@ function renderWorkers() {
   const el = $("#workerChips");
   const cnt = $("#workerCount");
   if (!el) return;
-  if (cnt) cnt.textContent = S.workers.length + " 人";
 
-  if (!S.workers.length) {
+  // 只保留罗伟华（电脑装机工序的真实操作员）
+  const visibleWorkers = S.workers.filter((w) => w.name === "罗伟华");
+  if (cnt) cnt.textContent = visibleWorkers.length + " 人";
+
+  if (!visibleWorkers.length) {
     el.innerHTML = '<div style="color:var(--muted);font-size:13px;padding:8px">暂无工人</div>';
     return;
   }
 
-  el.innerHTML = S.workers.map((w, i) => {
-    const act = S.selWorkerIdx === i ? " active" : "";
+  el.innerHTML = visibleWorkers.map((w, i) => {
+    const act = S.selWorkerIdx >= 0 && S.workers[S.selWorkerIdx] && S.workers[S.selWorkerIdx].name === "罗伟华" ? " active" : "";
     const odoo = w.source === "odoo" ? " (Odoo)" : "";
     const label = w.name + (w.team ? " · " + w.team : "") + odoo;
-    return '<button class="chip worker-chip' + act + '" data-wi="' + i + '">' + esc(label) + '</button>';
+    return '<button class="chip worker-chip' + act + '" data-wi="' + i + '" data-wname="' + esc(w.name) + '">' + esc(label) + '</button>';
   }).join("");
 }
 
@@ -283,31 +372,22 @@ function renderOperations() {
   const el = $("#operationChips");
   if (!el) return;
 
-  // 获取工序列表（优先使用动态加载的，回退到默认）
-  let ops = S.operations;
-  if (!ops || !ops.length) {
+  // 工序只保留电脑装机（编带主机）+ 电脑装机（分光主机）
+  // - 如果后端返回了工序列表（应包括这两个），过滤掉其他；
+  // - 否则直接兜底为这两个
+  const PC_OP_CODES = ["pc_assembly_tape", "pc_assembly_splitter"];
+  let ops = (S.operations || []).filter((op) => PC_OP_CODES.includes(op.code));
+  if (!ops.length) {
     ops = [
-      { code: "assembly", name: "总装" },
-      { code: "testing", name: "测试" },
-      { code: "qc", name: "质检" },
-      { code: "packing", name: "包装" },
-      { code: "debug", name: "调试" },
       { code: "pc_assembly_tape", name: "电脑装机（编带主机）" },
       { code: "pc_assembly_splitter", name: "电脑装机（分光主机）" },
     ];
   }
 
-  const luoSelected = isLuoweihua();
-
   el.innerHTML = ops.map((op) => {
     const act = S.selOperation === op.code ? " active" : "";
-    const isPC = op.code.includes("pc_assembly");
-    // 电脑装机只允许罗伟华选择
-    const disabled = isPC && !luoSelected;
-    const cls = "chip op-chip" + act + (isPC ? " op-pc" : "") + (disabled ? " op-disabled" : "");
-    return '<button class="' + cls + '" data-op="' + esc(op.code) + '"' +
-           (disabled ? ' disabled title="该工序仅限罗伟华报工"' : '') +
-           '>' + esc(op.name || op.code) + '</button>';
+    const cls = "chip op-chip op-pc" + act;
+    return '<button class="' + cls + '" data-op="' + esc(op.code) + '">' + esc(op.name || op.code) + '</button>';
   }).join("");
 }
 
@@ -323,19 +403,27 @@ function renderOrders() {
   if (cnt) cnt.textContent = totalCount + " 个";
 
   if (totalCount === 0) {
-    el.innerHTML = '<div class="overview-empty">暂无待处理工单</div>';
+    const tip = selOp === "pc_tape" || selOp === "pc_splitter"
+      ? '当前工序已限定机型，没有匹配的工单（可点工序切换其他机型）'
+      : '暂无待处理工单';
+    el.innerHTML = '<div class="overview-empty">' + esc(tip) + '</div>';
     return;
   }
 
   let html = "";
 
   // 1. 先渲染工单（每个 MO 只显示一个卡片）
+  const currentOp = S.operations.find((o) => o.code === S.selOperation);
+  const currentHostType = currentOp ? currentOp.hostType : null;
+
   html += workorderActive.map((w) => {
     const act = S.selectedWorkorder && S.selectedWorkorder.workorderId === w.workorderId ? " active" : "";
     const stCls = w.state === "progress" ? "running" : w.state === "ready" ? "progress" : "";
     const stLabel = w.stateLabel || w.state || "";
+    // 工序×工单匹配检查（仅对 pc_assembly 工序生效）
+    const mismatch = currentHostType && w.hostType && w.hostType !== currentHostType;
 
-    return '<div class="order-card' + act + '" data-woid="' + esc(w.workorderId) + '" data-pid="' + esc(w.productionId || "") + '">' +
+    return '<div class="order-card ' + stateClsFromState(w.state) + act + (mismatch ? " mismatch" : "") + '" data-woid="' + esc(w.workorderId) + '" data-pid="' + esc(w.productionId || "") + '" data-mismatch="' + (mismatch ? "1" : "0") + '">' +
       '<div class="oc-header">' +
         '<span class="oc-id">WO#' + esc(w.workorderId) + '</span>' +
         '<span class="oc-status ' + stCls + '">' + stLabel + '</span>' +
@@ -355,6 +443,7 @@ function renderOrders() {
         '<span class="oc-remark">' + (w.hostType === "tape" ? "编带主机" : w.hostType === "splitter" ? "分光主机" : "") + '</span>' +
         '<span class="oc-delivery">' + esc(w.workcenterName || "") + '</span>' +
       '</div>' +
+      '<button class="oc-sop-btn" data-woid="' + esc(w.workorderId) + '" title="查看作业指导书">📖 查看SOP</button>' +
     '</div>';
   }).join("");
 
@@ -402,17 +491,25 @@ function renderReportOverview() {
 function updateSubmit() {
   const btn = $("#submitBtn");
   if (!btn) return;
-  const hostOp = S.selOperation && S.selOperation.includes("pc_assembly");
-  // 工单不再必需，工人+工序+qty>0 即可提交
-  let can = S.selWorkerIdx >= 0 && S.selOperation && S.qty > 0 && !S.submitting;
-  if (can && hostOp && !S.bomConfirmed) {
-    can = false;
-  }
+  // 工序×工单匹配检查
+  const opInfo = S.operations.find((o) => o.code === S.selOperation);
+  const opHostType = opInfo ? opInfo.hostType : null;
+  const woHostType = S.selectedWorkorder ? S.selectedWorkorder.hostType : null;
+  const mismatch = opHostType && woHostType && opHostType !== woHostType;
+  // 工人+工序+qty>0 + 匹配检查 + 未提交中
+  const can = S.selWorkerIdx >= 0 && S.selOperation && S.qty > 0 && !S.submitting && !mismatch;
   btn.disabled = !can;
+  // 不匹配时更新 title 提示
+  if (mismatch) {
+    const want = opHostType === "tape" ? "编带机箱" : opHostType === "splitter" ? "分光机箱" : "对应";
+    btn.title = `当前工序只能选择${want}工单，请重新选择`;
+  } else {
+    btn.title = "";
+  }
 }
 
 // ====== BOM 弹窗逻辑 ======
-async function openBomModal() {
+async function openBomModal(nocache = false) {
   const hostType = S.selectedOperation ? S.selectedOperation.hostType : null;
   if (!hostType) {
     // 尝试从工单推断
@@ -430,11 +527,20 @@ async function openBomModal() {
   S.bomItems = [];
   S.bomLoading = true;
   S.bomError = "";
-  S.bomConfirmed = false;
+  // 刷新时不重置 bomConfirmed（保留已确认状态）
+  if (!nocache) {
+    S.bomConfirmed = false;
+  }
 
   // 显示弹窗
   const overlay = $("#bomOverlay");
   overlay.classList.add("show");
+
+  // BOM 弹窗内的 SOP 入口：工单选中后显示
+  const sopLink = $("#bomSopLink");
+  if (sopLink) {
+    sopLink.style.display = S.selectedWorkorder ? "inline" : "none";
+  }
 
   // 设置标题
   $("#bomHostType").textContent = ht === "tape" ? "编带主机 BOM" : "分光主机 BOM";
@@ -448,7 +554,8 @@ async function openBomModal() {
 
   try {
     const woId = S.selectedWorkorder ? S.selectedWorkorder.workorderId : "";
-    const resp = await apiGet(`/api/bom?hostType=${encodeURIComponent(ht)}&workorderId=${encodeURIComponent(woId)}`);
+    const cacheParam = nocache ? "&nocache=1" : "";
+    const resp = await apiGet(`/api/bom?hostType=${encodeURIComponent(ht)}&workorderId=${encodeURIComponent(woId)}${cacheParam}`);
     S.bomItems = (resp.data || []).map((item) => ({
       ...item,
       selected: true,
@@ -457,11 +564,24 @@ async function openBomModal() {
     }));
     S.bomLoading = false;
     renderBomList();
+    if (nocache) toast("已从 Odoo 拉取最新物料清单", "success");
   } catch (err) {
     S.bomLoading = false;
     S.bomError = err.message || "加载物料清单失败";
     updateBomState("error");
   }
+}
+
+// 从 Odoo 强制刷新物料清单（绕过服务端缓存）
+async function refreshBom() {
+  if (!$("#bomOverlay")?.classList.contains("show")) {
+    toast("请先打开物料清单弹窗", "error");
+    return;
+  }
+  const btn = $("#bomRefresh");
+  if (btn) { btn.disabled = true; btn.textContent = "⟳ 刷新中..."; }
+  await openBomModal(true);
+  if (btn) { btn.disabled = false; btn.textContent = "⟳ 刷新物料"; }
 }
 
 function updateBomState(state) {
@@ -602,6 +722,9 @@ function setupBomEvents() {
     updateSubmit();
   });
 
+  // 强制刷新物料清单（绕过服务端缓存，从 Odoo 拉最新）
+  $("#bomRefresh")?.addEventListener("click", () => refreshBom());
+
   // 确认
   $("#bomConfirm")?.addEventListener("click", confirmBom);
 
@@ -619,8 +742,11 @@ function setupBomEvents() {
 function setupEvents() {
   $("#workerChips")?.addEventListener("click", (e) => {
     const chip = e.target.closest(".chip");
-    if (!chip || chip.dataset.wi === undefined) return;
-    const idx = parseInt(chip.dataset.wi);
+    if (!chip || chip.dataset.wname === undefined) return;
+    const name = chip.dataset.wname;
+    // 用名字在 S.workers 中查找对应的原始索引（保持 S.selWorker 引用真实数据）
+    const idx = S.workers.findIndex((w) => w.name === name);
+    if (idx < 0) return;
     S.selWorkerIdx = idx;
     S.selWorker = S.workers[idx];
     renderWorkers();
@@ -638,6 +764,14 @@ function setupEvents() {
     const opInfo = S.operations.find((o) => o.code === opCode);
     S.selectedOperation = opInfo || { code: opCode, name: OP[opCode] || opCode };
 
+    // 切换工序：若已选工单与新工序不匹配，自动清掉
+    if (S.selectedWorkorder && opInfo && opInfo.hostType &&
+        S.selectedWorkorder.hostType && S.selectedWorkorder.hostType !== opInfo.hostType) {
+      S.selectedWorkorder = null;
+      S.selectedProduction = null;
+      toast(`已清掉不匹配的工单（${opInfo.hostType === "tape" ? "编带" : "分光"}工序）`, "info");
+    }
+
     // 清理旧 BOM
     S.bomItems = [];
     S.bomConfirmed = false;
@@ -651,6 +785,8 @@ function setupEvents() {
       openBomModal();
     }
 
+    // 重新渲染工单卡片（让不匹配的卡变灰）
+    renderOrders();
     updateSubmit();
   });
 
@@ -658,6 +794,14 @@ function setupEvents() {
   $("#orderCards")?.addEventListener("click", (e) => {
     const card = e.target.closest(".order-card");
     if (!card) return;
+
+    // 工单×工序不匹配：阻止选择 + 提示
+    if (card.dataset.mismatch === "1") {
+      const opInfo = S.operations.find((o) => o.code === S.selOperation);
+      const woProd = card.querySelector(".oc-op-name")?.textContent || "该工单";
+      toast(`"${opInfo?.name || S.selOperation}" 工序只能选择 ${opInfo?.hostType === "tape" ? "编带机箱" : opInfo?.hostType === "splitter" ? "分光机箱" : "对应"} 工单，无法选择 "${woProd}"`, "error");
+      return;
+    }
 
     const woid = card.dataset.woid;
     const oid = card.dataset.oid;
@@ -772,8 +916,8 @@ async function submitReport() {
     orderId: "",
     orderCustomer: "",
     orderProduct: "",
-    productionId: "",
-    workorderId: "",
+    productionId: S.selectedWorkorder ? String(S.selectedWorkorder.productionId || "") : "",
+    workorderId: S.selectedWorkorder ? String(S.selectedWorkorder.workorderId || "") : "",
     operation: S.selOperation,
     operationLabel: opInfo.name || OP[S.selOperation] || S.selOperation,
     qty: S.qty,
@@ -822,8 +966,10 @@ async function submitReport() {
 
     showSuccessMsg(worker.name, S.qty, mode);
     renderKpis();
-    renderTeamStatus();
     renderReportOverview();
+    renderActiveWorkers();
+    // 报工后刷新工单 + 订单进度（清缓存 + 重拉）
+    refreshWorkordersAndProgress();
   } catch (err) {
     toast("提交失败: " + (err.message || "未知错误"), "error");
   } finally {
@@ -941,6 +1087,7 @@ async function init() {
 
   setupClock();
   setupEvents();
+  setupSopEvents();
   await loadAll();
 
   // 定时刷新（用户操作中不刷新，避免打断操作）
@@ -951,3 +1098,392 @@ async function init() {
 }
 
 document.addEventListener("DOMContentLoaded", init);
+
+// ====== ESOP — 作业指导书查看模块 ======
+const SOP = {
+  workorderId: null,
+  attachments: [],
+  currentIdx: 0,
+  currentPage: 1,
+  totalPages: 0,
+  zoom: 1.0,
+  pdfDoc: null,
+  error: "",
+};
+
+function openSopModal(workorderId) {
+  SOP.workorderId = workorderId;
+  SOP.attachments = []; SOP.currentIdx = 0;
+  SOP.currentPage = 1; SOP.zoom = 1.0; SOP.pdfDoc = null;
+  _sopClearBody();
+  $("#sopTitle").textContent = "装配作业指导书";
+  $("#sopVersion").textContent = "";
+  updateSopState("loading");
+  renderSopTabs();
+  $("#sopOverlay").classList.add("show");
+
+  apiGet("/api/sop/list?workorderId=" + encodeURIComponent(workorderId))
+    .then(resp => {
+      SOP.attachments = resp.data || [];
+      if (!SOP.attachments.length) { updateSopState("empty"); return; }
+      SOP.currentIdx = 0;
+      renderSopTabs();
+      loadSopAttachment(SOP.attachments[0]);
+    })
+    .catch(err => { SOP.error = err.message || "查询失败"; updateSopState("error"); });
+}
+
+function renderSopTabs() {
+  const el = $("#sopTabs");
+  if (!el) return;
+  if (SOP.attachments.length <= 1) { el.style.display = "none"; return; }
+  el.style.display = "flex";
+  el.innerHTML = SOP.attachments.map((a, i) => {
+    const act = i === SOP.currentIdx ? " active" : "";
+    const icon = /^image/.test(a.fileType) ? "🖼️" : "📄";
+    return '<button class="sop-tab' + act + '" data-si="' + i + '">' + icon + " " + esc(a.name || "附件" + (i + 1)) + '</button>';
+  }).join("");
+}
+
+function loadSopAttachment(att) {
+  SOP.currentPage = 1; SOP.zoom = 1.0; SOP.pdfDoc = null;
+  _sopClearBody();
+  $("#sopTitle").textContent = att.name || "作业指导书";
+  const v = att.version ? att.version.slice(0, 10) : "--";
+  $("#sopVersion").textContent = "v" + v;
+
+  if (/^image/.test(att.fileType)) {
+    // 图片：用 img + CSS transform 缩放
+    updateSopState("list");
+    _renderSopImage(att);
+    return;
+  }
+
+  // PDF
+  updateSopState("loading");
+  pdfjsLib.getDocument({ url: window.location.origin + att.sopUrl }).promise
+    .then(pdfDoc => {
+      SOP.pdfDoc = pdfDoc;
+      SOP.totalPages = pdfDoc.numPages;
+      updateSopState("list");
+      renderAllSopPages();
+    })
+    .catch(err => { SOP.error = "PDF加载失败: " + (err.message || ""); updateSopState("error"); });
+}
+
+function _renderSopImage(att) {
+  $("#sopCanvas").style.display = "none";
+  // 清理旧图
+  const old = document.getElementById("sopImage");
+  if (old) old.remove();
+  const img = document.createElement("img");
+  img.id = "sopImage";
+  img.src = att.sopUrl;
+  img.style.display = "block";
+  img.style.transition = "transform 0.15s";
+  img.style.maxWidth = "100%";
+  img.style.maxHeight = "65vh";
+  img.style.margin = "0 auto";
+  img.style.transform = "scale(" + SOP.zoom + ")";
+  img.style.transformOrigin = "top center";
+  img.onload = () => { $("#sopBody").appendChild(img); };
+  img.onerror = () => { SOP.error = "图片加载失败"; updateSopState("error"); };
+}
+
+function _sopClearBody() {
+  const body = $("#sopBody");
+  const cnv = $("#sopCanvas");
+  const oldImg = document.getElementById("sopImage");
+  if (oldImg) oldImg.remove();
+  cnv.style.display = "none";
+}
+
+function renderSopPage() {
+  // 单页模式（保留以备兼容）。已默认改用 renderAllSopPages。
+  if (!SOP.pdfDoc) return;
+  $("#sopCanvas").style.display = "block";
+  SOP.pdfDoc.getPage(SOP.currentPage).then(page => {
+    const scale = SOP.zoom * 1.5;
+    const vp = page.getViewport({ scale });
+    const cnv = $("#sopCanvas");
+    cnv.width = vp.width; cnv.height = vp.height;
+    page.render({ canvasContext: cnv.getContext("2d"), viewport: vp }).promise.then(() => {
+      $("#sopPageInfo").textContent = SOP.currentPage + " / " + SOP.totalPages;
+    });
+  });
+}
+
+// 全部页面一次性渲染（修复 73 页只显示 1 页 + 页码错位 bug）
+async function renderAllSopPages() {
+  if (!SOP.pdfDoc) return;
+  const body = $("#sopBody");
+  $("#sopCanvas").style.display = "none";
+  // 清理上次的多页容器
+  const old = document.getElementById("sopPagesContainer");
+  if (old) old.remove();
+
+  const container = document.createElement("div");
+  container.id = "sopPagesContainer";
+  container.style.cssText = "display:flex; flex-direction:column; gap:14px; padding:16px; width:100%;";
+  body.appendChild(container);
+
+  $("#sopCurrentPage").textContent = "1";
+
+  const scale = SOP.zoom * 1.5;
+
+  // 1) 先按顺序同步创建所有 pageWrap + canvas（保证 DOM 顺序与页码一致）
+  for (let p = 1; p <= SOP.totalPages; p++) {
+    const pageWrap = document.createElement("div");
+    pageWrap.id = "pageWrap_" + p;
+    pageWrap.style.cssText = "position:relative; background:#fff; box-shadow:0 4px 12px rgba(0,0,0,.4); border-radius:4px; padding:8px;";
+    const pageLabel = document.createElement("div");
+    pageLabel.textContent = "第 " + p + " 页";
+    pageLabel.style.cssText = "position:absolute; top:6px; right:14px; color:#666; font-size:13px; font-weight:700; background:rgba(255,255,255,.85); padding:2px 10px; border-radius:10px;";
+    const cnv = document.createElement("canvas");
+    cnv.id = "sopPageCanvas_" + p;
+    cnv.dataset.pageNumber = p;
+    cnv.style.cssText = "display:block; max-width:100%; height:auto;";
+    pageWrap.appendChild(pageLabel);
+    pageWrap.appendChild(cnv);
+    container.appendChild(pageWrap);
+  }
+
+  // 2) 按顺序渲染，并发=4 避免异步竞态导致错位
+  const CONCURRENCY = 4;
+  let nextPage = 1;
+  async function worker() {
+    while (nextPage <= SOP.totalPages) {
+      const p = nextPage++;
+      const cnv = document.getElementById("sopPageCanvas_" + p);
+      if (!cnv) continue;
+      try {
+        const page = await SOP.pdfDoc.getPage(p);
+        const vp = page.getViewport({ scale });
+        cnv.width = vp.width;
+        cnv.height = vp.height;
+        await page.render({ canvasContext: cnv.getContext("2d"), viewport: vp }).promise;
+      } catch (e) {
+        console.error("Page " + p + " render failed:", e);
+      }
+    }
+  }
+  const workers = [];
+  for (let i = 0; i < CONCURRENCY; i++) workers.push(worker());
+  await Promise.all(workers);
+  // 全部渲染完成后：初始化当前页 + 启动滚动监听
+  $("#sopCurrentPage").textContent = SOP.currentPage || 1;
+  setupSopScrollObserver();
+}
+
+function updateSopState(state) {
+  $("#sopLoading").style.display = state === "loading" ? "flex" : "none";
+  $("#sopError").style.display = state === "error" ? "flex" : "none";
+  $("#sopEmpty").style.display = state === "empty" ? "flex" : "none";
+  if (state === "error") $("#sopError").textContent = SOP.error || "加载失败";
+}
+
+// 实时追踪当前可见页码（IntersectionObserver）
+let _sopObserver = null;
+function setupSopScrollObserver() {
+  if (_sopObserver) { _sopObserver.disconnect(); _sopObserver = null; }
+  const container = document.getElementById("sopPagesContainer");
+  const body = document.getElementById("sopBody");
+  if (!container || !body) return;
+  _sopObserver = new IntersectionObserver((entries) => {
+    // 选当前 scrollTop 最近的可见 canvas 作为当前页
+    let bestPage = parseInt(SOP.currentPage) || 1;
+    let bestDist = Infinity;
+    const scrollTop = body.scrollTop;
+    container.querySelectorAll("canvas[id^=sopPageCanvas_]").forEach((c) => {
+      const top = c.offsetTop;
+      const dist = Math.abs(top - scrollTop);
+      if (dist < bestDist) { bestDist = dist; bestPage = parseInt(c.dataset.pageNumber); }
+    });
+    if (bestPage && bestPage !== parseInt($("#sopCurrentPage").textContent)) {
+      SOP.currentPage = bestPage;
+      $("#sopCurrentPage").textContent = bestPage;
+    }
+  }, { root: body, threshold: [0, 0.1, 0.5, 0.9, 1] });
+  container.querySelectorAll("canvas[id^=sopPageCanvas_]").forEach((c) => _sopObserver.observe(c));
+  // 滚动时同步更新
+  body.addEventListener("scroll", updateCurrentPageFromScroll, { passive: true });
+}
+
+function updateCurrentPageFromScroll() {
+  const container = document.getElementById("sopPagesContainer");
+  const body = document.getElementById("sopBody");
+  if (!container || !body) return;
+  let bestPage = 1;
+  let bestDist = Infinity;
+  const scrollTop = body.scrollTop;
+  container.querySelectorAll("canvas[id^=sopPageCanvas_]").forEach((c) => {
+    // 父元素 pageWrap 有 position:relative，所以 canvas.offsetTop 是相对 pageWrap 的；
+    // 取 pageWrap.offsetTop 作为页面的绝对位置
+    const wrap = c.parentElement;
+    const top = (wrap ? wrap.offsetTop : 0) + c.offsetTop;
+    const dist = Math.abs(top - scrollTop);
+    const p = parseInt(c.dataset.pageNumber);
+    if (dist < bestDist) { bestDist = dist; bestPage = p; }
+  });
+  if (bestPage) {
+    SOP.currentPage = bestPage;
+    const cur = $("#sopCurrentPage");
+    if (cur.textContent !== String(bestPage)) cur.textContent = bestPage;
+  }
+}
+
+function jumpToSopPage() {
+  const input = $("#sopJumpInput");
+  if (!input) return;
+  let p = parseInt(input.value);
+  if (isNaN(p) || p < 1) p = 1;
+  if (p > SOP.totalPages) p = SOP.totalPages;
+  const target = document.getElementById("sopPageCanvas_" + p);
+  if (!target) { toast("页面未加载完，请稍后再试", "error"); return; }
+  const body = $("#sopBody");
+  // 用 pageWrap.offsetTop 作为目标位置（canvas 在 pageWrap 内）
+  const wrap = target.parentElement;
+  const targetTop = (wrap ? wrap.offsetTop : 0) + target.offsetTop;
+  body.scrollTo({ top: targetTop, behavior: "smooth" });
+  SOP.currentPage = p;
+  $("#sopCurrentPage").textContent = p;
+  input.value = "";
+}
+
+function toggleSopFullscreen() {
+  const dialog = document.querySelector(".sop-dialog");
+  const btn = $("#sopFullscreen");
+  if (!dialog) return;
+  const exitFullscreen = () => {
+    dialog.classList.remove("is-fullscreen");
+    if (btn) btn.textContent = "⛶";
+  };
+  const enterFullscreen = () => {
+    dialog.classList.add("is-fullscreen");
+    if (btn) btn.textContent = "✕";
+  };
+  if (!document.fullscreenElement) {
+    if (dialog.requestFullscreen) {
+      dialog.requestFullscreen().then(enterFullscreen).catch((e) => {
+        // requestFullscreen 失败（如 iframe），仅 class 模式启用
+        enterFullscreen();
+      });
+    } else {
+      enterFullscreen();
+    }
+  } else {
+    if (document.exitFullscreen) document.exitFullscreen();
+    exitFullscreen();
+  }
+}
+
+// 监听退出全屏事件（按 ESC 时同步按钮图标）
+document.addEventListener("fullscreenchange", () => {
+  const dialog = document.querySelector(".sop-dialog");
+  const btn = $("#sopFullscreen");
+  if (!btn) return;
+  if (document.fullscreenElement) {
+    dialog && dialog.classList.add("is-fullscreen");
+    btn.textContent = "✕";
+  } else {
+    dialog && dialog.classList.remove("is-fullscreen");
+    btn.textContent = "⛶";
+  }
+});
+
+function closeSopModal() {
+  $("#sopOverlay").classList.remove("show");
+  SOP.pdfDoc = null;
+  _sopClearBody();
+  // 记录查看日志
+  if (SOP.attachments.length > 0) {
+    const att = SOP.attachments[SOP.currentIdx];
+    const worker = S.selWorker || {};
+    apiPost("/api/sop/view-log", {
+      attachmentId: att.id, workerId: worker.id || "",
+      workerName: worker.name || "", workorderId: SOP.workorderId || "",
+    }).catch(() => {});
+  }
+}
+
+function changeSopPage(delta) {
+  if (!SOP.pdfDoc) return;
+  const np = SOP.currentPage + delta;
+  if (np < 1 || np > SOP.totalPages) return;
+  SOP.currentPage = np;
+  renderSopPage();
+}
+
+function changeSopZoom(delta) {
+  SOP.zoom = Math.max(0.5, Math.min(3.0, SOP.zoom + delta));
+  $("#sopZoomLevel").textContent = Math.round(SOP.zoom * 100) + "%";
+  // 图片缩放
+  const img = document.getElementById("sopImage");
+  if (img) { img.style.transform = "scale(" + SOP.zoom + ")"; return; }
+  // PDF：缩放全部已渲染页面
+  if (SOP.pdfDoc) renderAllSopPages();
+}
+
+function switchSopAttachment(idx) {
+  if (idx === SOP.currentIdx || idx < 0 || idx >= SOP.attachments.length) return;
+  SOP.currentIdx = idx;
+  renderSopTabs();
+  loadSopAttachment(SOP.attachments[idx]);
+}
+
+function setupSopEvents() {
+  // 工单卡片中的 SOP 按钮（阻止事件冒泡避免触发工单选中）
+  $("#orderCards")?.addEventListener("click", (e) => {
+    const btn = e.target.closest(".oc-sop-btn");
+    if (!btn) return;
+    e.stopPropagation();
+    const woid = btn.dataset.woid;
+    if (woid) openSopModal(parseInt(woid));
+  });
+
+  // 附件标签切换
+  $("#sopTabs")?.addEventListener("click", (e) => {
+    const tab = e.target.closest(".sop-tab");
+    if (!tab || tab.dataset.si === undefined) return;
+    switchSopAttachment(parseInt(tab.dataset.si));
+  });
+
+  // 工具栏：缩放、跳转、全屏
+  $("#sopZoomOut")?.addEventListener("click", () => changeSopZoom(-0.25));
+  $("#sopZoomIn")?.addEventListener("click", () => changeSopZoom(0.25));
+  $("#sopClose")?.addEventListener("click", closeSopModal);
+  $("#sopFullscreen")?.addEventListener("click", toggleSopFullscreen);
+  $("#sopOverlay")?.addEventListener("click", (e) => {
+    if (e.target === e.currentTarget) closeSopModal();
+  });
+
+  // 页码跳转：输入框回车或 GO 按钮
+  const jumpInput = $("#sopJumpInput");
+  const jumpGo = $("#sopJumpGo");
+  if (jumpInput) {
+    jumpInput.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") jumpToSopPage();
+    });
+  }
+  if (jumpGo) {
+    jumpGo.addEventListener("click", jumpToSopPage);
+  }
+
+  // BOM 弹窗内 SOP 入口
+  $("#bomOverlay")?.addEventListener("click", (e) => {
+    if (!e.target.classList.contains("bom-sop-link")) return;
+    const wo = S.selectedWorkorder;
+    if (wo && wo.workorderId) {
+      closeBomModal();
+      openSopModal(wo.workorderId);
+    }
+  });
+
+  // 键盘快捷键
+  document.addEventListener("keydown", (e) => {
+    if (!$("#sopOverlay").classList.contains("show")) return;
+    if (e.key === "ArrowRight") changeSopPage(1);
+    else if (e.key === "ArrowLeft") changeSopPage(-1);
+    else if (e.key === "Escape") closeSopModal();
+  });
+}

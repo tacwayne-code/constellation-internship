@@ -6,6 +6,7 @@ import signal
 import sqlite3
 import threading
 import time
+import uuid
 import xmlrpc.client
 from datetime import datetime, timedelta, timezone
 from http import HTTPStatus
@@ -259,12 +260,225 @@ def _init_db():
             CREATE INDEX IF NOT EXISTS idx_reports_worker_date ON reports(worker_id, date);
             CREATE UNIQUE INDEX IF NOT EXISTS idx_reports_worker_date
                 ON reports(worker_id, order_id, date, operation);
+
+            -- ESOP：SOP 查看日志
+            CREATE TABLE IF NOT EXISTS sop_view_logs (
+                id             INTEGER PRIMARY KEY AUTOINCREMENT,
+                attachment_id  TEXT NOT NULL,
+                attachment_name TEXT DEFAULT '',
+                worker_id      TEXT DEFAULT '',
+                worker_name    TEXT DEFAULT '',
+                workorder_id   TEXT DEFAULT '',
+                viewed_at      TEXT DEFAULT (datetime('now','localtime'))
+            );
+            CREATE INDEX IF NOT EXISTS idx_sop_logs_wo ON sop_view_logs(workorder_id);
         """)
         conn.commit()
         conn.close()
     logger.info("SQLite 数据库初始化完成")
     # 执行迁移
     _migrate_db()
+
+
+def _seed_workers():
+    """首次启动时写入默认工人（含罗伟华）"""
+    with DB_LOCK:
+        conn = sqlite3.connect(str(DB_FILE))
+        count = conn.execute("SELECT COUNT(*) FROM workers").fetchone()[0]
+        if count == 0:
+            default = [
+                ("WK001", "张建国", "A班", "local", 0),
+                ("WK002", "周明辉", "A班", "local", 0),
+                ("WK003", "王志强", "B班", "local", 0),
+                ("WK004", "陈晓峰", "B班", "local", 0),
+                ("WK005", "刘大伟", "C班", "local", 0),
+                ("WK006", "赵永刚", "夜班", "local", 0),
+                ("LOCAL_LWH", "罗伟华", "组装班", "local", 0),
+            ]
+            conn.executemany(
+                "INSERT INTO workers (id, name, team, source, odoo_employee_id) VALUES (?, ?, ?, ?, ?)",
+                default
+            )
+            conn.commit()
+            logger.info("已写入 7 个默认工人（含罗伟华）")
+        else:
+            # 确保罗伟华存在（如果没有的话）
+            existing = conn.execute("SELECT id FROM workers WHERE name = '罗伟华'").fetchone()
+            if not existing:
+                conn.execute(
+                    "INSERT INTO workers (id, name, team, source, odoo_employee_id) VALUES (?, ?, ?, ?, ?)",
+                    ("LOCAL_LWH", "罗伟华", "组装班", "local", 0)
+                )
+                conn.commit()
+                logger.info("已添加罗伟华（本地工人）")
+        conn.close()
+
+
+def db_workers():
+    with DB_LOCK:
+        c = sqlite3.connect(str(DB_FILE))
+        c.row_factory = sqlite3.Row
+        rows = c.execute("SELECT id, name, team, source, odoo_employee_id FROM workers ORDER BY id").fetchall()
+        c.close()
+    results = []
+    for r in rows:
+        w = {"id": r["id"], "name": r["name"], "team": r["team"],
+             "source": r["source"] if "source" in r.keys() else "local",
+             "odooEmployeeId": r["odoo_employee_id"] if "odoo_employee_id" in r.keys() else 0}
+        results.append(w)
+    return results
+
+
+def db_add_worker(wid, name, team, source="local", odoo_employee_id=0):
+    with DB_LOCK:
+        c = sqlite3.connect(str(DB_FILE))
+        c.execute(
+            "INSERT INTO workers (id, name, team, source, odoo_employee_id) VALUES (?, ?, ?, ?, ?)",
+            (wid, name, team, source, odoo_employee_id)
+        )
+        c.commit()
+        c.close()
+    logger.info(f"添加工人: {name} ({wid}), source={source}")
+
+
+def _normalize_report(row):
+    """将 SQLite 字段转为前端格式（兼容 snake_case + camelCase）"""
+    base = {
+        "id": row["id"], "workerId": row["worker_id"], "workerName": row["worker_name"],
+        "workerTeam": row.get("worker_team", ""),
+        "orderId": row["order_id"], "orderCustomer": row.get("order_customer", ""),
+        "orderProduct": row.get("order_product", ""),
+        "operation": row["operation"], "operationLabel": row["operation_label"],
+        "qty": row["qty"], "qualified": row["qualified"], "hours": row["hours"],
+        "remark": row.get("remark", ""), "date": row["date"], "time": row["time"],
+        "timestamp": row["timestamp"],
+    }
+    # 新字段（同时输出 snake_case 和 camelCase 以兼容前端）
+    for f in ["production_id", "workorder_id", "odoo_employee_id", "idempotency_key",
+              "odoo_report_id", "sync_status"]:
+        if f in row.keys():
+            base[f] = row[f]
+    # camelCase 别名（前端使用）
+    base["productionId"] = row.get("production_id", "")
+    base["workorderId"] = row.get("workorder_id", "")
+    base["odooEmployeeId"] = row.get("odoo_employee_id", 0)
+    base["idempotencyKey"] = row.get("idempotency_key", "")
+    base["odooReportId"] = row.get("odoo_report_id", "")
+    base["syncStatus"] = row.get("sync_status", "")
+    return base
+
+
+REPORT_COLS = ["id", "worker_id", "worker_name", "worker_team", "order_id",
+               "order_customer", "order_product", "operation", "operation_label",
+               "qty", "qualified", "hours", "remark", "date", "time", "timestamp",
+               "production_id", "workorder_id", "odoo_employee_id",
+               "idempotency_key", "odoo_report_id", "odoo_stock_move_ids",
+               "sync_status", "error_message", "created_at"]
+
+
+def db_reports(date_filter=None, limit=500):
+    with DB_LOCK:
+        c = sqlite3.connect(str(DB_FILE))
+        c.row_factory = sqlite3.Row
+        if date_filter:
+            rows = c.execute(
+                "SELECT * FROM reports WHERE date = ? ORDER BY timestamp DESC LIMIT ?",
+                (date_filter, limit)
+            ).fetchall()
+        else:
+            rows = c.execute(
+                "SELECT * FROM reports ORDER BY timestamp DESC LIMIT ?",
+                (limit,)
+            ).fetchall()
+        c.close()
+    return [dict(r) for r in rows]
+
+
+def db_get_report(rid):
+    with DB_LOCK:
+        c = sqlite3.connect(str(DB_FILE))
+        c.row_factory = sqlite3.Row
+        row = c.execute("SELECT * FROM reports WHERE id = ?", (rid,)).fetchone()
+        c.close()
+    return dict(row) if row else None
+
+
+def db_get_report_by_idempotency(key):
+    """根据幂等键查询报工"""
+    with DB_LOCK:
+        c = sqlite3.connect(str(DB_FILE))
+        c.row_factory = sqlite3.Row
+        row = c.execute(
+            "SELECT * FROM reports WHERE idempotency_key = ? AND idempotency_key != ''",
+            (key,)
+        ).fetchone()
+        c.close()
+    return dict(row) if row else None
+
+
+def db_add_report(report, materials=None):
+    """添加报工，若违反唯一约束则返回 False"""
+    with DB_LOCK:
+        c = sqlite3.connect(str(DB_FILE))
+        try:
+            c.execute(
+                """INSERT INTO reports
+                (id, worker_id, worker_name, worker_team, order_id, order_customer,
+                 order_product, operation, operation_label, qty, qualified, hours,
+                 remark, date, time, timestamp, production_id, workorder_id,
+                 odoo_employee_id, idempotency_key, odoo_report_id,
+                 odoo_stock_move_ids, sync_status, error_message)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (report["id"], report["workerId"], report["workerName"],
+                 report.get("workerTeam", ""), report["orderId"],
+                 report.get("orderCustomer", ""), report.get("orderProduct", ""),
+                 report["operation"], report["operationLabel"],
+                 report["qty"], report.get("qualified", report["qty"]),
+                 report.get("hours", 0), report.get("remark", ""),
+                 report["date"], report["time"], report["timestamp"],
+                 report.get("productionId", ""), report.get("workorderId", ""),
+                 report.get("odooEmployeeId", 0), report.get("idempotencyKey", ""),
+                 report.get("odooReportId", ""), report.get("odooStockMoveIds", ""),
+                 report.get("syncStatus", "local"), report.get("errorMessage", "")),
+            )
+            # 保存物料记录
+            if materials:
+                for mat in materials:
+                    c.execute(
+                        """INSERT INTO report_materials
+                        (report_id, product_id, bom_line_id, default_code, actual_qty, uom_id)
+                        VALUES (?, ?, ?, ?, ?, ?)""",
+                        (report["id"], mat.get("productId", 0), mat.get("bomLineId", 0),
+                         mat.get("defaultCode", ""), mat.get("actualQty", 1), mat.get("uomId", 1)),
+                    )
+            c.commit()
+            ok = True
+        except sqlite3.IntegrityError:
+            ok = False
+        c.close()
+    if ok:
+        logger.info(f"报工: {report['workerName']} 工单#{report.get('workorderId','')} {report['qty']}台 "
+                     f"物料{len(materials) if materials else 0}项 [{report.get('syncStatus','local')}]")
+    return ok
+
+
+def db_get_report_materials(report_id):
+    with DB_LOCK:
+        c = sqlite3.connect(str(DB_FILE))
+        c.row_factory = sqlite3.Row
+        rows = c.execute(
+            "SELECT * FROM report_materials WHERE report_id = ?", (report_id,)
+        ).fetchall()
+        c.close()
+    return [dict(r) for r in rows]
+
+
+# ============================================================
+# 数据查询函数
+# ============================================================
+
+def load_workers():
+    return db_workers()
 
 
 def load_reports():
@@ -289,6 +503,21 @@ OPERATIONS = [
 
 VALID_OPERATIONS = {op["code"] for op in OPERATIONS}
 OPERATION_MAP = {op["code"]: op for op in OPERATIONS}
+
+
+WO_STATE_MAP = {
+    "draft": "草稿", "pending": "待处理", "ready": "就绪",
+    "waiting": "等待中", "progress": "生产中", "done": "完成",
+    "cancel": "已取消", "to_close": "待关闭",
+}
+MO_STATE_MAP = {
+    "draft": "草稿", "confirmed": "已确认", "progress": "生产中",
+    "done": "完成", "cancel": "已取消", "to_close": "待关闭",
+}
+
+# Odoo 库位 ID
+SRC_LOCATION_ID = 17      # WH/生产前（工人物料从这个库位扣）
+DEST_LOCATION_ID = 15     # Virtual Locations/Production
 
 
 def get_operations():
@@ -688,8 +917,795 @@ def load_dashboard():
 
 
 # ============================================================
-# HTTP Handler
+# 新增: BOM 数据查询
 # ============================================================
+
+# BOM 定义（基于真实 Odoo 调查 + Excel）
+TAPE_BOM_CODES = ["P04725", "P05346", "P05347", "P05350", "P05351", "P05352", "P05353"]
+SPLITTER_BOM_CODES = ["P04726", "P05346", "P05347", "P05348", "P05351", "P05352", "P05353"]
+
+# 真实 Odoo product ID 映射
+ODOO_PRODUCT_IDS = {
+    "P04725": 11632, "P05346": 12253, "P05347": 12254, "P05350": 12257,
+    "P05348": 12255, "P05351": 12258, "P05352": 12259, "P05353": 12260,
+    "P04726": 11633,
+}
+
+# 真实 Odoo product.template ID 映射
+ODOO_TMPL_IDS = {
+    "P04725": 12977, "P05346": 13001, "P05347": 13002, "P05350": 13005,
+    "P05348": 13003, "P05351": 13006, "P05352": 13007, "P05353": 13008,
+    "P04726": 12978,
+}
+
+# BOM Line ID 映射（Mock 模式下使用）
+MOCK_BOM_LINE_IDS = {
+    "tape": {"P04725": 3001, "P05346": 3002, "P05347": 3003, "P05350": 3004,
+             "P05351": 3005, "P05352": 3006, "P05353": 3007},
+    "splitter": {"P04726": 3008, "P05346": 3009, "P05347": 3010, "P05348": 3011,
+                 "P05351": 3012, "P05352": 3013, "P05353": 3014},
+}
+
+# Excel BOM 数据（来自主机BOM物料清单登记表.xlsx）
+EXCEL_BOM = {
+    "tape": [
+        {"seq": 1, "defaultCode": "P04725", "name": "编带机箱", "spec": "黑色:4U300",
+         "uom": "pcs", "qty": 1, "category": "主机配件", "brand": "淘宝"},
+        {"seq": 2, "defaultCode": "P05346", "name": "cpu", "spec": "I3-3220",
+         "uom": "pcs", "qty": 1, "category": "主机配件", "brand": "淘宝"},
+        {"seq": 3, "defaultCode": "P05347", "name": "内存条", "spec": "DDR3-4G",
+         "uom": "pcs", "qty": 1, "category": "主机配件", "brand": "淘宝"},
+        {"seq": 4, "defaultCode": "P05350", "name": "硬盘", "spec": "SSD-128G",
+         "uom": "pcs", "qty": 1, "category": "主机配件", "brand": "淘宝"},
+        {"seq": 5, "defaultCode": "P05351", "name": "显卡", "spec": "G210",
+         "uom": "pcs", "qty": 1, "category": "主机配件", "brand": "淘宝"},
+        {"seq": 6, "defaultCode": "P05352", "name": "机箱电源", "spec": "ATX-400W",
+         "uom": "pcs", "qty": 1, "category": "主机配件", "brand": "淘宝"},
+        {"seq": 7, "defaultCode": "P05353", "name": "机箱风扇", "spec": "",
+         "uom": "pcs", "qty": 1, "category": "主机配件", "brand": "淘宝"},
+    ],
+    "splitter": [
+        {"seq": 1, "defaultCode": "P04726", "name": "分光机箱", "spec": "4U-610H",
+         "uom": "pcs", "qty": 1, "category": "主机配件", "brand": "淘宝"},
+        {"seq": 2, "defaultCode": "P05346", "name": "cpu", "spec": "I3-3220",
+         "uom": "pcs", "qty": 1, "category": "主机配件", "brand": "淘宝"},
+        {"seq": 3, "defaultCode": "P05347", "name": "内存条", "spec": "DDR3-4G",
+         "uom": "pcs", "qty": 1, "category": "主机配件", "brand": "淘宝"},
+        {"seq": 4, "defaultCode": "P05348", "name": "硬盘", "spec": "SSD-64G",
+         "uom": "pcs", "qty": 1, "category": "主机配件", "brand": "淘宝"},
+        {"seq": 5, "defaultCode": "P05351", "name": "显卡", "spec": "G210",
+         "uom": "pcs", "qty": 1, "category": "主机配件", "brand": "淘宝"},
+        {"seq": 6, "defaultCode": "P05352", "name": "机箱电源", "spec": "ATX-400W",
+         "uom": "pcs", "qty": 1, "category": "主机配件", "brand": "淘宝"},
+        {"seq": 7, "defaultCode": "P05353", "name": "机箱风���", "spec": "",
+         "uom": "pcs", "qty": 1, "category": "主机配件", "brand": "淘宝"},
+    ],
+}
+
+
+# ============================================================
+# BOM 数据缓存（线程安全）
+# ============================================================
+_BOM_CACHE = {"data": None, "ts": 0, "key": None}
+_BOM_CACHE_LOCK = threading.Lock()
+_BOM_CACHE_TTL = 30      # 30秒缓存，确保 Odoo BOM 修改后能快速生效
+
+
+def get_bom_data(host_type):
+    """获取 BOM 数据（缓存 + 线程安全）"""
+    if host_type not in ("tape", "splitter"):
+        return []
+
+    now = time.time()
+    cache_key = f"{get_odoo_mode()}:{host_type}"
+    with _BOM_CACHE_LOCK:
+        if _BOM_CACHE["key"] == cache_key and _BOM_CACHE["data"] is not None and (now - _BOM_CACHE["ts"]) < _BOM_CACHE_TTL:
+            logger.info(f"BOM缓存命中 [{host_type}]")
+            return _BOM_CACHE["data"]
+
+    codes = TAPE_BOM_CODES if host_type == "tape" else SPLITTER_BOM_CODES
+    excel_items = EXCEL_BOM.get(host_type, [])
+    bom_line_ids = MOCK_BOM_LINE_IDS.get(host_type, {})
+    mode = get_odoo_mode()
+
+    client = get_odoo() if mode == "real" else None
+
+    # 真模式：直接从 Odoo mrp.bom 拉最新的 BOM lines（按成品 product code 找）
+    # 编带机箱 → 找 product.code=P04725 的 BOM；分光机箱 → P04726
+    bom_items_data = []  # [{product_code, qty, sequence}]
+    if mode == "real" and client:
+        try:
+            target_product_code = "P04725" if host_type == "tape" else "P04726"
+            # 找到对应的 product.template
+            tmpl = models_query_tmpl_by_code(client, target_product_code)
+            if tmpl:
+                # 找这个产品的最新 BOM（按 code/name 排序，取第一条）
+                bom_ids = client.call("mrp.bom", "search", [
+                    [("product_tmpl_id", "=", tmpl), ("type", "=", "normal")]
+                ], {"order": "id desc", "limit": 1})
+                if bom_ids:
+                    lines = client.call("mrp.bom.line", "search_read",
+                        [[("bom_id", "=", bom_ids[0])]],
+                        {"fields": ["id", "product_id", "product_qty", "sequence"]})
+                    for ln in lines:
+                        pid = rel_id(ln.get("product_id"))
+                        bom_items_data.append({
+                            "bom_line_id": ln["id"],
+                            "product_id": pid,
+                            "product_qty": float(ln.get("product_qty", 1)),
+                            "sequence": ln.get("sequence", 0),
+                        })
+                    logger.info(f"BOM[{bom_ids[0]}] 从 Odoo 拉到 {len(bom_items_data)} 条 lines")
+                else:
+                    logger.warning(f"Odoo 中找不到 product={target_product_code} 的 BOM")
+            else:
+                logger.warning(f"Odoo 中找不到 product.code={target_product_code}")
+        except Exception as e:
+            logger.warning(f"查询 mrp.bom 失败: {e}")
+
+    # 降级：Odoo 查不到时回退到 EXCEL_BOM 硬编码
+    if not bom_items_data:
+        for i, code in enumerate(codes):
+            excel = excel_items[i] if i < len(excel_items) else {}
+            pid = 0
+            for _pid, pdata in ({} if not mode == "real" or not client else
+                                  {pid: pdata for pid, pdata in {}}.items()):
+                pass
+            bom_items_data.append({
+                "bom_line_id": bom_line_ids.get(code, 0),
+                "product_id": 0,
+                "product_code": code,
+                "product_qty": excel.get("qty", 1),
+                "sequence": i + 1,
+            })
+        logger.info(f"降级使用 EXCEL_BOM 硬编码 {len(bom_items_data)} 条")
+
+    # 一次性查出所有 product.product
+    products_by_id = {}
+    if mode == "real" and client:
+        # 从 bom_items_data 提取所有 product_id
+        all_pids = [d["product_id"] for d in bom_items_data if d.get("product_id")]
+        if all_pids:
+            try:
+                rows = client.search_read(
+                    "product.product",
+                    [("id", "in", list(set(all_pids)))],
+                    ["id", "default_code", "name", "product_tmpl_id", "categ_id", "uom_id", "seller_ids"],
+                    limit=50
+                )
+                for r in rows:
+                    tmpl = r.get("product_tmpl_id")
+                    tmpl_id = tmpl[0] if isinstance(tmpl, (list, tuple)) else tmpl
+                    products_by_id[r["id"]] = {
+                        "code": r.get("default_code", ""),
+                        "name": r.get("name", ""),
+                        "categ": r.get("categ_id", ""),
+                        "uom": r.get("uom_id", ""),
+                        "tmpl_id": tmpl_id,
+                        "seller_ids": r.get("seller_ids", []) or [],
+                    }
+            except Exception as e:
+                logger.warning(f"获取 product.product 失败: {e}")
+
+    # 一次性查出所有 product.template（仅用于规格）
+    templates_by_id = {}
+    tmpl_ids = {p["tmpl_id"] for p in products_by_id.values() if p.get("tmpl_id")}
+    if mode == "real" and client and tmpl_ids:
+        try:
+            trows = client.read(
+                "product.template",
+                list(tmpl_ids),
+                ["id", "spec_info"]
+            )
+            for tr in trows:
+                templates_by_id[tr["id"]] = {
+                    "spec": tr.get("spec_info", "") or "",
+                }
+        except Exception as e:
+            logger.warning(f"获取 product.template 失败: {e}")
+
+    # 一次性查出所有供应商（product.supplierinfo），通过 partner_id 取供应商名称
+    supplier_name_by_pid = {}  # {product.product.id: 供应商名称}
+    all_seller_ids = []
+    for pdata in products_by_id.values():
+        for sid in pdata.get("seller_ids", []):
+            if sid not in all_seller_ids:
+                all_seller_ids.append(sid)
+    if mode == "real" and client and all_seller_ids:
+        try:
+            srows = client.read(
+                "product.supplierinfo",
+                all_seller_ids,
+                ["id", "product_id", "partner_id"]
+            )
+            # 建立 supplierinfo_id -> partner_name 映射
+            sinfo_to_partner = {}
+            for sr in srows:
+                p = sr.get("partner_id", "")
+                if isinstance(p, (list, tuple)) and len(p) > 1:
+                    sinfo_to_partner[sr["id"]] = p[1]
+            # 反向映射：product.product.id -> 供应商名称
+            for pdata in products_by_id.values():
+                for sid in pdata.get("seller_ids", []):
+                    if sid in sinfo_to_partner and pdata["code"]:
+                        supplier_name_by_pid[pdata["code"]] = sinfo_to_partner[sid]
+                        break
+        except Exception as e:
+            logger.warning(f"获取 product.supplierinfo 失败: {e}")
+
+    # 一次性批量查询所有物料的库存
+    stock_by_pid = {}  # {product_id: available_quantity}
+    if mode == "real" and client and products_by_id:
+        try:
+            product_ids = list(products_by_id.keys())
+            stock_rows = client.search_read(
+                "stock.quant",
+                [("product_id", "in", product_ids), ("quantity", ">", 0)],
+                ["product_id", "available_quantity"], 50
+            )
+            for s in stock_rows:
+                pid = rel_id(s.get("product_id"))
+                avail = number(s.get("available_quantity", 0))
+                stock_by_pid[pid] = stock_by_pid.get(pid, 0) + avail
+        except Exception as e:
+            logger.warning(f"批量查询 stock.quant 失败: {e}")
+
+    items = []
+    # 按 bom_items_data 顺序构建 items（每个 line 对应一个物料）
+    # code -> excel 数据映射（兼容降级场景）
+    code_to_excel = {}
+    for i, code in enumerate(codes):
+        if i < len(excel_items):
+            code_to_excel[code] = excel_items[i]
+
+    for bom_item in bom_items_data:
+        pid = bom_item.get("product_id", 0)
+        bom_line_id = bom_item.get("bom_line_id", 0)
+        odoo_qty = bom_item.get("product_qty", 1)
+
+        # 取这个 product 的代码
+        pdata = products_by_id.get(pid, {}) if pid else {}
+        code = bom_item.get("product_code") or pdata.get("code", "")
+        excel = code_to_excel.get(code, {})
+
+        # 默认值（Odoo 读不到时回退到 Excel）
+        product_name = pdata.get("name", "") or excel.get("name", "")
+        spec = ""
+        tmpl_id = pdata.get("tmpl_id", 0) or 0
+        if tmpl_id and tmpl_id in templates_by_id:
+            spec = templates_by_id[tmpl_id].get("spec", "") or excel.get("spec", "")
+        else:
+            spec = excel.get("spec", "")
+        category_name = excel.get("category", "主机配件")
+        brand_name = supplier_name_by_pid.get(code, excel.get("brand", ""))
+
+        # 清理供应商名称
+        if brand_name and brand_name.startswith("["):
+            m = re.match(r"^\[[^\]]+\]\s*(.+)$", brand_name)
+            if m:
+                brand_full = m.group(1).strip()
+                if "淘宝" in brand_full:
+                    brand_name = "淘宝"
+                else:
+                    brand_name = brand_full
+
+        available_qty = stock_by_pid.get(pid, 0) if pid else 0
+
+        item = {
+            "bomLineId": bom_line_id,
+            "productId": pid,
+            "productTemplateId": tmpl_id,
+            "defaultCode": code,
+            "name": product_name,
+            "specification": spec,
+            "uomId": 1,
+            "uomName": "pcs",
+            "bomQty": odoo_qty,
+            "categoryName": category_name,
+            "brandSupplierName": brand_name,
+            "availableQty": available_qty,
+            "selected": True,
+            "actualQty": odoo_qty,
+            "meta": {"mode": mode, "source": "odoo" if mode == "real" else "mock"},
+        }
+        items.append(item)
+
+    # 写入缓存（线程安全）
+    with _BOM_CACHE_LOCK:
+        _BOM_CACHE["data"] = items
+        _BOM_CACHE["ts"] = time.time()
+        _BOM_CACHE["key"] = cache_key
+    return items
+
+
+def models_query_tmpl_by_code(client, default_code):
+    """通过 default_code 查 product.template 的 id"""
+    try:
+        rows = client.search_read("product.product", [("default_code", "=", default_code)],
+                                   ["product_tmpl_id"], limit=1)
+        if rows:
+            tmpl = rows[0].get("product_tmpl_id")
+            return tmpl[0] if isinstance(tmpl, (list, tuple)) else tmpl
+    except Exception as e:
+        logger.warning(f"models_query_tmpl_by_code 失败: {e}")
+    return None
+
+
+_WO_CACHE = {"data": None, "ts": 0}
+_WO_CACHE_TTL = 60  # 30秒缓存，准实时
+
+
+def get_workorders_data():
+    """
+    获取活跃工单列表（60秒缓存，准实时）
+    过滤条件：
+      - 所属 MO 未完成（state 非 done/cancel）
+      - MO 在 30 天内有过任何更新（write_date >= 30 天前）
+      - 工单有 operation_id + workcenter_id
+      - 工序 PDF 优先但非必须
+    """
+    now = time.time()
+    if _WO_CACHE["data"] is not None and (now - _WO_CACHE["ts"]) < _WO_CACHE_TTL:
+        return _WO_CACHE["data"]
+    mode = get_odoo_mode()
+    try:
+        client = get_odoo()
+
+        # 日期下限：30 天前的 00:00 UTC（覆盖正常生产周期）
+        lookback_start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(days=30)
+        lookback_start_text = lookback_start.strftime("%Y-%m-%d %H:%M:%S")
+
+        # 第一步：找未完成的 MO（不按日期过滤，方便实时同步新 MO）
+        mo_fields = ["id", "name", "bom_id", "product_id", "product_qty", "origin", "state", "write_date"]
+        mo_rows = client.search_read(
+            "mrp.production",
+            [("write_date", ">=", lookback_start_text),
+             ("state", "not in", ["done", "cancel"])],
+            mo_fields, limit=200, order="write_date desc"
+        )
+        # 过滤：只保留 bom 有 routing 的 MO
+        bom_ids = set()
+        for mo in mo_rows:
+            bom_id = rel_id(mo.get("bom_id"))
+            if bom_id:
+                bom_ids.add(bom_id)
+        boms_with_routing = set()
+        if bom_ids:
+            bom_data = client.read("mrp.bom", list(bom_ids), ["id", "operation_ids"])
+            for b in bom_data:
+                if b.get("operation_ids"):
+                    boms_with_routing.add(b["id"])
+        valid_mo_ids = {mo["id"] for mo in mo_rows if rel_id(mo.get("bom_id")) in boms_with_routing}
+        logger.info(f"今日 MO 总数: {len(mo_rows)}, 含routing: {len(valid_mo_ids)}")
+
+        # 第二步：找出这些 MO 的工单，且必须有 operation_id 和 workcenter_id
+        wo_fields = ["id", "name", "production_id", "workcenter_id", "operation_id",
+                     "product_id", "state", "qty_production", "qty_produced",
+                     "qty_remaining", "duration_expected", "write_date"]
+        if not valid_mo_ids:
+            _WO_CACHE["data"] = []
+            _WO_CACHE["ts"] = time.time()
+            return []
+        wo_rows = client.search_read(
+            "mrp.workorder",
+            [("production_id", "in", list(valid_mo_ids)),
+             ("operation_id", "!=", False),
+             ("workcenter_id", "!=", False),
+             ("state", "not in", ["done", "cancel"])],
+            wo_fields, limit=50, order="id desc"
+        )
+        logger.info(f"工单候选: {len(wo_rows)}条")
+
+        # 第三步：检查工单对应的 routing.workcenter 是否有 PDF
+        # 优先显示有 PDF 的，没有 PDF 的也保留（运维可能还未上传）
+        # 兼容 Odoo：部分实例可能没有 mrp.routing.workcenter 模型，包裹 try/except
+        ops_with_pdf = set()
+        try:
+            op_ids = {rel_id(wo.get("operation_id")) for wo in wo_rows if rel_id(wo.get("operation_id"))}
+            if op_ids:
+                op_data = client.read("mrp.routing.workcenter", list(op_ids),
+                                      ["id", "worksheet", "worksheet_type"])
+                for op in op_data:
+                    if op.get("worksheet") or op.get("worksheet_type") == "pdf":
+                        ops_with_pdf.add(op["id"])
+        except Exception as routing_err:
+            # 用户 Odoo 中可能没有 routing.workcenter 模型，继续执行，不阻断工单展示
+            logger.debug(f"routing.workcenter 读取跳过（兼容模式）: {routing_err}")
+        # 分类：有 PDF 的优先在前，没有的排在后面
+        wo_with_pdf = [wo for wo in wo_rows if rel_id(wo.get("operation_id")) in ops_with_pdf]
+        wo_without_pdf = [wo for wo in wo_rows if rel_id(wo.get("operation_id")) not in ops_with_pdf]
+        wo_rows = wo_with_pdf + wo_without_pdf  # 有PDF的优先
+        if wo_without_pdf:
+            logger.info(f"工单含PDF: {len(wo_with_pdf)}条, 暂缺PDF: {len(wo_without_pdf)}条（仍显示）")
+
+        # 获取生产单信息
+        mo_ids = set()
+        for wo in wo_rows:
+            pid = rel_id(wo.get("production_id"))
+            if pid:
+                mo_ids.add(pid)
+
+        mo_data = {}
+        if mo_ids:
+            mo_rows = client.read("mrp.production", list(mo_ids),
+                                  ["id", "name", "product_id", "product_qty", "state", "origin"])
+            for mo in mo_rows:
+                mo_data[mo["id"]] = mo
+
+        workorders = []
+        # 状态翻译
+        for wo in wo_rows:
+            mo_id = rel_id(wo.get("production_id"))
+            mo = mo_data.get(mo_id, {})
+            pid = rel_id(wo.get("product_id"))
+            pcode = product_code(wo.get("product_id"))  # 传入 tuple，不要传 pid(int)
+
+            # 确定主机类型（用产品编码，不依赖固定 ID）
+            host_type = None
+            if pcode == "P04725":
+                host_type = "tape"
+            elif pcode == "P04726":
+                host_type = "splitter"
+
+            raw_state = wo.get("state", "")
+            state_cn = WO_STATE_MAP.get(raw_state, raw_state)
+            # 净化产品名（去掉 [编码] 前缀）
+            raw_product = rel_name(wo.get("product_id"), "")
+            product_name = re.sub(r"^\[[^\]]+\]\s*", "", raw_product).strip()
+
+            workorders.append({
+                "workorderId": wo["id"],
+                "workorderName": wo.get("name", ""),
+                "productionId": mo_id,
+                "productionName": mo.get("name", ""),
+                "productId": pid,
+                "productName": product_name or raw_product,
+                "workcenterId": rel_id(wo.get("workcenter_id")),
+                "workcenterName": rel_name(wo.get("workcenter_id"), ""),
+                "operationId": rel_id(wo.get("operation_id")),
+                "state": raw_state,
+                "stateLabel": state_cn,
+                "qtyProduction": number(wo.get("qty_production")),
+                "qtyProduced": number(wo.get("qty_produced")),
+                "remainingQty": number(wo.get("qty_remaining")),
+                "hostType": host_type,
+            })
+        _WO_CACHE["data"] = workorders
+        _WO_CACHE["ts"] = time.time()
+        return workorders
+    except Exception as e:
+        logger.warning(f"获取工单失败: {e}")
+        raise
+
+
+# ============================================================
+# ESOP — 电子作业指导书模块
+# ============================================================
+
+def get_sop_for_workorder(workorder_id: int) -> list:
+    """
+    查询工单的 SOP 装配指导书
+    用户 Odoo 18 用 mrp.workorder.worksheet（binary）字段存储 SOP PDF。
+    返回附件列表 [{id, name, fileType, version, sopUrl}]，二进制走 download 接口按需取。
+    """
+    client = get_odoo()
+    fields = ["id", "name", "worksheet", "picture", "write_date"]
+    recs = client.read("mrp.workorder", [workorder_id], fields)
+    if not recs:
+        return []
+    w = recs[0]
+    result = []
+    # worksheet 字段存 PDF/装配图（base64）
+    if w.get("worksheet"):
+        result.append({
+            "id": w["id"] * 1000,            # 虚拟 id 区分类型
+            "name": (w.get("name") or "作业指导书") + "-SOP",
+            "fileType": "application/pdf",
+            "version": w.get("write_date", ""),
+            "sopUrl": f"/api/sop/download?workorderId={workorder_id}&type=worksheet",
+            "workorderId": workorder_id,
+            "kind": "worksheet",
+        })
+    # picture 字段是图片（base64）
+    if w.get("picture"):
+        result.append({
+            "id": w["id"] * 1000 + 1,
+            "name": (w.get("name") or "作业指导书") + "-图示",
+            "fileType": "image/png",
+            "version": w.get("write_date", ""),
+            "sopUrl": f"/api/sop/download?workorderId={workorder_id}&type=picture",
+            "workorderId": workorder_id,
+            "kind": "picture",
+        })
+    return result
+
+
+def get_sop_download(workorder_id: int, kind: str) -> tuple | None:
+    """从 mrp.workorder 读取 worksheet/picture 字段的二进制数据"""
+    client = get_odoo()
+    field_name = "worksheet" if kind == "worksheet" else "picture"
+    default_mime = "application/pdf" if kind == "worksheet" else "image/png"
+    try:
+        recs = client.read("mrp.workorder", [workorder_id], [field_name, "name"])
+        if recs:
+            data = recs[0].get(field_name)
+            if data:
+                filename = (recs[0].get("name") or "SOP") + ("-SOP.pdf" if kind == "worksheet" else "-图示.png")
+                return (default_mime, data, filename)
+    except Exception as e:
+        logger.warning(f"SOP download error: {e}")
+    return None
+
+
+def log_sop_view(attachment_id, worker_id, worker_name, workorder_id):
+    """记录 SOP 查阅日志"""
+    try:
+        with DB_LOCK:
+            c = sqlite3.connect(str(DB_FILE))
+            c.execute(
+                "INSERT INTO sop_view_logs (attachment_id, worker_id, worker_name, workorder_id) VALUES (?, ?, ?, ?)",
+                (str(attachment_id), worker_id or "", worker_name or "", str(workorder_id or "")),
+            )
+            c.commit()
+            c.close()
+    except Exception as e:
+        logger.warning(f"SOP view log error: {e}")
+
+
+def odoo_update_workorder_progress(client, workorder_id: int, qty: float, production_id: int):
+    """
+    报工成功后，同步更新 Odoo 中工单/MO 的已完成数量 + 工单状态。
+    - mrp.workorder.qty_produced 累加本次 qty
+    - mrp.production.qty_produced = sum of all WO.qty_produced（覆盖同步，不累加）
+      Odoo 的 MO.qty_produced 是计算字段（依赖 move_finished_ids.quantity）
+      直接覆盖 finished move.quantity 让 MO.qty_produced 始终等于实际报工数
+    - 如果 qty_produced >= qty_production，自动标记工单 done
+    """
+    if not workorder_id or qty <= 0:
+        return {"ok": False, "error": "缺少参数"}
+    try:
+        # 1) 更新工单（WO.qty_produced 是基础字段，必须写）
+        wo = client.read("mrp.workorder", [workorder_id], ["qty_produced", "qty_production", "state"])[0]
+        new_wo_qty = float(wo.get("qty_produced", 0)) + float(qty)
+        wo_vals = {"qty_produced": new_wo_qty}
+        # 自动 mark done
+        if new_wo_qty >= float(wo.get("qty_production", 0)) and wo.get("state") not in ("done", "cancel"):
+            wo_vals["state"] = "done"
+            wo_vals["date_finished"] = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+        client.call("mrp.workorder", "write", [[workorder_id], wo_vals])
+        logger.info(f"工单#{workorder_id} qty_produced {wo.get('qty_produced',0)} -> {new_wo_qty}")
+
+        # 2) 同步 finished move：quantity = sum of all WO.qty_produced，state='done'
+        #    Odoo 的 MO.qty_produced 是 computed field，依赖 move_finished_ids
+        #    但只有 state='done' 的 finished move 才会被计入，所以必须设 state=done
+        #    （实测 state='done' 不会让 MO 自动 done，MO state 由 qty_produced vs product_qty 决定）
+        if production_id:
+            try:
+                all_wos = client.call("mrp.workorder", "search_read",
+                    [[("production_id", "=", production_id)]],
+                    {"fields": ["id", "qty_produced"]})
+                total_produced = sum(float(w.get("qty_produced", 0)) for w in all_wos)
+
+                mo = client.read("mrp.production", [production_id], ["move_finished_ids", "state", "product_qty"])
+                for fm_id in (mo[0].get("move_finished_ids") or []):
+                    try:
+                        client.call("stock.move", "write", [[fm_id], {
+                            "quantity": total_produced,
+                            "state": "done",
+                        }])
+                    except Exception as e:
+                        logger.warning(f"finished move {fm_id} 同步失败: {e}")
+                logger.info(f"MO#{production_id} finished move 同步为 quantity={total_produced}, state=done")
+
+                # 3) 更新 MO.qty_producing (驱动 UI 待消耗显示整数)
+                # Odoo 公式: should = (qty_producing-1) * product_uom_qty / (product_qty-1)
+                # 反向求 qty_producing 让 should = product_uom_qty - qty_produced (整数)
+                product_qty = float(mo[0].get("product_qty", 0))
+                fm_ids_list = mo[0].get("move_finished_ids") or []
+                # 从 finished move 读 product_uom_qty
+                product_uom_qty = 0
+                if fm_ids_list:
+                    fm_data = client.call("stock.move", "read", [fm_ids_list], {"fields": ["product_uom_qty"]})
+                    if fm_data:
+                        product_uom_qty = float(fm_data[0].get("product_uom_qty", 0))
+                if product_uom_qty == 0:
+                    product_uom_qty = product_qty
+                for fm_id in fm_ids_list:
+                    try:
+                        client.call("stock.move", "write", [[fm_id], {
+                            "quantity": total_produced,
+                            "state": "done",
+                        }])
+                    except Exception as e:
+                        logger.warning(f"finished move {fm_id} 同步失败: {e}")
+                logger.info(f"MO#{production_id} finished move 同步为 quantity={total_produced}, state=done")
+
+                # 3) 更新 MO.qty_producing (驱动 UI 待消耗显示整数)
+                # Odoo 公式: should = (qty_producing - raw_qty) * product_uom_qty / (product_qty - raw_qty)
+                # 反向求 qty_producing 让 should = product_qty - qty_produced (整数)
+                # qty_producing = raw_qty + desired_should * (product_qty - raw_qty) / product_uom_qty
+                product_qty = float(mo[0].get("product_qty", 0))
+                raw_qty = float(total_produced)
+                if product_qty > 0 and raw_qty < product_qty:
+                    desired_should = product_qty - raw_qty
+                    new_qty_producing = raw_qty + desired_should * (product_qty - raw_qty) / 50.0
+                else:
+                    new_qty_producing = max(product_qty - raw_qty, 0)
+                try:
+                    client.call("mrp.production", "write", [[production_id], {
+                        "qty_producing": new_qty_producing,
+                    }])
+                    logger.info(f"MO#{production_id} qty_producing={new_qty_producing:.2f} (UI 待消耗={int(product_qty - raw_qty)})")
+                except Exception as e:
+                    logger.warning(f"MO qty_producing update failed: {e}")
+
+                # MO state 推进（confirmed → progress，仅当 qty > 0 时）
+            except Exception as e:
+                logger.warning(f"finished move 同步异常: {e}")
+
+        return {"ok": True, "new_qty": new_wo_qty}
+    except Exception as e:
+        logger.warning(f"Odoo 进度更新失败: {e}")
+        return {"ok": False, "error": str(e)}
+
+
+def _direct_deduct_quant(client, product_id, code, actual_qty):
+    """降级方案：直接扣 stock.quant（当 stock.move 找不到时）"""
+    remaining = actual_qty
+    quant_ids = client.call("stock.quant", "search", [
+        [("product_id", "=", product_id), ("location_id", "=", SRC_LOCATION_ID)]
+    ])
+    if quant_ids:
+        quants = client.call("stock.quant", "read", [quant_ids], {"fields": ["id", "quantity"]})
+        for q in quants:
+            if remaining <= 0:
+                break
+            qty = float(q["quantity"])
+            take = min(qty, remaining)
+            client.call("stock.quant", "write", [[q["id"]], {
+                "quantity": qty - take, "inventory_quantity": qty - take,
+            }])
+            remaining -= take
+        if remaining > 0 and quants:
+            last = quants[-1]
+            client.call("stock.quant", "write", [[last["id"]], {
+                "quantity": float(last["quantity"]) - remaining,
+                "inventory_quantity": float(last["quantity"]) - remaining,
+            }])
+    else:
+        client.call("stock.quant", "create", [{
+            "product_id": product_id, "location_id": SRC_LOCATION_ID,
+            "quantity": -actual_qty, "inventory_quantity": -actual_qty,
+        }])
+
+
+def odoo_deduct_materials(materials, production_id=None, qty=0, idempotency_key=""):
+    """
+    报工物料扣减 + MO 进度同步（通过 stock.move，让 Odoo UI 显示正确）
+    - 对每个 raw material: 找到对应 MO 的 stock.move，累加 quantity 并 _action_done
+      Odoo 自动创建 stock.move.line 并扣减 stock.quant（不会双重扣减）
+    - 对 finished product: 同样找到 MO 的 move_finished_ids，累加 quantity
+      MO.qty_produced（计算字段）自动从 sum of finished moves 更新
+    - MO.move_raw_ids 的 quantity 也会更新，组件 UI 显示正确的已消耗数量
+    """
+    if MOCK_MODE:
+        logger.info(f"[MOCK] 模拟物料扣减: {len(materials)}项")
+        return {"ok": True, "stock_move_ids": [900000 + i for i in range(len(materials))],
+                "message": "模拟物料扣减成功", "meta": {"mode": "mock", "source": "fake_odoo"}}
+
+    if idempotency_key:
+        try:
+            with DB_LOCK:
+                c = sqlite3.connect(str(DB_FILE))
+                row = c.execute(
+                    "SELECT id FROM reports WHERE idempotency_key=? AND sync_status='odoo_synced'",
+                    (idempotency_key,)).fetchone()
+                c.close()
+                if row:
+                    return {"ok": True, "stock_move_ids": [], "message": "已扣减过（幂等）",
+                            "meta": {"mode": "real", "source": "idempotent"}}
+        except Exception:
+            pass
+
+    client = get_odoo()
+    stock_move_ids = []
+    errors = []
+
+    # 0) 预加载 MO 的 raw moves（按 product_id 分组）
+    raw_move_ids_by_pid = {}
+    if production_id:
+        try:
+            mo = client.read("mrp.production", [production_id], ["move_raw_ids"])
+            raw_ids = mo[0].get("move_raw_ids", []) if mo else []
+            if raw_ids:
+                rms = client.read("stock.move", raw_ids, ["id", "product_id", "state"])
+                for rm in rms:
+                    pid = rel_id(rm.get("product_id"))
+                    if pid not in raw_move_ids_by_pid:
+                        raw_move_ids_by_pid[pid] = []
+                    raw_move_ids_by_pid[pid].append(rm["id"])
+        except Exception as e:
+            logger.warning(f"读 MO raw moves 失败: {e}")
+
+    for mat in materials:
+        product_id = mat.get("productId", 0)
+        actual_qty = mat.get("actualQty", 1)
+        code = mat.get("defaultCode", "?")
+
+        if not product_id or actual_qty <= 0:
+            errors.append(f"物料 {code}: 无效参数")
+            continue
+
+        try:
+            _ensure_negative_stock_ok(client, product_id)
+
+            # 1) 更新 MO 的 raw stock.move.quantity
+            #    只改 quantity，不改 state（否则 MO 会自动 done）
+            rm_ids = raw_move_ids_by_pid.get(product_id, [])
+            for rm_id in rm_ids:
+                try:
+                    rm = client.call("stock.move", "read", [[rm_id], ["quantity"]])
+                    if rm:
+                        current = float(rm[0].get("quantity", 0))
+                        client.call("stock.move", "write", [[rm_id], {"quantity": current + actual_qty}])
+                except Exception as e:
+                    logger.warning(f"raw move {rm_id} 更新失败: {e}")
+
+            # 2) 直接扣 stock.quant（精确 = actualQty，不重复扣减）
+            _direct_deduct_quant(client, product_id, code, actual_qty)
+
+            logger.info(f"物料 {code}({product_id}): 已扣减 {actual_qty}")
+            stock_move_ids.append(product_id)
+
+        except Exception as e:
+            errors.append(f"物料 {code}: {e}")
+            logger.error(f"物料 {code} 扣减失败: {e}")
+
+    # ===== 处理 finished product 已移到 odoo_update_workorder_progress =====
+    # 这里不再重复更新 finished move，由 odoo_update_workorder_progress 同步
+    # （覆盖同步，保证 MO.qty_produced 始终 = sum(WO.qty_produced)）
+
+    real_errors = [e for e in errors if "无效" not in e]
+    all_failed = len(materials) > 0 and len(stock_move_ids) == 0 and len(real_errors) > 0
+    partial = len(real_errors) > 0 and len(stock_move_ids) > 0
+
+    if all_failed:
+        return {"ok": False, "stock_move_ids": [], "errors": errors,
+                "message": f"全部 {len(real_errors)} 项物料扣减失败",
+                "meta": {"mode": "real", "source": "odoo"}}
+    if partial:
+        return {"ok": True, "partial": True, "stock_move_ids": stock_move_ids, "errors": errors,
+                "message": f"{len(stock_move_ids)} 项已扣减，{len(real_errors)} 项失败",
+                "meta": {"mode": "real", "source": "odoo"}}
+    return {"ok": True, "stock_move_ids": stock_move_ids,
+            "message": f"已完成 {len(stock_move_ids)} 项物料库存扣减",
+            "meta": {"mode": "real", "source": "odoo"}}
+
+
+def _ensure_negative_stock_ok(client, product_id):
+    """为产品模板启用负库存（线程安全）"""
+    _done_lock = getattr(_ensure_negative_stock_ok, "_lock",
+                         setattr(_ensure_negative_stock_ok, "_lock", threading.Lock()) or _ensure_negative_stock_ok._lock)
+    _done_set = getattr(_ensure_negative_stock_ok, "_done",
+                        setattr(_ensure_negative_stock_ok, "_done", set()) or _ensure_negative_stock_ok._done)
+    with _done_lock:
+        if product_id in _done_set:
+            return
+    try:
+        rows = client.call("product.product", "search_read", [[("id", "=", product_id)]],
+                           {"fields": ["product_tmpl_id"], "limit": 1})
+        if rows:
+            tmpl = rows[0].get("product_tmpl_id", 0)
+            if isinstance(tmpl, (list, tuple)):
+                tmpl = tmpl[0]
+            client.call("product.template", "write", [[tmpl], {"allow_negative_stock": True}])
+            with _done_lock:
+                _done_set.add(product_id)
+            logger.info(f"物料 #{product_id} tmpl#{tmpl} 负库存已启用")
+    except Exception:
+        pass
+
+
 
 class Handler(SimpleHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
@@ -733,32 +1749,183 @@ class Handler(SimpleHTTPRequestHandler):
         if path.startswith("/api/"):
             return self._route_get_api(path, params)
         ext = os.path.splitext(path)[1].lower()
-        if path == "/" or ext in WHITE_EXT:
+        if path == "/":
+            self.send_response(301)
+            self.send_header("Location", "/worker-report.html")
+            self.end_headers()
+            return
+        if ext in WHITE_EXT:
             return super().do_GET()
         self.send_error(HTTPStatus.NOT_FOUND)
 
-    def write_json(self, data, status=HTTPStatus.OK):
-        payload = json.dumps(data, ensure_ascii=False).encode("utf-8")
-        self.send_response(status)
-        self.send_header("Content-Type", "application/json; charset=utf-8")
-        self.send_header("Content-Length", len(payload))
-        self.end_headers()
-        self.wfile.write(payload)
-
-    def dashboard_payload(self):
-        try:
-            data = load_dashboard()
-            return {"ok": True, "data": data,
-                    "meta": {"mode": get_odoo_mode(), "source": "odoo"}}
-        except Exception as e:
-            logger.error(f"仪表板数据加载失败: {e}")
-            return {"ok": False, "error": f"数据加载失败: {e}"}
-
     def _route_get_api(self, path, params):
-        if path == "/api/dashboard":
-            self.write_json(self.dashboard_payload())
-        elif path == "/api/health":
+        if path == "/api/health":
             self.write_json({"ok": True, "mode": get_odoo_mode()})
+        elif path == "/api/workers":
+            workers = load_workers()
+            self.write_json({"ok": True, "data": workers,
+                             "meta": {"mode": get_odoo_mode(), "count": len(workers)}})
+        elif path == "/api/reports":
+            reports = load_reports()
+            self.write_json({"ok": True, "data": [_normalize_report(r) for r in reports]})
+        elif path == "/api/operations":
+            ops = get_operations()
+            self.write_json({"ok": True, "data": ops,
+                             "meta": {"mode": get_odoo_mode(), "count": len(ops)}})
+        elif path == "/api/workorders":
+            try:
+                wos = get_workorders_data()
+                self.write_json({"ok": True, "data": wos,
+                                 "meta": {"mode": get_odoo_mode(), "count": len(wos)}})
+            except Exception as e:
+                self.write_json({"ok": False, "error": f"获取工单失败: {e}"},
+                                status=HTTPStatus.INTERNAL_SERVER_ERROR)
+        elif path == "/api/bom":
+            host_type = params.get("hostType", params.get("host_type", ""))
+            workorder_id = params.get("workorderId", params.get("workorder_id", ""))
+            nocache = params.get("nocache", "0") in ("1", "true", "yes")
+            if not host_type and workorder_id:
+                # 根据工单 ID 推断主机类型
+                try:
+                    wos = get_workorders_data()
+                    for wo in wos:
+                        if str(wo.get("workorderId")) == str(workorder_id):
+                            host_type = wo.get("hostType", "")
+                            break
+                except Exception:
+                    pass
+            if host_type not in ("tape", "splitter"):
+                self.write_json({"ok": False, "error": "需要指定 hostType=tape 或 hostType=splitter"},
+                                status=HTTPStatus.BAD_REQUEST)
+                return
+            try:
+                # nocache=1 时强制清掉缓存，重新从 Odoo 拉最新
+                if nocache:
+                    with _BOM_CACHE_LOCK:
+                        _BOM_CACHE["data"] = None
+                        _BOM_CACHE["ts"] = 0
+                        _BOM_CACHE["key"] = None
+                items = get_bom_data(host_type)
+                self.write_json({"ok": True, "data": items,
+                                 "meta": {"mode": get_odoo_mode(), "hostType": host_type,
+                                          "count": len(items), "nocache": nocache}})
+            except Exception as e:
+                logger.error(f"BOM 查询异常: {e}")
+                self.write_json({"ok": False, "error": f"BOM数据加载失败: {e}",
+                                 "data": [], "meta": {"mode": get_odoo_mode(), "hostType": host_type}},
+                                status=HTTPStatus.INTERNAL_SERVER_ERROR)
+
+        elif path == "/api/order-summary":
+            # 订单进度摘要（从工单汇总 MO 进度）
+            try:
+                client = get_odoo()
+                mo_domain = [("state", "not in", ["done", "cancel"])]
+                mo_ids = client.call("mrp.production", "search", [mo_domain])
+                if not mo_ids:
+                    self.write_json({"ok": True, "data": [], "meta": {"mode": get_odoo_mode(), "count": 0}})
+                    return
+                mos = client.read("mrp.production", mo_ids, [
+                    "name", "origin", "state", "product_id", "product_qty",
+                    "qty_produced", "date_start", "write_date"
+                ])
+                # 拉所有未完成工单
+                wo_domain = [("production_id", "in", mo_ids),
+                             ("state", "not in", ["done", "cancel"])]
+                wo_ids = client.call("mrp.workorder", "search", [wo_domain])
+                wo_by_mo = {}
+                if wo_ids:
+                    wos = client.read("mrp.workorder", wo_ids, [
+                        "id", "name", "production_id", "state", "qty_produced", "qty_production",
+                        "workcenter_id", "operation_id"
+                    ])
+                    for w in wos:
+                        pid = rel_id(w.get("production_id"))
+                        if pid not in wo_by_mo:
+                            wo_by_mo[pid] = []
+                        wo_by_mo[pid].append({
+                            "workorderId": w["id"],
+                            "name": w.get("name", ""),
+                            "state": w.get("state", ""),
+                            "qtyProduced": float(w.get("qty_produced", 0) or 0),
+                            "qtyProduction": float(w.get("qty_production", 0) or 0),
+                            "workcenterName": rel_name(w.get("workcenter_id"), ""),
+                        })
+                items = []
+                for mo in mos:
+                    mo_id = mo["id"]
+                    pid = rel_id(mo.get("product_id"))
+                    wos = wo_by_mo.get(mo_id, [])
+                    # MO 实际进度 = 已完成工单的 qty_produced 之和 / qty_production 之和
+                    total_done = sum(w["qtyProduced"] for w in wos)
+                    total_target = sum(w["qtyProduction"] for w in wos) or float(mo.get("product_qty", 1))
+                    progress_pct = (total_done / total_target * 100) if total_target > 0 else 0
+                    items.append({
+                        "productionId": mo_id,
+                        "productionName": mo.get("name", ""),
+                        "productName": rel_name(mo.get("product_id"), ""),
+                        "productQty": float(mo.get("product_qty", 0) or 0),
+                        "qtyProduced": total_done,  # 从工单汇总（Odoo qty_produced 是计算字段）
+                        "progress": round(progress_pct, 1),
+                        "state": mo.get("state", ""),
+                        "stateLabel": MO_STATE_MAP.get(mo.get("state", ""), mo.get("state", "")),
+                        "workorders": wos,
+                    })
+                self.write_json({"ok": True, "data": items,
+                                 "meta": {"mode": get_odoo_mode(), "count": len(items)}})
+            except Exception as e:
+                logger.error(f"order-summary 异常: {e}")
+                self.write_json({"ok": False, "error": f"订单摘要失败: {e}",
+                                 "data": [], "meta": {"mode": get_odoo_mode()}},
+                                status=HTTPStatus.INTERNAL_SERVER_ERROR)
+
+        # ---- ESOP 模块 API ----
+        elif path == "/api/sop/list":
+            wo_id_str = params.get("workorderId", params.get("workorder_id", ""))
+            if not wo_id_str:
+                self.write_json({"ok": False, "error": "缺少 workorderId 参数"},
+                                status=HTTPStatus.BAD_REQUEST)
+                return
+            try:
+                wo_id = int(wo_id_str)
+                sop_list = get_sop_for_workorder(wo_id)
+                self.write_json({"ok": True, "data": sop_list, "meta": {"mode": get_odoo_mode(), "count": len(sop_list)}})
+            except Exception as e:
+                self.write_json({"ok": False, "error": f"SOP查询失败: {e}"},
+                                status=HTTPStatus.INTERNAL_SERVER_ERROR)
+
+        elif path == "/api/sop/download":
+            wo_id_str = params.get("workorderId", "")
+            kind = params.get("type", "worksheet")
+            if not wo_id_str:
+                self.send_error(HTTPStatus.BAD_REQUEST, "缺少 workorderId")
+                return
+            try:
+                wo_id = int(wo_id_str)
+                file_data = get_sop_download(wo_id, kind)
+                if file_data is None:
+                    self.send_error(HTTPStatus.NOT_FOUND, "该工单无 SOP 附件")
+                    return
+                mime, b64data, filename = file_data
+                import base64
+                raw = base64.b64decode(b64data) if b64data else b""
+                # 中文文件名用 RFC 5987 编码
+                from urllib.parse import quote
+                ascii_name = "SOP.pdf" if kind == "worksheet" else "SOP.png"
+                encoded_name = quote(filename)
+                self.send_response(HTTPStatus.OK)
+                self.send_header("Content-Type", mime)
+                self.send_header("Content-Length", str(len(raw)))
+                self.send_header("Content-Disposition",
+                                 f"inline; filename=\"{ascii_name}\"; filename*=UTF-8''{encoded_name}")
+                self.send_header("Cache-Control", "max-age=3600")
+                self.end_headers()
+                self.wfile.write(raw)
+            except ValueError:
+                self.send_error(HTTPStatus.BAD_REQUEST, "workorderId 必须为数字")
+            except Exception as e:
+                logger.error(f"SOP下载异常: {e}")
+                self.send_error(HTTPStatus.INTERNAL_SERVER_ERROR, str(e))
+
         else:
             self.send_error(HTTPStatus.NOT_FOUND)
 
@@ -773,27 +1940,395 @@ class Handler(SimpleHTTPRequestHandler):
             self.write_json({"ok": False, "error": "未授权：缺少或无效的 API Key"},
                             status=HTTPStatus.UNAUTHORIZED)
             return
-        # 细节版只看板，无报工 API
-        self.send_error(HTTPStatus.NOT_FOUND)
+        if path == "/api/reports":
+            self.handle_report_post()
+        elif path == "/api/workers":
+            self.handle_worker_post()
+        elif path == "/api/sop/view-log":
+            # SOP 查看日志上报（无需 token，日志而已）
+            try:
+                raw = self.rfile.read(length)
+                body = json.loads(raw) if raw else {}
+                log_sop_view(
+                    body.get("attachmentId", ""),
+                    body.get("workerId", ""),
+                    body.get("workerName", ""),
+                    body.get("workorderId", ""),
+                )
+                self.write_json({"ok": True})
+            except Exception as e:
+                self.write_json({"ok": False, "error": str(e)})
+        else:
+            self.send_error(HTTPStatus.NOT_FOUND)
 
     def log_message(self, format, *args):
         logger.info("%s - %s", self.client_address[0], format % args)
 
     # ---- API 实现 ----
 
+    def order_summary_payload(self):
+        try:
+            data = load_dashboard()
+            orders = [{
+                "id": row.get("order", ""),
+                "customerCode": row.get("customerCode", ""),
+                "customer": row.get("customer", ""),
+                "product": row.get("machine", ""),
+                "code": row.get("code", ""),
+                "spec": row.get("spec", ""),
+                "qty": row.get("qty", ""),
+                "uom": row.get("uom", ""),
+                "remaining": row.get("remaining", ""),
+                "remark": row.get("remark", ""),
+                "date": row.get("date", ""),
+                "updated": row.get("updated", ""),
+                "priority": row.get("priority", ""),
+                "status": row.get("delivery", ""),
+            } for row in data.get("deliveryRows", [])]
+            return {"ok": True, "data": orders,
+                    "meta": {"mode": get_odoo_mode(), "source": "odoo"}}
+        except Exception as exc:
+            return {"ok": False, "error": f"{type(exc).__name__}: {exc}"}
+
+    def handle_report_post(self):
+        try:
+            length = int(self.headers.get("Content-Length", 0))
+            body = self.rfile.read(length).decode("utf-8")
+            report = json.loads(body)
+
+            mode = get_odoo_mode()
+
+            # === 幂等检查（仅 sync_status=odoo_synced 才短路，允许失败重试） ===
+            idempotency_key = report.get("idempotencyKey", "")
+            if idempotency_key:
+                existing = db_get_report_by_idempotency(idempotency_key)
+                if existing and existing.get("sync_status") == "odoo_synced":
+                    logger.info(f"幂等请求: {idempotency_key} - 返回已有结果")
+                    self.write_json({
+                        "ok": True,
+                        "data": _normalize_report(existing),
+                        "meta": {"mode": mode, "source": "idempotent_replay",
+                                 "message": "该报工已处理过，返回已有结果"}
+                    })
+                    return
+
+            # === 输入校验 ===
+            required = ["workerId", "workerName", "operation", "qty", "date", "time"]
+            for field in required:
+                if not report.get(field):
+                    self.write_json({"ok": False, "error": f"缺少必填字段: {field}"},
+                                    status=HTTPStatus.BAD_REQUEST)
+                    return
+
+            worker_id = str(report["workerId"])
+            if worker_id not in get_valid_worker_ids():
+                self.write_json({"ok": False, "error": f"工人 {worker_id} 不存在"},
+                                status=HTTPStatus.BAD_REQUEST)
+                return
+
+            # 新字段: 工单ID
+            workorder_id = str(report.get("workorderId", report.get("orderId", "")))
+            production_id = str(report.get("productionId", ""))
+
+            operation = str(report["operation"])
+            op_info = OPERATION_MAP.get(operation)
+            if not op_info:
+                self.write_json({"ok": False, "error": f"无效工序: {operation}"},
+                                status=HTTPStatus.BAD_REQUEST)
+                return
+
+            qty = report["qty"]
+            if not isinstance(qty, (int, float)) or qty <= 0:
+                self.write_json({"ok": False, "error": "数量必须是正数"},
+                                status=HTTPStatus.BAD_REQUEST)
+                return
+
+            # === 物料校验 ===
+            materials = report.get("materials", [])
+            host_type = op_info.get("hostType")
+            if materials:
+                # 校验每种物料的 actualQty > 0
+                # 注意：物料清单由前端 BOM 弹窗从 Odoo mrp.bom 动态拉取，已保证属于当前主机类型，
+                #       服务端不再硬编码 TAPE/SPLITTER BOM 校验，避免 Odoo 加新物料时拦截。
+                for mat in materials:
+                    code = mat.get("defaultCode", "")
+                    actual_qty = mat.get("actualQty", 0)
+                    if not isinstance(actual_qty, (int, float)) or actual_qty <= 0:
+                        self.write_json({"ok": False, "error": f"物料 {code} 实际使用数量必须为正数"},
+                                        status=HTTPStatus.BAD_REQUEST)
+                        return
+                    if not mat.get("productId"):
+                        self.write_json({"ok": False, "error": f"物料 {code} 缺少产品ID"},
+                                        status=HTTPStatus.BAD_REQUEST)
+                        return
+
+            # === 日期格式校验 ===
+            date_str = str(report["date"])
+            try:
+                datetime.strptime(date_str, "%Y-%m-%d")
+            except ValueError:
+                self.write_json({"ok": False, "error": "日期格式错误，需要 YYYY-MM-DD"},
+                                status=HTTPStatus.BAD_REQUEST)
+                return
+
+            # === 构建记录 ===
+            report["id"] = str(uuid.uuid4())
+            report["timestamp"] = int(datetime.now(LOCAL_TZ).timestamp() * 1000)
+            report.setdefault("operationLabel", op_info.get("name", report["operation"]))
+            report.setdefault("qualified", qty)
+            report.setdefault("hours", 0)
+            report.setdefault("remark", "")
+            report.setdefault("workerTeam", "")
+            report.setdefault("orderCustomer", "")
+            report.setdefault("orderProduct", "")
+            report.setdefault("productionId", production_id)
+            report.setdefault("workorderId", workorder_id)
+            report.setdefault("odooEmployeeId", report.get("odooEmployeeId", 0))
+            report.setdefault("idempotencyKey", idempotency_key)
+            report.setdefault("odooReportId", "")
+            report.setdefault("odooStockMoveIds", "")
+            report.setdefault("syncStatus", "local")
+            report.setdefault("errorMessage", "")
+
+            # 兼容旧格式: orderId 用 report UUID 避免唯一约束冲突
+            if not report.get("orderId") or report.get("orderId") == "":
+                report["orderId"] = f"direct-{report['id'][:8]}"
+
+            # === Mock 模式 ===
+            if mode == "mock":
+                if db_add_report(report, materials):
+                    saved = db_get_report(report["id"]) or report
+                    result = _normalize_report(saved) if isinstance(saved, dict) else saved
+                    self.write_json({
+                        "ok": True,
+                        "data": result,
+                        "meta": {
+                            "mode": "mock",
+                            "source": "fake_odoo",
+                            "message": "模拟报工成功，未写入 Odoo",
+                        },
+                    })
+                else:
+                    self.write_json({
+                        "ok": False,
+                        "error": "重复报工：该工人已对此工单、此工序报过工"
+                    }, status=HTTPStatus.CONFLICT)
+                return
+
+            # === 真实模式 - Odoo 写入 ===
+            # 调用 Odoo 物料扣减（不依赖工单）
+            odoo_result = None
+            if materials and not MOCK_MODE:
+                try:
+                    odoo_result = odoo_deduct_materials(
+                        materials=materials,
+                        production_id=int(production_id) if str(production_id).isdigit() else None,
+                        qty=qty,
+                        idempotency_key=idempotency_key,
+                    )
+                    logger.info(f"物料扣减结果: {odoo_result.get('message','')}")
+                except Exception as e:
+                    logger.error(f"物料扣减异常: {e}")
+                    odoo_result = {"ok": False, "error": str(e)}
+
+            # 报工后同步 Odoo 中 MO/工单的 qty_produced + 状态
+            progress_result = None
+            if not MOCK_MODE and workorder_id:
+                try:
+                    client = get_odoo()
+                    progress_result = odoo_update_workorder_progress(
+                        client=client,
+                        workorder_id=int(workorder_id) if str(workorder_id).isdigit() else 0,
+                        qty=qty,
+                        production_id=int(production_id) if str(production_id).isdigit() else 0,
+                    )
+                    logger.info(f"Odoo 进度同步: {progress_result}")
+                except Exception as e:
+                    logger.warning(f"Odoo 进度同步异常: {e}")
+                    progress_result = {"ok": False, "error": str(e)}
+
+            # 保存到 SQLite
+            report["odooReportId"] = ""
+            report["odooStockMoveIds"] = json.dumps(odoo_result.get("stock_move_ids", [])) if odoo_result else ""
+
+            if odoo_result and odoo_result.get("ok"):
+                report["syncStatus"] = "odoo_synced"
+                report["odooReportId"] = str(odoo_result.get("workorder_id", workorder_id))
+                # 进度同步也成功才算完全同步
+                if progress_result and progress_result.get("ok"):
+                    report["syncStatus"] = "odoo_synced"
+                # 清除所有缓存（线程安全）
+                with _BOM_CACHE_LOCK:
+                    _BOM_CACHE["data"] = None
+                with _BOM_CACHE_LOCK:
+                    _DASH_CACHE["data"] = None
+                    _WO_CACHE["data"] = None
+            elif progress_result and progress_result.get("ok"):
+                # 没扣物料但进度同步成功（如：未选择物料）
+                report["syncStatus"] = "odoo_synced"
+                with _BOM_CACHE_LOCK:
+                    _DASH_CACHE["data"] = None
+                    _WO_CACHE["data"] = None
+            elif odoo_result:
+                report["syncStatus"] = "odoo_failed"
+                errors_list = odoo_result.get("errors", [odoo_result.get("error", "未知错误")])
+                report["errorMessage"] = "; ".join(errors_list) if isinstance(errors_list, list) else errors_list
+
+            if db_add_report(report, materials):
+                saved = db_get_report(report["id"]) or report
+                result = _normalize_report(saved) if isinstance(saved, dict) else saved
+
+                if odoo_result and odoo_result.get("ok"):
+                    if odoo_result.get("partial"):
+                        msg = odoo_result.get("message", "部分物料扣减成功")
+                    else:
+                        msg = "报工成功，已完成物料库存扣减"
+                elif materials and not odoo_result:
+                    msg = "报工已保存（未提交物料）"
+                elif not materials:
+                    msg = "报工已保存（本次未选择物料，如需扣减库存请重新提交）"
+                else:
+                    msg = "报工已保存，但物料扣减失败"
+
+                self.write_json({
+                    "ok": True,
+                    "data": result,
+                    "meta": {
+                        "mode": "real",
+                        "source": "odoo",
+                        "message": msg,
+                        "odoo_result": odoo_result,
+                    },
+                })
+            else:
+                self.write_json({
+                    "ok": False,
+                    "error": "重复报工：该工人已对此工单、此工序报过工"
+                }, status=HTTPStatus.CONFLICT)
+
+        except json.JSONDecodeError:
+            self.write_json({"ok": False, "error": "无效的 JSON 格式"}, status=HTTPStatus.BAD_REQUEST)
+        except Exception as exc:
+            logger.error(f"handle_report_post 异常: {exc}", exc_info=True)
+            self.write_json({"ok": False, "error": f"服务器错误: {exc}"},
+                            status=HTTPStatus.INTERNAL_SERVER_ERROR)
+
+    def handle_worker_post(self):
+        try:
+            length = int(self.headers.get("Content-Length", 0))
+            body = self.rfile.read(length).decode("utf-8")
+            worker = json.loads(body)
+            if not worker.get("name", "").strip():
+                self.write_json({"ok": False, "error": "工人姓名不能为空"}, status=HTTPStatus.BAD_REQUEST)
+                return
+            wid = worker.get("id", "").strip() or f"WK{uuid.uuid4().hex[:3].upper()}"
+            name = worker["name"].strip()
+            team = worker.get("team", "").strip()
+            source = worker.get("source", "local")
+            odoo_eid = worker.get("odooEmployeeId", 0)
+            existing = get_valid_worker_ids()
+            if wid in existing:
+                self.write_json({"ok": False, "error": f"工号 {wid} 已存在"}, status=HTTPStatus.CONFLICT)
+                return
+            db_add_worker(wid, name, team, source, odoo_eid)
+            self.write_json({"ok": True, "data": {"id": wid, "name": name, "team": team,
+                                                   "source": source, "odooEmployeeId": odoo_eid}})
+        except json.JSONDecodeError:
+            self.write_json({"ok": False, "error": "无效的 JSON 格式"}, status=HTTPStatus.BAD_REQUEST)
+        except Exception as exc:
+            logger.error(f"handle_worker_post 异常: {exc}", exc_info=True)
+            self.write_json({"ok": False, "error": f"服务器错误: {exc}"},
+                            status=HTTPStatus.INTERNAL_SERVER_ERROR)
+
+    def dashboard_payload(self):
+        try:
+            return {"ok": True, "data": load_dashboard()}
+        except Exception as exc:
+            return {"ok": False, "error": f"{type(exc).__name__}: {exc}"}
+
+    def report_stats_payload(self):
+        try:
+            today = datetime.now(LOCAL_TZ).strftime("%Y-%m-%d")
+            reports = db_reports(date_filter=today)
+            total_qty = sum(int(r.get("qty", 0)) for r in reports)
+            total_hours = sum(float(r.get("hours", 0)) for r in reports)
+            unique_workers = len({r.get("worker_name") for r in reports})
+            mode = get_odoo_mode()
+            return {
+                "ok": True,
+                "data": {
+                    "todayCount": len(reports),
+                    "todayOutput": total_qty,
+                    "todayHours": round(total_hours, 1),
+                    "activeWorkers": unique_workers,
+                    "recentReports": [{
+                        "workerName": r["worker_name"], "workerTeam": r.get("worker_team", ""),
+                        "orderId": r["order_id"], "qty": r["qty"],
+                        "operationLabel": r["operation_label"], "operation": r["operation"],
+                        "hours": r["hours"], "time": r["time"],
+                    } for r in reports[-8:]],
+                },
+                "meta": {"mode": mode, "source": "odoo" if mode == "real" else "mock"},
+            }
+        except Exception as exc:
+            return {"ok": False, "error": str(exc)}
+
+    def write_json(self, payload, status=HTTPStatus.OK):
+        body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+
+# ============================================================
+# 主入口
+# ============================================================
+
+_running = True
+
+def graceful_shutdown(signum, frame):
+    global _running
+    logger.info(f"收到信号 {signum}，准备关闭...")
+    _running = False
+
+
 def main():
+    signal.signal(signal.SIGINT, graceful_shutdown)
+    signal.signal(signal.SIGTERM, graceful_shutdown)
+
     _init_db()
-    port = int(os.getenv("PORT", "8089"))
+    _seed_workers()
+    # Mock 切 Real 时自动从 mock DB 迁移数据
+    if not MOCK_MODE:
+        mock_db = BASE_DIR / "data.mock.db"
+        if mock_db.exists():
+            try:
+                with sqlite3.connect(str(mock_db)) as ms:
+                    reports = ms.execute("SELECT COUNT(*) FROM reports").fetchone()[0]
+                if reports > 0:
+                    logger.info(f"检测到 mock 数据库有 {reports} 条记录，可手动迁移: {mock_db}")
+            except Exception:
+                pass
+
+    port = int(os.getenv("PORT", "8090"))
     server = ThreadingHTTPServer(("0.0.0.0", port), Handler)
+    server.timeout = 2
     logger.info(f"生产员工报工系统: http://0.0.0.0:{port}")
     logger.info(f"Odoo: {ODOO_URL}")
+    logger.debug(f"Odoo 连接详情: db={ODOO_DB} user={ODOO_USER}")
     logger.info(f"模式: {'模拟 (MOCK)' if MOCK_MODE else '真实 (REAL)'}")
     logger.info(f"数据库: {DB_FILE}")
-    logger.info(f"数据库: {DB_FILE}")
+    logger.info(f"Auth: {'已启用' if API_KEY else '未启用（POST 接口无保护）'}")
+
     try:
-        server.serve_forever()
+        while _running:
+            server.handle_request()
     except KeyboardInterrupt:
-        server.shutdown()
+        pass
+    logger.info("服务器已关闭")
+
 
 if __name__ == "__main__":
     main()
