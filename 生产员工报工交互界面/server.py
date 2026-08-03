@@ -1,5 +1,6 @@
 import json
 import logging
+import math
 import os
 import re
 import signal
@@ -1675,7 +1676,6 @@ def odoo_update_workorder_progress(client, workorder_id: int, qty: float, produc
                         "error": f"生产订单已写入但回读产量不一致（期望 {total_produced:g}，实际 {mo_qty:g}）",
                         "new_qty": new_wo_qty,
                         "total_produced": total_produced}
-
         return {"ok": True, "new_qty": new_wo_qty}
     except Exception as e:
         logger.warning(f"Odoo 进度更新失败: {e}")
@@ -2377,6 +2377,20 @@ class Handler(SimpleHTTPRequestHandler):
                 return
 
             qty = report["qty"]
+            # Production reports are counted in whole units. Reject decimal
+            # quantities at the API boundary instead of letting a fractional
+            # value propagate into WO/MO quantities and Odoo inverse fields.
+            if isinstance(qty, bool) or not isinstance(qty, (int, float)):
+                self.write_json({"ok": False, "error": "Report quantity must be an integer"},
+                                status=HTTPStatus.BAD_REQUEST)
+                return
+            qty_value = float(qty)
+            if not math.isfinite(qty_value) or qty_value <= 0 or not qty_value.is_integer():
+                self.write_json({"ok": False, "error": "Report quantity must be a positive integer"},
+                                status=HTTPStatus.BAD_REQUEST)
+                return
+            qty = int(qty_value)
+            report["qty"] = qty
             if not isinstance(qty, (int, float)) or qty <= 0:
                 self.write_json({"ok": False, "error": "数量必须是正数"},
                                 status=HTTPStatus.BAD_REQUEST)
