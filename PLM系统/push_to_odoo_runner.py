@@ -4,8 +4,9 @@ from datetime import datetime
 
 BOM_ID = int(sys.argv[1])
 CFG_ID = int(sys.argv[2])
-LOG_PATH = sys.argv[3] if len(sys.argv) > 3 else os.path.join(os.path.dirname(os.path.abspath(__file__)), 'plm_push.log')
-DB_PATH = sys.argv[4] if len(sys.argv) > 4 else os.path.join(os.path.dirname(os.path.abspath(__file__)), 'plm.db')
+_BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+LOG_PATH = sys.argv[3] if len(sys.argv) > 3 else os.path.join(_BASE_DIR, 'plm_push.log')
+DB_PATH = sys.argv[4] if len(sys.argv) > 4 else os.path.join(_BASE_DIR, 'plm.db')
 
 logging.basicConfig(filename=LOG_PATH, level=logging.INFO,
                     format='%(asctime)s %(levelname)s %(message)s')
@@ -27,8 +28,10 @@ try:
 
     import xmlrpc.client, ssl
     ctx = ssl.create_default_context()
-    ctx.check_hostname = False
-    ctx.verify_mode = ssl.CERT_NONE
+    # 默认验证 SSL 证书；设置 PLM_ODOO_INSECURE_SSL=1 可跳过（仅内网测试用）
+    if os.environ.get('PLM_ODOO_INSECURE_SSL') == '1':
+        ctx.check_hostname = False
+        ctx.verify_mode = ssl.CERT_NONE
     socket.setdefaulttimeout(180)
 
     con = sq.connect(DB_PATH, isolation_level=None, timeout=60)

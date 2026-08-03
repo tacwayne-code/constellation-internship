@@ -37,9 +37,26 @@
                                 <td class="text-muted pe-3" style="width: 100px;">文档编号</td>
                                 <td class="fw-medium">{{ doc.doc_no }}</td>
                             </tr>
+                            {% set parts = doc.title | doc_title_parts %}
                             <tr>
-                                <td class="text-muted">标题</td>
-                                <td class="fw-medium">{{ doc.title }}</td>
+                                <td class="text-muted">图号</td>
+                                <td class="fw-medium">
+                                    {% if parts[0] %}
+                                    <code>{{ parts[0] }}</code>
+                                    {% else %}
+                                    <span class="text-muted">—</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            <tr>
+                                <td class="text-muted">名称</td>
+                                <td class="fw-medium">
+                                    {% if doc.name %}
+                                    {{ doc.name }}
+                                    {% else %}
+                                    <span class="text-muted">—</span>
+                                    {% endif %}
+                                </td>
                             </tr>
                             <tr>
                                 <td class="text-muted">版本</td>
@@ -97,7 +114,7 @@
                                 <td>
                                     {% if doc.file_name %}
                                     {% if doc.file_path %}
-                                    <a href="{{ '#' }}" class="btn btn-outline-primary btn-sm" download>
+                                    <a href="{{ url_for('documents.download_doc', id=doc.id) }}" class="btn btn-outline-primary btn-sm">
                                         <i class="bi bi-download me-1"></i>{{ doc.file_name }}
                                     </a>
                                     <small class="text-muted ms-1">
@@ -201,7 +218,7 @@
                                 <td>
                                     {% if ver.file_name %}
                                     {% if ver.file_path %}
-                                    <a href="{{ '#' }}" download>
+                                    <a href="{{ url_for('documents.download_version', id=doc.id, version_id=ver.id) }}">
                                         <i class="bi bi-paperclip me-1"></i>{{ ver.file_name }}
                                     </a>
                                     {% else %}
@@ -248,14 +265,20 @@
                 <!-- 锁定 / 解锁 -->
                 {% if doc.is_locked %}
                     {% if doc.locked_by == current_user.id or current_user.role == 'admin' %}
-                    <a href="{{ url_for('documents.unlock_doc', id=doc.id) }}" class="btn btn-warning w-100 mb-2">
-                        <i class="bi bi-unlock me-1"></i>解锁
-                    </a>
+                    <form method="POST" action="{{ url_for('documents.unlock_doc', id=doc.id) }}" class="mb-2">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                        <button type="submit" class="btn btn-warning w-100">
+                            <i class="bi bi-unlock me-1"></i>解锁
+                        </button>
+                    </form>
                     {% endif %}
                 {% else %}
-                <a href="{{ url_for('documents.lock_doc', id=doc.id) }}" class="btn btn-outline-secondary w-100 mb-2">
-                    <i class="bi bi-lock me-1"></i>锁定
-                </a>
+                <form method="POST" action="{{ url_for('documents.lock_doc', id=doc.id) }}" class="mb-2">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                    <button type="submit" class="btn btn-outline-secondary w-100">
+                        <i class="bi bi-lock me-1"></i>锁定
+                    </button>
+                </form>
                 {% endif %}
 
                 <!-- 发布 -->
@@ -281,8 +304,8 @@
                 </form>
                 {% endif %}
 
-                <!-- 返回 -->
-                <a href="{{ url_for('documents.list_docs') }}" class="btn btn-outline-secondary w-100">
+                <!-- 返回列表（保留筛选状态） -->
+                <a href="{{ back_url }}" class="btn btn-outline-secondary w-100">
                     <i class="bi bi-arrow-left me-1"></i>返回列表
                 </a>
             </div>

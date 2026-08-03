@@ -135,6 +135,7 @@
                                     {% for user in users %}
                                     <div class="dropdown-item"
                                          data-value="{{ user.id }}"
+                                         data-text="{{ user.display_name }}"
                                          data-search="{{ user.display_name }} {{ user.department or '' }} {{ user.username }}">
                                         <div class="d-flex align-items-center">
                                             <i class="bi bi-person-circle me-2 text-primary"></i>
@@ -218,15 +219,22 @@
     }
     function selectItem(item) {
         const value = item.dataset.value;
-        const text = item.dataset.text;
+        const text = item.dataset.text || '';
         hidden.value = value;
         list.querySelectorAll('.dropdown-item').forEach(function(i) { i.classList.remove('selected'); });
         item.classList.add('selected');
+        // 使用 textContent 防 XSS，仅图标用 innerHTML
+        display.innerHTML = '';
+        var icon = document.createElement('i');
         if (value) {
-            display.innerHTML = '<i class="bi bi-person-check-fill me-1 text-primary"></i>' + text.split(' ')[0];
+            icon.className = 'bi bi-person-check-fill me-1 text-primary';
+            display.appendChild(icon);
+            display.appendChild(document.createTextNode(text.split(' ')[0]));
             display.classList.add('selected');
         } else {
-            display.innerHTML = '<i class="bi bi-x-circle me-1"></i>未指派';
+            icon.className = 'bi bi-x-circle me-1';
+            display.appendChild(icon);
+            display.appendChild(document.createTextNode('未指派'));
             display.classList.remove('selected');
         }
         close();

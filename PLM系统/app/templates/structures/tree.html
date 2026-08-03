@@ -200,6 +200,9 @@
                                 {% endif %}
                                 <span style="overflow:hidden;white-space:nowrap;text-overflow:ellipsis;display:block;">
                                     <strong class="text-primary">{{ product.system_id or product.code }}</strong>
+                                    {% if product.document_id %}
+                                    <i class="bi bi-link-45deg text-success ms-1" title="已绑定图文档案 #{{ product.document_id }}"></i>
+                                    {% endif %}
                                     &mdash; {{ product.name }}
                                     {% if product.level == 0 %}
                                     <span class="level-badge bg-primary text-white">整机</span>
@@ -302,7 +305,7 @@ function toggleChildren(el) {
                 } else {
                     html += '<span class="tree-toggle" style="visibility:hidden;">&#9654;</span>';
                 }
-                html += '<span style="overflow:hidden;white-space:nowrap;text-overflow:ellipsis;display:block;"><strong class="text-primary">' + escapeHtml(child.code) + '</strong> &mdash; ' + escapeHtml(child.name) + levelLabel + '</span>';
+                html += '<span style="overflow:hidden;white-space:nowrap;text-overflow:ellipsis;display:block;"><strong class="text-primary">' + escapeHtml(child.code) + '</strong> <small class="text-muted ms-2">' + escapeHtml(child.system_id || '') + '</small> &mdash; ' + escapeHtml(child.name) + levelLabel + '</span>';
                 html += '</div>';
                 html += '<div class="product-actions" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);background:white;padding:0 4px;display:flex;flex-direction:row;gap:6px;flex-shrink:0;white-space:nowrap;">';
                 html += '<a href="/structures/' + child.id + '/detail" class="btn btn-outline-primary btn-sm d-inline-flex align-items-center justify-content-center" title="查看产品详情" style="width:32px;height:32px;padding:0;"><i class="bi bi-eye"></i></a>';

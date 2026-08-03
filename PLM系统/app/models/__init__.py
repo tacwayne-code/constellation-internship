@@ -1,48 +1,55 @@
 import uuid
-from datetime import datetime, date
+from datetime import datetime, date, timezone
 from flask_login import UserMixin
 from app import db
 
 
 # ─── 辅助函数 ───
+def _now():
+    """返回 UTC 当前时间"""
+    return datetime.now(timezone.utc)
+
 def gen_uuid():
-    return str(uuid.uuid4())[:8]
+    return uuid.uuid4().hex
 
 
 def gen_doc_no():
-    return 'DOC-' + datetime.now().strftime('%Y%m%d') + '-' + gen_uuid()
+    return 'DOC-' + _now().strftime('%Y%m%d') + '-' + gen_uuid()
 
 
 def gen_ecr_no():
-    return 'ECR-' + datetime.now().strftime('%Y%m%d') + '-' + gen_uuid()
+    return 'ECR-' + _now().strftime('%Y%m%d') + '-' + gen_uuid()
 
 
 def gen_eco_no():
-    return 'ECO-' + datetime.now().strftime('%Y%m%d') + '-' + gen_uuid()
+    return 'ECO-' + _now().strftime('%Y%m%d') + '-' + gen_uuid()
 
 
 def gen_proj_no():
-    return 'PRJ-' + datetime.now().strftime('%Y%m%d') + '-' + gen_uuid()
+    return 'PRJ-' + _now().strftime('%Y%m%d') + '-' + gen_uuid()
 
 
 def gen_bom_no():
-    return 'BOM-' + datetime.now().strftime('%Y%m%d') + '-' + gen_uuid()
+    return 'BOM-' + _now().strftime('%Y%m%d') + '-' + gen_uuid()
 
 
 def gen_system_id():
     """系统主物料号：弱语义自动编号 ITM-YYYYMMDD-XXXXXX（不编码机型/日期/材料）"""
-    return 'ITM-' + datetime.now().strftime('%Y%m%d%H%M%S') + '-' + gen_uuid()
+    return 'ITM-' + _now().strftime('%Y%m%d%H%M%S') + '-' + gen_uuid()
 
 
 # ── API Key 加密工具 ──
 def _encrypt(plain_text):
-    """用 SECRET_KEY 对敏感字段做可逆混淆（非密码级加密，防明文泄露）"""
+    """用 SECRET_KEY 对敏感字段做可逆混淆（非密码级加密，防明文泄露）
+    注意：此为 XOR 混淆，非密码学安全加密。生产环境建议使用 Fernet 或 AES-GCM。"""
     import base64
     from flask import current_app
     try:
-        key = current_app.config.get('SECRET_KEY', 'plm-fallback')[:32]
+        key = current_app.config.get('SECRET_KEY', '')[:32]
     except Exception:
-        key = 'plm-fallback-32bytes-key-here!'[:32]
+        key = ''
+    if not key:
+        key = os.environ.get('SECRET_KEY', uuid.uuid4().hex)[:32]
     key_bytes = key.encode('utf-8').ljust(32, b'\0')
     plain_bytes = plain_text.encode('utf-8')
     result = bytes(p ^ key_bytes[i % 32] for i, p in enumerate(plain_bytes))
@@ -54,9 +61,11 @@ def _decrypt(cipher_text):
     import base64
     from flask import current_app
     try:
-        key = current_app.config.get('SECRET_KEY', 'plm-fallback')[:32]
+        key = current_app.config.get('SECRET_KEY', '')[:32]
     except Exception:
-        key = 'plm-fallback-32bytes-key-here!'[:32]
+        key = ''
+    if not key:
+        key = os.environ.get('SECRET_KEY', uuid.uuid4().hex)[:32]
     key_bytes = key.encode('utf-8').ljust(32, b'\0')
     try:
         data = base64.urlsafe_b64decode(cipher_text)
@@ -76,7 +85,7 @@ class User(UserMixin, db.Model):
     role = db.Column(db.String(20), default='user')  # admin / manager / user / viewer
     department = db.Column(db.String(80))
     is_active = db.Column(db.Boolean, default=True)
-    created_at = db.Column(db.DateTime, default=datetime.now)
+    created_at = db.Column(db.DateTime, default=_now)
 
     def set_password(self, password):
         from werkzeug.security import generate_password_hash
@@ -110,11 +119,13 @@ class Document(db.Model):
     file_name = db.Column(db.String(255))
     file_path = db.Column(db.String(500))
     file_size = db.Column(db.Integer)
+    # ── 名称（汉字描述，独立于 title，便于搜索和显示）（2026-07-30）──
+    name = db.Column(db.String(255), nullable=True, default='')
     tags = db.Column(db.String(500))
     author_id = db.Column(db.Integer, db.ForeignKey('plm_user.id'))
     author = db.relationship('User', foreign_keys=[author_id], backref='documents')
-    created_at = db.Column(db.DateTime, default=datetime.now)
-    updated_at = db.Column(db.DateTime, default=datetime.now, onupdate=datetime.now)
+    created_at = db.Column(db.DateTime, default=_now)
+    updated_at = db.Column(db.DateTime, default=_now, onupdate=_now)
     is_locked = db.Column(db.Boolean, default=False)
     locked_by = db.Column(db.Integer, db.ForeignKey('plm_user.id'))
     lock_holder = db.relationship('User', foreign_keys=[locked_by])
@@ -138,7 +149,7 @@ class DocVersion(db.Model):
     change_note = db.Column(db.Text)
     created_by = db.Column(db.Integer, db.ForeignKey('plm_user.id'))
     creator = db.relationship('User')
-    created_at = db.Column(db.DateTime, default=datetime.now)
+    created_at = db.Column(db.DateTime, default=_now)
 
 
 class DocApproval(db.Model):
@@ -151,8 +162,8 @@ class DocApproval(db.Model):
     approver = db.relationship('User')
     status = db.Column(db.String(20), default='pending')  # pending / approved / rejected
     comment = db.Column(db.Text)
-    created_at = db.Column(db.DateTime, default=datetime.now)
-    updated_at = db.Column(db.DateTime, onupdate=datetime.now)
+    created_at = db.Column(db.DateTime, default=_now)
+    updated_at = db.Column(db.DateTime, onupdate=_now)
 
 
 # ──────────────── 3. 流程管理 ────────────────
@@ -164,7 +175,7 @@ class Workflow(db.Model):
     model_type = db.Column(db.String(50))  # document / change / bom
     is_active = db.Column(db.Boolean, default=True)
     steps = db.relationship('WorkflowStep', order_by='WorkflowStep.seq', backref='workflow', lazy='dynamic')
-    created_at = db.Column(db.DateTime, default=datetime.now)
+    created_at = db.Column(db.DateTime, default=_now)
 
 
 class WorkflowStep(db.Model):
@@ -197,8 +208,11 @@ class Product(db.Model):
     status = db.Column(db.String(20), default='active')
     # 适用范围（多值关系，未来可改为关联表，暂用 JSON 风格字符串存储机型清单）
     applicable_models = db.Column(db.String(500), default='')  # 如 "710分光,910编带"
-    created_at = db.Column(db.DateTime, default=datetime.now)
-    updated_at = db.Column(db.DateTime, default=datetime.now, onupdate=datetime.now)
+    # ── 关联图文档案（图号统一锁死到 Document.title） ──
+    document_id = db.Column(db.Integer, db.ForeignKey('plm_document.id'), nullable=True)
+    document = db.relationship('Document', backref='linked_product', uselist=False, foreign_keys=[document_id])
+    created_at = db.Column(db.DateTime, default=_now)
+    updated_at = db.Column(db.DateTime, default=_now, onupdate=_now)
 
     @property
     def has_children(self):
@@ -235,8 +249,8 @@ class Bom(db.Model):
     sync_message = db.Column(db.Text, nullable=True)
     created_by = db.Column(db.Integer, db.ForeignKey('plm_user.id'))
     creator = db.relationship('User')
-    created_at = db.Column(db.DateTime, default=datetime.now)
-    updated_at = db.Column(db.DateTime, default=datetime.now, onupdate=datetime.now)
+    created_at = db.Column(db.DateTime, default=_now)
+    updated_at = db.Column(db.DateTime, default=_now, onupdate=_now)
     items = db.relationship('BomItem', backref='bom', lazy='dynamic',
                             cascade='all, delete-orphan')
     conversions = db.relationship('BomConversion', backref='target_bom', lazy='dynamic',
@@ -258,6 +272,9 @@ class BomItem(db.Model):
     seq = db.Column(db.Integer, default=0)
     # ── 用于 mBOM 转换时标记虚拟件拆分 ──
     note = db.Column(db.String(200), nullable=True)  # 转换备注（如"虚拟件展开"、"中间半成品"）
+    # ── 编码体系（2026-07-29）──
+    code = db.Column(db.String(64), nullable=True, default='')   # 物料编码，如 01-01-04-003 或 ST-01-001-M040
+    part_type = db.Column(db.String(16), nullable=True, default='')  # 类型：配件/标准件/钣金件/电气件/焊接件/气动件
 
 
 # ──────────────── 5.1 BOM 转换记录 ────────────────
@@ -270,7 +287,7 @@ class BomConversion(db.Model):
     converted_by = db.Column(db.Integer, db.ForeignKey('plm_user.id'), nullable=False)
     converter = db.relationship('User')
     conversion_note = db.Column(db.Text, nullable=True)
-    created_at = db.Column(db.DateTime, default=datetime.now)
+    created_at = db.Column(db.DateTime, default=_now)
 
 
 class BomDocument(db.Model):
@@ -279,7 +296,7 @@ class BomDocument(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     bom_id = db.Column(db.Integer, db.ForeignKey('plm_bom.id'), nullable=False)
     document_id = db.Column(db.Integer, db.ForeignKey('plm_document.id'), nullable=False)
-    created_at = db.Column(db.DateTime, default=datetime.now)
+    created_at = db.Column(db.DateTime, default=_now)
     bom = db.relationship('Bom', backref=db.backref('linked_docs', lazy='dynamic'))
     document = db.relationship('Document')
 
@@ -297,7 +314,7 @@ class BomApproval(db.Model):
     status = db.Column(db.String(20), default='pending')  # pending/approved/rejected
     comment = db.Column(db.Text, nullable=True)
     decided_at = db.Column(db.DateTime, nullable=True)
-    created_at = db.Column(db.DateTime, default=datetime.now)
+    created_at = db.Column(db.DateTime, default=_now)
     bom = db.relationship('Bom', backref=db.backref('approvals', lazy='dynamic', order_by='BomApproval.step'))
 
 
@@ -316,7 +333,7 @@ class Project(db.Model):
     manager = db.relationship('User', foreign_keys=[manager_id])
     created_by = db.Column(db.Integer, db.ForeignKey('plm_user.id'))
     creator = db.relationship('User', foreign_keys=[created_by])
-    created_at = db.Column(db.DateTime, default=datetime.now)
+    created_at = db.Column(db.DateTime, default=_now)
     tasks = db.relationship('Task', backref='project', lazy='dynamic')
 
 
@@ -333,7 +350,7 @@ class Task(db.Model):
     start_date = db.Column(db.Date)
     due_date = db.Column(db.Date)
     completed_at = db.Column(db.DateTime)
-    created_at = db.Column(db.DateTime, default=datetime.now)
+    created_at = db.Column(db.DateTime, default=_now)
 
 
 # ──────────────── 7. 变更管理 ────────────────
@@ -350,8 +367,8 @@ class ChangeRequest(db.Model):
     applicant = db.relationship('User', foreign_keys=[applicant_id])
     assignee_id = db.Column(db.Integer, db.ForeignKey('plm_user.id'))
     assignee = db.relationship('User', foreign_keys=[assignee_id])
-    created_at = db.Column(db.DateTime, default=datetime.now)
-    updated_at = db.Column(db.DateTime, default=datetime.now, onupdate=datetime.now)
+    created_at = db.Column(db.DateTime, default=_now)
+    updated_at = db.Column(db.DateTime, default=_now, onupdate=_now)
     eco = db.relationship('ChangeOrder', backref='ecr', uselist=False)
 
 
@@ -368,7 +385,7 @@ class ChangeOrder(db.Model):
     status = db.Column(db.String(20), default='pending')  # pending / executing / completed / cancelled
     executor_id = db.Column(db.Integer, db.ForeignKey('plm_user.id'))
     executor = db.relationship('User')
-    created_at = db.Column(db.DateTime, default=datetime.now)
+    created_at = db.Column(db.DateTime, default=_now)
     completed_at = db.Column(db.DateTime)
 
 
@@ -384,8 +401,8 @@ class WorkHourStandard(db.Model):
     machine_type = db.Column(db.String(100))
     labor_type = db.Column(db.String(100))
     note = db.Column(db.Text)
-    created_at = db.Column(db.DateTime, default=datetime.now)
-    updated_at = db.Column(db.DateTime, default=datetime.now, onupdate=datetime.now)
+    created_at = db.Column(db.DateTime, default=_now)
+    updated_at = db.Column(db.DateTime, default=_now, onupdate=_now)
 
 
 # ──────────────── 9. 工艺管理 ────────────────
@@ -400,7 +417,7 @@ class ProcessRoute(db.Model):
     version = db.Column(db.String(10), default='V1.0')
     created_by = db.Column(db.Integer, db.ForeignKey('plm_user.id'))
     creator = db.relationship('User')
-    created_at = db.Column(db.DateTime, default=datetime.now)
+    created_at = db.Column(db.DateTime, default=_now)
     steps = db.relationship('ProcessStep', order_by='ProcessStep.seq', backref='route', lazy='dynamic')
 
 
@@ -416,7 +433,7 @@ class ProcessStep(db.Model):
     tooling = db.Column(db.String(200))
     doc_id = db.Column(db.Integer, db.ForeignKey('plm_document.id'))
     doc = db.relationship('Document')
-    created_at = db.Column(db.DateTime, default=datetime.now)
+    created_at = db.Column(db.DateTime, default=_now)
 
 
 # ──────────────── 10. 集成配置 ────────────────
@@ -432,7 +449,7 @@ class IntegrationConfig(db.Model):
     is_active = db.Column(db.Boolean, default=False)
     last_sync = db.Column(db.DateTime)
     sync_interval = db.Column(db.Integer, default=60)  # minutes
-    created_at = db.Column(db.DateTime, default=datetime.now)
+    created_at = db.Column(db.DateTime, default=_now)
 
     @property
     def api_key(self):
@@ -454,4 +471,4 @@ class SyncLog(db.Model):
     status = db.Column(db.String(20))  # success / failed
     records_count = db.Column(db.Integer, default=0)
     message = db.Column(db.Text)
-    created_at = db.Column(db.DateTime, default=datetime.now)
+    created_at = db.Column(db.DateTime, default=_now)

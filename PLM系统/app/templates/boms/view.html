@@ -10,7 +10,7 @@
         <code class="fs-6 text-muted ms-2">{{ bom.bom_no }}</code>
     </h4>
     <div class="d-flex gap-2">
-        <a href="{{ url_for('boms.list_boms') }}" class="btn btn-outline-secondary btn-sm">
+        <a href="{{ back_url }}" class="btn btn-outline-secondary btn-sm">
             <i class="bi bi-arrow-left me-1"></i>返回列表
         </a>
         {% if bom.status == 'draft' %}
@@ -94,6 +94,7 @@
             <table class="table table-hover table-sm">
                 <thead><tr>
                     <th style="width:40px">#</th>
+                    <th style="width:130px">编码</th>
                     <th>物料 (ITM号)</th>
                     <th>名称</th>
                     <th style="width:70px">用量</th>
@@ -108,6 +109,16 @@
                 {% for item in items %}
                 <tr>
                     <td>{{ item.seq }}</td>
+                    <td>
+                        {% if item.code %}
+                        <code class="text-primary small code-cell" title="{{ item.part_type or '配件' }}" data-item-id="{{ item.id }}" data-code="{{ item.code }}">{{ item.code }}</code>
+                        {% else %}
+                        <span class="text-muted small code-cell code-empty" data-item-id="{{ item.id }}" title="点击设置编码" style="cursor:pointer">—</span>
+                        {% endif %}
+                        {% if bom.status == 'draft' %}
+                        <i class="bi bi-pencil-square text-muted ms-1 edit-code-btn" style="cursor:pointer;font-size:11px" data-item-id="{{ item.id }}" data-code="{{ item.code or '' }}" title="编辑编码"></i>
+                        {% endif %}
+                    </td>
                     <td>
                         <a href="{{ url_for('structures.product_detail', id=item.product.id) }}" class="text-decoration-none">
                             <code>{{ item.product.system_id or item.product.code }}</code>
@@ -290,12 +301,12 @@
                 <td>
                     {% if a.status == 'pending' and a.approver_id == current_user.id %}
                     <div class="d-flex gap-1">
-<!-- TODO:                         <form method="post" action="{{ url_for('boms.bom_approve_step', id=bom.id, step=a.step) }}" style="display:inline;">-->
-                            <button class="btn btn-success btn-sm" title="通过"><i class="bi bi-check"></i></button>
+                        <form method="post" action="{{ url_for('boms.bom_approve_step', id=bom.id, step=a.step) }}" style="display:inline;">
+                            <button type="submit" class="btn btn-success btn-sm" title="通过"><i class="bi bi-check"></i></button>
                         </form>
-<!-- TODO:                         <form method="post" action="{{ url_for('boms.bom_reject_step', id=bom.id, step=a.step) }}" style="display:inline;">-->
+                        <form method="post" action="{{ url_for('boms.bom_reject_step', id=bom.id, step=a.step) }}" style="display:inline;">
                             <input type="hidden" name="comment" value="驳回">
-                            <button class="btn btn-danger btn-sm" title="驳回"><i class="bi bi-x"></i></button>
+                            <button type="submit" class="btn btn-danger btn-sm" title="驳回"><i class="bi bi-x"></i></button>
                         </form>
                     </div>
                     {% endif %}
@@ -365,6 +376,125 @@
         </div>
     </div>
 </div>
+
+<!-- 编码编辑模态框 -->
+<div class="modal fade" id="codeModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h6 class="modal-title"><i class="bi bi-upc-scan me-1"></i>编辑物料编码</h6>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form id="codeForm" method="post">
+                <div class="modal-body">
+                    <div class="row g-2 mb-3">
+                        <div class="col-md-3">
+                            <label class="form-label small">大类</label>
+                            <select name="part_type" class="form-select form-select-sm" id="codePartType">
+                                <option value="">— 配件编码 —</option>
+                                <option value="01">01 设备配件</option>
+                                <option value="02">02 钣金件</option>
+                                <option value="03">03 电气件</option>
+                                <option value="04">04 焊接结构件</option>
+                                <option value="05">05 气动/液压件</option>
+                            </select>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label small">产品族</label>
+                            <select name="family" class="form-select form-select-sm" id="codeFamily">
+                                <option value="01">01 分光机</option>
+                                <option value="02">02 编带机</option>
+                                <option value="03">03 点胶机</option>
+                                <option value="04">04 固晶机</option>
+                                <option value="05">05 搅拌机</option>
+                                <option value="06">06 贴片机</option>
+                                <option value="99">99 通用件</option>
+                            </select>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label small">部件分类</label>
+                            <select name="component" class="form-select form-select-sm" id="codeComponent">
+                                <option value="01">01 机架/底座</option>
+                                <option value="02">02 传动机构</option>
+                                <option value="03">03 送料机构</option>
+                                <option value="04">04 光学组件</option>
+                                <option value="05">05 电气安装</option>
+                                <option value="06">06 气动组件</option>
+                                <option value="07">07 管路/接头</option>
+                                <option value="08">08 防护/罩壳</option>
+                                <option value="09">09 工装/治具</option>
+                                <option value="10">10 焊接结构</option>
+                            </select>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label small">&nbsp;</label>
+                            <button type="button" class="btn btn-outline-primary btn-sm w-100" id="btnAutoCode">
+                                <i class="bi bi-magic me-1"></i>自动生成
+                            </button>
+                        </div>
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label small">编码结果</label>
+                        <div class="input-group input-group-sm">
+                            <input type="text" name="code" class="form-control font-monospace" id="codeInput" placeholder="01-01-04-001" readonly>
+                            <button type="button" class="btn btn-outline-secondary" id="btnCopyCode" title="复制"><i class="bi bi-clipboard"></i></button>
+                        </div>
+                    </div>
+                    <div class="text-muted small">
+                        <i class="bi bi-info-circle me-1"></i>
+                        <span>或直接输入已有编码（如 ST-01-001-M040 标准件编码）</span>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <input type="hidden" name="item_id" id="codeItemId">
+                    <button type="submit" class="btn btn-primary btn-sm"><i class="bi bi-check me-1"></i>保存</button>
+                    <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">取消</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // 编码编辑按钮
+    document.querySelectorAll('.edit-code-btn').forEach(btn => {
+        btn.addEventListener('click', function() {
+            const itemId = this.dataset.itemId;
+            const code = this.dataset.code;
+            document.getElementById('codeItemId').value = itemId;
+            document.getElementById('codeInput').value = code;
+            document.getElementById('codeForm').action = '/boms/' + {{ bom.id }} + '/set-item-code';
+            new bootstrap.Modal(document.getElementById('codeModal')).show();
+        });
+    });
+
+    // 自动生成编码
+    document.getElementById('btnAutoCode').addEventListener('click', function() {
+        const form = new FormData();
+        form.append('category', document.getElementById('codePartType').value || '01');
+        form.append('family', document.getElementById('codeFamily').value || '01');
+        form.append('component', document.getElementById('codeComponent').value || '01');
+        form.append('bom_name', document.querySelector('.page-title') ? document.querySelector('.page-title').textContent.trim() : '');
+        
+        fetch('/boms/api/generate-code', { method: 'POST', body: form })
+            .then(r => r.json())
+            .then(data => {
+                document.getElementById('codeInput').value = data.code;
+            })
+            .catch(e => alert('生成失败: ' + e));
+    });
+
+    // 复制编码
+    document.getElementById('btnCopyCode').addEventListener('click', function() {
+        const input = document.getElementById('codeInput');
+        input.select();
+        document.execCommand('copy');
+        this.innerHTML = '<i class="bi bi-check text-success"></i>';
+        setTimeout(() => { this.innerHTML = '<i class="bi bi-clipboard"></i>'; }, 1500);
+    });
+});
+</script>
 {% endblock %}
 
 {% block scripts %}
