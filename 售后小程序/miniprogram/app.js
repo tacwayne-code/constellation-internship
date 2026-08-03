@@ -35,6 +35,7 @@ App({
     wx.removeStorageSync('token');
     wx.removeStorageSync('role');
     wx.removeStorageSync('userInfo');
-    wx.reLaunch({ url: '/pages/login/login' });
+    // 当前为 webview 套壳架构：登出回到 Web 端登录页（原生 /pages/login/login 已注册备用）
+    wx.reLaunch({ url: `/pages/webview/index?src=${encodeURIComponent(`${CONFIG.webAppUrl}#/login`)}` });
   }
 });

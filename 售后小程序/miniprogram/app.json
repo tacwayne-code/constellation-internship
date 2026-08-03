@@ -1,7 +1,17 @@
 {
   "pages": [
     "pages/launch/index",
-    "pages/webview/index"
+    "pages/webview/index",
+    "pages/login/login",
+    "pages/paidan/create/create",
+    "pages/paidan/orders/orders",
+    "pages/paidan/engineers/engineers",
+    "pages/paidan/mine/mine",
+    "pages/engineer/tasks/tasks",
+    "pages/engineer/history/history",
+    "pages/engineer/working/working",
+    "pages/engineer/mine/mine",
+    "pages/order-detail/order-detail"
   ],
   "window": {
     "backgroundTextStyle": "light",

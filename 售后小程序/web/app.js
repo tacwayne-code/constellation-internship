@@ -31,6 +31,12 @@ const state = {
   user: readJson(STORAGE_KEYS.user, null),
   uploadsMode: "public",
   orders: [],
+  orderTotal: 0,
+  orderPage: 0,
+  ordersLoading: false,
+  orderFilters: { status: "", keyword: "", dateFrom: "", dateTo: "" },
+  dashboard: null,
+  chart: null,
   orderStats: {},
   engineers: [],
   taskOrders: [],
@@ -42,6 +48,15 @@ const state = {
   loginError: "",
   loading: false,
 };
+
+const ORDER_STATUS_OPTIONS = [
+  { value: "pending", text: "待派单" },
+  { value: "assigned", text: "已指派" },
+  { value: "processing", text: "处理中" },
+  { value: "done", text: "已完成" },
+  { value: "rejected", text: "已拒绝" },
+];
+const PAGE_SIZE = 20;
 
 function readJson(key, fallback) {
   try {
@@ -309,12 +324,96 @@ function resetEngineerEditing() {
   state.editingEngineerId = null;
 }
 
+function buildOrderQuery(extra = {}) {
+  const params = new URLSearchParams();
+  const f = state.orderFilters;
+  if (f.status) params.set("status", f.status);
+  if (f.keyword) params.set("keyword", f.keyword);
+  if (f.dateFrom) params.set("date_from", f.dateFrom);
+  if (f.dateTo) params.set("date_to", f.dateTo);
+  Object.entries(extra).forEach(([k, v]) => { if (v !== undefined && v !== null && v !== "") params.set(k, v); });
+  const qs = params.toString();
+  return qs ? `?${qs}` : "";
+}
+
+async function loadOrders(reset = false) {
+  if (reset) {
+    state.orderPage = 0;
+    state.orders = [];
+  }
+  state.ordersLoading = true;
+  render();
+  try {
+    const data = await api(`/workorders${buildOrderQuery({ skip: state.orderPage * PAGE_SIZE, limit: PAGE_SIZE })}`);
+    state.orderTotal = data.total || 0;
+    state.orderStats = data.stats || {};
+    const items = data.items || [];
+    state.orders = reset ? items : [...state.orders, ...items];
+    if (items.length === PAGE_SIZE) state.orderPage += 1;
+  } catch (e) {
+    showToast(e.message || "加载工单失败", "error");
+  } finally {
+    state.ordersLoading = false;
+    render();
+  }
+}
+
+async function loadDashboard() {
+  try {
+    state.dashboard = await api("/api/stats/overview");
+  } catch (e) {
+    state.dashboard = null;
+  }
+}
+
+function resetOrderFilters() {
+  state.orderFilters = { status: "", keyword: "", dateFrom: "", dateTo: "" };
+}
+
+function applyOrderFilters() {
+  state.orderFilters.status = document.getElementById("filter-status")?.value || "";
+  state.orderFilters.keyword = document.getElementById("filter-keyword")?.value.trim() || "";
+  state.orderFilters.dateFrom = document.getElementById("filter-date-from")?.value || "";
+  state.orderFilters.dateTo = document.getElementById("filter-date-to")?.value || "";
+  if (state.orderFilters.dateFrom && state.orderFilters.dateTo && state.orderFilters.dateFrom > state.orderFilters.dateTo) {
+    showToast("开始日期不能晚于结束日期", "warn");
+    return;
+  }
+  loadOrders(true);
+}
+
+async function downloadOrdersExport() {
+  try {
+    showToast("正在生成导出文件...");
+    const response = await fetch(`${apiBase()}/api/workorders/export${buildOrderQuery()}`, {
+      credentials: "include",
+      headers: state.token ? { Authorization: `Bearer ${state.token}` } : {},
+    });
+    if (!response.ok) {
+      const body = await response.json().catch(() => ({}));
+      throw new Error(body.detail || "导出失败");
+    }
+    const blob = await response.blob();
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `workorders_${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+    showToast("导出成功", "success");
+  } catch (e) {
+    showToast(e.message || "导出失败", "error");
+  }
+}
+
 async function refreshAll() {
-  if (!state.token || !state.role) return;
+  if (!state.token && !state.role) return;
   if (state.role === "paidan") {
-    const [orders, engineers] = await Promise.all([api("/workorders"), api("/engineers")]);
-    state.orders = orders.items || [];
-    state.orderStats = orders.stats || {};
+    const engineersPromise = api("/engineers");
+    if (state.dashboard === null) loadDashboard();
+    const [engineers] = await Promise.all([engineersPromise, loadOrders(true)]);
     state.engineers = engineers || [];
   } else {
     const [tasks, history, profile] = await Promise.all([
@@ -326,6 +425,148 @@ async function refreshAll() {
     state.historyOrders = history || [];
     state.profile = profile || state.user;
   }
+}
+
+function showToast(message, type = "") {
+  let container = document.querySelector(".toast-container");
+  if (!container) {
+    container = document.createElement("div");
+    container.className = "toast-container";
+    document.body.appendChild(container);
+  }
+  const toast = document.createElement("div");
+  toast.className = `toast${type ? ` toast-${type}` : ""}`;
+  toast.textContent = message;
+  container.appendChild(toast);
+  setTimeout(() => {
+    toast.style.opacity = "0";
+    toast.style.transition = "opacity 0.3s";
+    setTimeout(() => toast.remove(), 320);
+  }, 2600);
+}
+
+function setThemeMode(mode) {
+  if (mode !== "light" && mode !== "dark") return;
+  localStorage.setItem("aftersales_theme", mode);
+  if (window.__applyAftersalesTheme) window.__applyAftersalesTheme();
+  render();
+}
+
+/* ── 表单逐字段校验 ── */
+function fieldErrorFor(name, value) {
+  if (name === "customer_name" && !value.trim()) return "请填写企业 / 客户名称";
+  if (name === "device_name" && !value.trim()) return "请填写设备名称";
+  if (name === "fault_desc" && !value.trim()) return "请填写故障现象描述";
+  if (name === "name" && !value.trim()) return "请填写姓名";
+  if (name === "phone") {
+    if (!value.trim()) return "请填写联系电话";
+    if (!/^1\d{10}$/.test(value.trim())) return "手机号格式不正确";
+  }
+  if (name === "password" && value && value.length < 6) return "密码至少 6 位";
+  return "";
+}
+
+function showFieldError(input, message) {
+  const group = input.closest(".form-group, .input-group");
+  if (!group) return;
+  input.classList.add("error");
+  let errorEl = group.querySelector(".field-error");
+  if (!errorEl) {
+    errorEl = document.createElement("div");
+    errorEl.className = "field-error";
+    group.appendChild(errorEl);
+  }
+  errorEl.textContent = message;
+}
+
+function clearFieldError(input) {
+  input.classList.remove("error");
+  const group = input.closest(".form-group, .input-group");
+  if (!group) return;
+  const errorEl = group.querySelector(".field-error");
+  if (errorEl) errorEl.remove();
+}
+
+function bindFieldValidation(form) {
+  if (!form) return;
+  form.querySelectorAll("[name]").forEach((input) => {
+    input.addEventListener("blur", () => {
+      const message = fieldErrorFor(input.name, input.value);
+      if (message) showFieldError(input, message);
+      else clearFieldError(input);
+    });
+    input.addEventListener("input", () => {
+      if (input.classList.contains("error")) clearFieldError(input);
+    });
+  });
+}
+
+function validateForm(form) {
+  let firstInvalid = null;
+  form.querySelectorAll("[name]").forEach((input) => {
+    const message = fieldErrorFor(input.name, input.value);
+    if (message) {
+      showFieldError(input, message);
+      if (!firstInvalid) firstInvalid = input;
+    } else {
+      clearFieldError(input);
+    }
+  });
+  if (firstInvalid) firstInvalid.focus();
+  return !firstInvalid;
+}
+
+function renderSkeletons(count = 3) {
+  return Array.from({ length: count }, () => `
+    <div class="card skeleton-card">
+      <div class="skeleton-line tiny"></div>
+      <div class="skeleton-line short"></div>
+      <div class="skeleton-line"></div>
+    </div>
+  `).join("");
+}
+
+function chartThemeColors() {
+  const dark = document.documentElement.getAttribute("data-theme") === "dark";
+  return {
+    grid: dark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.06)",
+    ticks: dark ? "#9aa4b2" : "#86909c",
+    line: getComputedStyle(document.documentElement).getPropertyValue("--blue").trim() || "#1e80ff",
+    fill: dark ? "rgba(77,159,255,0.25)" : "rgba(30,128,255,0.12)",
+  };
+}
+
+function initTrendChart() {
+  const canvas = document.getElementById("chart-trend");
+  if (!canvas || typeof Chart === "undefined" || !state.dashboard) return;
+  if (state.chart) { state.chart.destroy(); state.chart = null; }
+  const data = state.dashboard.daily_completed || [];
+  const colors = chartThemeColors();
+  state.chart = new Chart(canvas, {
+    type: "line",
+    data: {
+      labels: data.map((item) => item.date.slice(5)),
+      datasets: [{
+        label: "完成工单",
+        data: data.map((item) => item.count),
+        borderColor: colors.line,
+        backgroundColor: colors.fill,
+        fill: true,
+        tension: 0.3,
+        pointRadius: 2,
+        borderWidth: 2,
+      }],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { ticks: { color: colors.ticks, maxTicksLimit: 8, font: { size: 10 } }, grid: { display: false } },
+        y: { beginAtZero: true, ticks: { color: colors.ticks, precision: 0, font: { size: 10 } }, grid: { color: colors.grid } },
+      },
+    },
+  });
 }
 
 function normalizeImage(src) {
@@ -534,11 +775,73 @@ function renderOrderCard(order) {
   `;
 }
 
+function renderDashboard() {
+  const d = state.dashboard;
+  if (!d) return "";
+  const faultList = (d.fault_distribution || []).slice(0, 5).map((item) => `
+    <div class="dash-list-item"><span>${esc(item.type)}</span><span class="dash-count">${esc(item.count)}</span></div>
+  `).join("") || '<div class="dash-list-item"><span>暂无数据</span></div>';
+  const rankList = (d.engineer_ranking || []).map((item, index) => `
+    <div class="dash-list-item">
+      <span><span class="dash-rank ${index < 3 ? `r${index + 1}` : ""}">${index + 1}</span>${esc(item.name)}</span>
+      <span class="dash-count">${esc(item.count)} 单</span>
+    </div>
+  `).join("") || '<div class="dash-list-item"><span>暂无数据</span></div>';
+  return `
+    <div class="card dashboard-card">
+      <div class="card-title">经营看板</div>
+      <div class="dashboard-full">
+        <div class="dash-subtitle">近 30 天完成工单趋势</div>
+        <div class="chart-wrap"><canvas id="chart-trend"></canvas></div>
+      </div>
+      <div class="dashboard-grid">
+        <div>
+          <div class="dash-subtitle">故障类型分布</div>
+          ${faultList}
+        </div>
+        <div>
+          <div class="dash-subtitle">工程师完成排行</div>
+          ${rankList}
+        </div>
+      </div>
+    </div>
+  `;
+}
+
 function renderOrders() {
+  const filterStatus = state.orderFilters.status;
+  const keyword = state.orderFilters.keyword;
+  const dateFrom = state.orderFilters.dateFrom;
+  const dateTo = state.orderFilters.dateTo;
+  const list = state.ordersLoading
+    ? renderSkeletons(3)
+    : state.orders.length
+      ? state.orders.map(renderOrderCard).join("")
+      : `<div class="empty-tip">暂无符合条件的工单</div>`;
+  const hasMore = !state.ordersLoading && state.orders.length > 0 && state.orders.length < state.orderTotal;
   return renderShell(`
     ${renderStats()}
-    <div class="section-title">全员工单列表</div>
-    ${state.orders.length ? state.orders.map(renderOrderCard).join("") : `<div class="empty-tip">暂无工单数据</div>`}
+    ${renderDashboard()}
+    <div class="card filter-bar">
+      <select class="form-select" id="filter-status">
+        <option value="">全部状态</option>
+        ${ORDER_STATUS_OPTIONS.map((item) => `<option value="${item.value}" ${filterStatus === item.value ? "selected" : ""}>${item.text}</option>`).join("")}
+      </select>
+      <input class="form-input" id="filter-keyword" placeholder="单号 / 客户 / 设备 / SN" value="${esc(keyword)}">
+      <div class="filter-date">
+        <input class="form-input" type="date" id="filter-date-from" value="${esc(dateFrom)}">
+        <span class="filter-sep">至</span>
+        <input class="form-input" type="date" id="filter-date-to" value="${esc(dateTo)}">
+      </div>
+      <div class="filter-actions">
+        <button class="btn" type="button" data-apply-filter>查询</button>
+        <button class="btn btn-outline" type="button" data-reset-filter>重置</button>
+        <button class="btn btn-outline" type="button" data-export-orders>导出 CSV</button>
+      </div>
+    </div>
+    <div class="section-title">全员工单列表（共 ${esc(state.orderTotal)} 单）</div>
+    ${list}
+    ${hasMore ? `<div class="load-more-wrap"><button class="load-more-btn" type="button" data-load-more>加载更多</button></div>` : ""}
   `, "orders", "paidan", { title: "工单看板" });
 }
 
@@ -586,6 +889,19 @@ function renderEngineerForm() {
   `, "engineers", "paidan", { title: current ? "编辑工程师" : "新增工程师", back: true, noBottomNav: true });
 }
 
+function themeSwitchSection() {
+  const theme = document.documentElement.getAttribute("data-theme") || "light";
+  return `
+    <section class="card">
+      <div class="card-title">外观</div>
+      <div class="theme-row">
+        <button class="theme-btn ${theme === "light" ? "active" : ""}" type="button" data-theme-mode="light">浅色</button>
+        <button class="theme-btn ${theme === "dark" ? "active" : ""}" type="button" data-theme-mode="dark">深色</button>
+      </div>
+    </section>
+  `;
+}
+
 function renderMine() {
   return renderShell(`
     <section class="card">
@@ -598,6 +914,7 @@ function renderMine() {
       <div class="info-row"><span class="info-label">电话</span><span class="info-val">${esc(state.user?.phone || "-")}</span></div>
       <div class="info-row"><span class="info-label">角色</span><span class="info-val">派单员</span></div>
     </section>
+    ${themeSwitchSection()}
   `, "mine", "paidan", { title: "我的" });
 }
 
@@ -740,6 +1057,7 @@ function renderEngineerMine() {
       <div class="info-row"><span class="info-label">部门</span><span class="info-val">${esc(profile.department || "-")}</span></div>
       <div class="info-row"><span class="info-label">专长</span><span class="info-val">${esc(profile.specialty || "-")}</span></div>
     </section>
+    ${themeSwitchSection()}
   `, "mine", "engineer", { title: "我的" });
 }
 
@@ -869,8 +1187,10 @@ function renderApp() {
 }
 
 function render() {
+  if (state.chart) { state.chart.destroy(); state.chart = null; }
   root.innerHTML = renderApp();
   bindEvents();
+  initTrendChart();
 }
 
 function bindEvents() {
@@ -918,6 +1238,39 @@ function bindEvents() {
       resetEngineerEditing();
       setRoute(button.dataset.nav);
     });
+  });
+
+  document.querySelectorAll("[data-apply-filter]").forEach((button) => {
+    button.addEventListener("click", applyOrderFilters);
+  });
+
+  document.querySelectorAll("[data-reset-filter]").forEach((button) => {
+    button.addEventListener("click", () => {
+      resetOrderFilters();
+      render();
+      loadOrders(true);
+    });
+  });
+
+  document.querySelectorAll("[data-load-more]").forEach((button) => {
+    button.addEventListener("click", () => loadOrders(false));
+  });
+
+  document.querySelectorAll("[data-export-orders]").forEach((button) => {
+    button.addEventListener("click", downloadOrdersExport);
+  });
+
+  document.querySelectorAll("[data-theme-mode]").forEach((button) => {
+    button.addEventListener("click", () => setThemeMode(button.dataset.themeMode));
+  });
+
+  ["filter-keyword", "filter-date-from", "filter-date-to"].forEach((id) => {
+    const input = document.getElementById(id);
+    if (input) {
+      input.addEventListener("keydown", (event) => {
+        if (event.key === "Enter") applyOrderFilters();
+      });
+    }
   });
 
   document.querySelectorAll("[data-detail]").forEach((button) => {
@@ -1021,8 +1374,13 @@ function bindEvents() {
 
   const createOrderForm = document.getElementById("create-order-form");
   if (createOrderForm) {
+    bindFieldValidation(createOrderForm);
     createOrderForm.addEventListener("submit", async (event) => {
       event.preventDefault();
+      if (!validateForm(createOrderForm)) {
+        showToast("请完善必填信息", "warn");
+        return;
+      }
       const formData = new FormData(createOrderForm);
       const orderId = formData.get("order_id");
       const current = orderId ? editingOrder() : null;
@@ -1053,8 +1411,13 @@ function bindEvents() {
 
   const engineerForm = document.getElementById("engineer-form");
   if (engineerForm) {
+    bindFieldValidation(engineerForm);
     engineerForm.addEventListener("submit", async (event) => {
       event.preventDefault();
+      if (!validateForm(engineerForm)) {
+        showToast("请完善必填信息", "warn");
+        return;
+      }
       const formData = new FormData(engineerForm);
       const payload = {
         name: formData.get("name"),
@@ -1095,8 +1458,13 @@ function bindEvents() {
 
   const accountForm = document.getElementById("account-form");
   if (accountForm) {
+    bindFieldValidation(accountForm);
     accountForm.addEventListener("submit", async (event) => {
       event.preventDefault();
+      if (!validateForm(accountForm)) {
+        showToast("请完善必填信息", "warn");
+        return;
+      }
       const formData = new FormData(accountForm);
       const password = String(formData.get("password") || "").trim();
       const payload = {

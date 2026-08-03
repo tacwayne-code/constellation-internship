@@ -1,6 +1,7 @@
 from sqlalchemy.orm import Session
+from sqlalchemy import or_
 from models import User, Engineer, WorkOrder, WorkRecord
-from datetime import datetime
+from datetime import datetime, timedelta
 from passlib.context import CryptContext
 import json
 
@@ -121,8 +122,47 @@ def create_work_order(db: Session, data, created_by: int):
     return order
 
 
-def get_work_orders(db: Session):
-    return db.query(WorkOrder).order_by(WorkOrder.created_at.desc()).all()
+def get_work_orders(
+    db: Session,
+    status: str | None = None,
+    keyword: str | None = None,
+    date_from: str | None = None,
+    date_to: str | None = None,
+    engineer_id: int | None = None,
+    skip: int = 0,
+    limit: int = 50,
+):
+    """按条件过滤工单并分页，返回 (分页结果, 总条数)。过滤下推到 SQL，避免全量加载。"""
+    query = db.query(WorkOrder)
+    if status:
+        query = query.filter(WorkOrder.status == status)
+    if keyword:
+        like = f"%{keyword}%"
+        query = query.filter(
+            or_(
+                WorkOrder.order_no.like(like),
+                WorkOrder.customer_name.like(like),
+                WorkOrder.device_name.like(like),
+                WorkOrder.sn_code.like(like),
+            )
+        )
+    if date_from:
+        query = query.filter(WorkOrder.created_at >= datetime.strptime(date_from, "%Y-%m-%d"))
+    if date_to:
+        query = query.filter(
+            WorkOrder.created_at <= datetime.strptime(date_to, "%Y-%m-%d") + timedelta(days=1)
+        )
+    if engineer_id:
+        query = query.filter(WorkOrder.engineer_id == engineer_id)
+
+    total = query.count()
+    orders = (
+        query.order_by(WorkOrder.created_at.desc())
+        .offset(skip)
+        .limit(limit)
+        .all()
+    )
+    return orders, total
 
 
 def get_work_order(db: Session, order_id: int):

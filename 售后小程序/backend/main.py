@@ -1,4 +1,6 @@
 from datetime import datetime, timedelta, timezone
+import csv
+import io
 import json
 import logging
 import os
@@ -6,16 +8,16 @@ import re
 import secrets
 import threading
 import time
-from sqlalchemy import inspect, text
+from sqlalchemy import func, inspect, text
 import urllib.error
 import urllib.parse
 import urllib.request
 import uuid
 
-from fastapi import Depends, FastAPI, File, HTTPException, Request, Response, UploadFile, status
+from fastapi import Depends, FastAPI, File, HTTPException, Query, Request, Response, UploadFile, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.security import OAuth2PasswordBearer
 from fastapi.staticfiles import StaticFiles
 from jose import JWTError, jwt
@@ -590,33 +592,149 @@ def reverse_geocode_location(
 
 @app.get("/workorders", response_model=WorkOrderList)
 def list_work_orders(
-    skip: int = 0,
-    limit: int = 50,
+    skip: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=100),
+    status: str | None = Query(None, pattern="^(pending|assigned|processing|done|rejected)$"),
+    keyword: str | None = Query(None, max_length=100, description="按单号/客户/设备/SN 模糊搜索"),
+    date_from: str | None = Query(None, pattern=r"^\d{4}-\d{2}-\d{2}$"),
+    date_to: str | None = Query(None, pattern=r"^\d{4}-\d{2}-\d{2}$"),
+    engineer_id: int | None = Query(None, ge=1),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    all_orders = get_work_orders(db)
-    orders = all_orders[skip : skip + limit]
+    orders, total = get_work_orders(
+        db,
+        status=status,
+        keyword=keyword,
+        date_from=date_from,
+        date_to=date_to,
+        engineer_id=engineer_id,
+        skip=skip,
+        limit=limit,
+    )
+    # 统计为全站口径（不随筛选变化），用 SQL 计数避免全量加载
     now = datetime.now(timezone.utc)
-    pending = sum(1 for order in all_orders if order.status in ("pending", "assigned", "processing"))
-    completed = sum(1 for order in all_orders if order.status == "done")
-    completed_this_month = sum(
-        1
-        for order in all_orders
-        if order.status == "done"
-        and order.updated_at.year == now.year
-        and order.updated_at.month == now.month
+    pending = (
+        db.query(WorkOrder)
+        .filter(WorkOrder.status.in_(["pending", "assigned", "processing"]))
+        .count()
+    )
+    completed = db.query(WorkOrder).filter(WorkOrder.status == "done").count()
+    completed_this_month = (
+        db.query(WorkOrder)
+        .filter(WorkOrder.status == "done", WorkOrder.updated_at >= now.replace(day=1))
+        .count()
     )
 
     return {
         "items": [enrich_order(order) for order in orders],
-        "total": len(all_orders),
+        "total": total,
         "stats": {
             "pending": pending,
             "completed": completed,
             "completed_this_month": completed_this_month,
         },
     }
+
+
+@app.get("/api/stats/overview")
+def stats_overview(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    """统计看板：近30天完成趋势、故障类型分布、工程师完成排行"""
+    now = datetime.utcnow()
+    since = now - timedelta(days=29)
+
+    daily_rows = (
+        db.query(func.date(WorkOrder.updated_at).label("day"), func.count(WorkOrder.id))
+        .filter(WorkOrder.status == "done", WorkOrder.updated_at >= since)
+        .group_by(func.date(WorkOrder.updated_at))
+        .all()
+    )
+    daily_map = {str(day): count for day, count in daily_rows}
+    daily_completed = [
+        {"date": (since + timedelta(days=i)).strftime("%Y-%m-%d"), "count": daily_map.get((since + timedelta(days=i)).strftime("%Y-%m-%d"), 0)}
+        for i in range(30)
+    ]
+
+    fault_rows = (
+        db.query(WorkOrder.fault_type, func.count(WorkOrder.id))
+        .group_by(WorkOrder.fault_type)
+        .order_by(func.count(WorkOrder.id).desc())
+        .all()
+    )
+    fault_distribution = [{"type": fault_type or "未知", "count": count} for fault_type, count in fault_rows]
+
+    engineer_rows = (
+        db.query(func.coalesce(Engineer.name, "未指派").label("name"), func.count(WorkOrder.id))
+        .outerjoin(WorkOrder, WorkOrder.engineer_id == Engineer.id)
+        .filter(WorkOrder.status == "done")
+        .group_by(func.coalesce(Engineer.name, "未指派"))
+        .order_by(func.count(WorkOrder.id).desc())
+        .limit(5)
+        .all()
+    )
+    engineer_ranking = [{"name": name, "count": count} for name, count in engineer_rows]
+
+    return {
+        "daily_completed": daily_completed,
+        "fault_distribution": fault_distribution,
+        "engineer_ranking": engineer_ranking,
+        "total_orders": db.query(WorkOrder).count(),
+    }
+
+
+@app.get("/api/workorders/export")
+def export_work_orders(
+    status: str | None = Query(None, pattern="^(pending|assigned|processing|done|rejected)$"),
+    keyword: str | None = Query(None, max_length=100),
+    date_from: str | None = Query(None, pattern=r"^\d{4}-\d{2}-\d{2}$"),
+    date_to: str | None = Query(None, pattern=r"^\d{4}-\d{2}-\d{2}$"),
+    engineer_id: int | None = Query(None, ge=1),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """按当前筛选条件导出工单 CSV（带 BOM，Excel 可直接打开中文不乱码）"""
+    if current_user.role != "paidan":
+        raise HTTPException(status_code=403, detail="无权导出")
+
+    orders, _ = get_work_orders(
+        db,
+        status=status,
+        keyword=keyword,
+        date_from=date_from,
+        date_to=date_to,
+        engineer_id=engineer_id,
+        skip=0,
+        limit=10000,
+    )
+
+    buffer = io.StringIO()
+    writer = csv.writer(buffer)
+    writer.writerow(["工单号", "客户", "设备", "SN", "故障类型", "故障描述", "地址", "状态", "工程师", "创建时间", "更新时间"])
+    status_names = {"pending": "待派单", "assigned": "已指派", "processing": "处理中", "done": "已完成", "rejected": "已拒绝"}
+    for order in orders:
+        writer.writerow(
+            [
+                order.order_no,
+                order.customer_name,
+                order.device_name,
+                order.sn_code or "",
+                order.fault_type,
+                (order.fault_desc or "").replace("\n", " "),
+                order.address or "",
+                status_names.get(order.status, order.status),
+                order.engineer.name if order.engineer else "",
+                order.created_at.strftime("%Y-%m-%d %H:%M") if order.created_at else "",
+                order.updated_at.strftime("%Y-%m-%d %H:%M") if order.updated_at else "",
+            ]
+        )
+
+    content = "\ufeff" + buffer.getvalue()
+    filename = f"workorders_{datetime.now().strftime('%Y%m%d%H%M%S')}.csv"
+    return Response(
+        content=content,
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @app.post("/workorders", response_model=WorkOrderOut)
