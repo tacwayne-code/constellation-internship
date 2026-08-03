@@ -24,9 +24,12 @@ const TAB_CONFIG = {
 };
 
 const state = {
-  token: localStorage.getItem(STORAGE_KEYS.token) || "",
+  // Token 不写入 localStorage（可被 XSS 窃取），登录后由后端下发 httpOnly Cookie 承载；
+  // 内存中仅保留当前会话的 token 供 Authorization 头使用（刷新后自动回落到 Cookie）
+  token: "",
   role: localStorage.getItem(STORAGE_KEYS.role) || "",
   user: readJson(STORAGE_KEYS.user, null),
+  uploadsMode: "public",
   orders: [],
   orderStats: {},
   engineers: [],
@@ -50,15 +53,22 @@ function readJson(key, fallback) {
 }
 
 function saveSession(payload) {
-  localStorage.setItem(STORAGE_KEYS.token, payload.access_token);
+  // 仅保存角色与用户展示信息；Token 由 httpOnly Cookie 承载，不再进入 localStorage
   localStorage.setItem(STORAGE_KEYS.role, payload.role);
   localStorage.setItem(STORAGE_KEYS.user, JSON.stringify(payload.user));
+  localStorage.removeItem(STORAGE_KEYS.token);
   state.token = payload.access_token;
   state.role = payload.role;
   state.user = payload.user;
 }
 
 function clearSession() {
+  // 通知后端清除 httpOnly Cookie（Cookie 无法由前端脚本直接删除）
+  try {
+    fetch(`${apiBase()}/auth/logout`, { method: "POST", credentials: "include" }).catch(() => {});
+  } catch (e) {
+    /* ignore */
+  }
   Object.values(STORAGE_KEYS).forEach((key) => localStorage.removeItem(key));
   state.token = "";
   state.role = "";
@@ -90,6 +100,7 @@ async function api(path, options = {}) {
   const response = await fetch(`${apiBase()}${path}`, {
     method: options.method || "GET",
     headers,
+    credentials: "include", // 同源部署时自动携带 httpOnly Cookie 完成鉴权
     body: options.body instanceof FormData ? options.body : options.body ? JSON.stringify(options.body) : undefined,
   });
 
@@ -320,6 +331,10 @@ async function refreshAll() {
 function normalizeImage(src) {
   if (!src) return "";
   if (/^https?:\/\//.test(src)) return src;
+  if (state.uploadsMode === "protected" && src.startsWith("/uploads/")) {
+    // protected 模式下走鉴权下载接口；同源 <img> 请求会自动携带 Cookie
+    return `${apiBase()}/api/files/${encodeURIComponent(src.slice("/uploads/".length))}`;
+  }
   return `${apiBase()}${src}`;
 }
 
@@ -482,7 +497,7 @@ function renderCreate() {
           <input class="form-input file-input" type="file" name="fault_images" accept="image/png,image/jpeg,image/webp" multiple>
           ${(current?.fault_images || []).length ? `
             <div class="image-list compact-image-list">
-              ${current.fault_images.map((src) => `<img src="${normalizeImage(src)}" class="record-image" alt="故障照片">`).join("")}
+              ${current.fault_images.map((src) => `<img src="${esc(normalizeImage(src))}" class="record-image" alt="${esc("故障照片")}">`).join("")}
             </div>
           ` : ""}
         </div>
@@ -800,7 +815,7 @@ function renderDetail() {
       <section class="card">
         <div class="card-title">故障照片</div>
         <div class="image-list">
-          ${faultImages.map((src) => `<img src="${src}" class="record-image" alt="故障照片">`).join("")}
+          ${faultImages.map((src) => `<img src="${esc(src)}" class="record-image" alt="${esc("故障照片")}">`).join("")}
         </div>
       </section>
     ` : ""}
@@ -823,7 +838,7 @@ function renderDetail() {
       <section class="card">
         <div class="card-title">维修图片</div>
         <div class="image-list">
-          ${images.map((src) => `<img src="${src}" class="record-image" alt="维修图片">`).join("")}
+          ${images.map((src) => `<img src="${esc(src)}" class="record-image" alt="${esc("维修图片")}">`).join("")}
         </div>
       </section>
     ` : ""}
@@ -831,7 +846,8 @@ function renderDetail() {
 }
 
 function renderApp() {
-  if (!state.token || !state.role) return renderLogin();
+  // 登录态由后端 httpOnly Cookie 维持；role 仅用于渲染界面，刷新后 token 随 Cookie 自动恢复
+  if (!state.role) return renderLogin();
 
   const tab = currentTab();
   if (tab === "detail") return renderDetail();
@@ -1184,7 +1200,19 @@ function bindEvents() {
 window.addEventListener("hashchange", render);
 
 async function bootstrap() {
-  if (state.token && state.role) await refreshAll();
+  try {
+    const health = await fetch(`${apiBase()}/health`).then((r) => r.json());
+    state.uploadsMode = health.uploads_mode || "public";
+  } catch (e) {
+    /* 忽略：默认按 public 模式渲染 */
+  }
+  if (state.role) {
+    try {
+      await refreshAll();
+    } catch (e) {
+      clearSession();
+    }
+  }
   render();
 }
 

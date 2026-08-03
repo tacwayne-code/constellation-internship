@@ -1,15 +1,21 @@
 from datetime import datetime, timedelta, timezone
 import json
+import logging
 import os
-import shutil
+import re
+import secrets
+import threading
+import time
 from sqlalchemy import inspect, text
 import urllib.error
 import urllib.parse
 import urllib.request
 import uuid
 
-from fastapi import Depends, FastAPI, File, HTTPException, UploadFile, status
+from fastapi import Depends, FastAPI, File, HTTPException, Request, Response, UploadFile, status
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.security import OAuth2PasswordBearer
 from fastapi.staticfiles import StaticFiles
 from jose import JWTError, jwt
@@ -48,8 +54,22 @@ from schemas import (
     WorkRecordCreate,
 )
 
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+logger = logging.getLogger("aftersales-api")
+
 APP_TITLE = os.getenv("APP_TITLE", "After-sales Service API")
-SECRET_KEY = os.getenv("SECRET_KEY", "change-me-in-production")
+
+# ── SECRET_KEY：缺失时不拒绝启动，自动生成临时随机密钥（重启后所有令牌失效）──
+# 生产环境强烈建议显式配置固定密钥，避免重启导致全员重新登录
+ENV = os.getenv("ENV", "development").strip().lower()
+SECRET_KEY = os.getenv("SECRET_KEY", "").strip()
+if not SECRET_KEY:
+    SECRET_KEY = secrets.token_urlsafe(48)
+    logger.warning(
+        "SECRET_KEY 未配置，已生成临时随机密钥（本次运行有效，服务重启后所有令牌失效；"
+        "生产环境请通过环境变量 SECRET_KEY 显式配置固定密钥）"
+    )
+
 ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
 ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "1440"))
 AMAP_WEB_SERVICE_KEY = os.getenv("AMAP_WEB_SERVICE_KEY", "").strip()
@@ -63,6 +83,20 @@ CORS_ORIGINS = [
 WEB_MOUNT_PATH = os.getenv("WEB_MOUNT_PATH", "/web")
 UPLOAD_DIR = os.path.join(os.path.dirname(__file__), "uploads")
 WEB_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "web"))
+
+# ── 上传安全配置 ──
+UPLOAD_MAX_SIZE = int(os.getenv("UPLOAD_MAX_SIZE_MB", "10")) * 1024 * 1024
+# public: /uploads 静态目录直接可访问（小程序 <image> 组件无法携带请求头，必须使用该模式）
+# protected: 不挂载静态目录，改为需登录态（Bearer/Cookie）的 /api/files/{name} 下载接口
+UPLOADS_ACCESS_MODE = os.getenv("UPLOADS_ACCESS_MODE", "public").strip().lower()
+if UPLOADS_ACCESS_MODE not in ("public", "protected"):
+    raise RuntimeError("UPLOADS_ACCESS_MODE 仅支持 public / protected")
+
+# ── 登录限流配置 ──
+LOGIN_MAX_FAILURES = int(os.getenv("LOGIN_MAX_FAILURES", "5"))
+LOGIN_LOCK_MINUTES = int(os.getenv("LOGIN_LOCK_MINUTES", "15"))
+COOKIE_SECURE = os.getenv("COOKIE_SECURE", "0").strip().lower() in ("1", "true", "yes")
+TOKEN_COOKIE_NAME = "aftersales_token"
 
 Base.metadata.create_all(bind=engine)
 
@@ -89,14 +123,105 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
+@app.middleware("http")
+async def security_headers(request: Request, call_next):
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Referrer-Policy"] = "no-referrer"
+    response.headers["X-XSS-Protection"] = "1; mode=block"
+    response.headers.setdefault(
+        "Content-Security-Policy",
+        "default-src 'self'; img-src 'self' data: https: http:; "
+        "style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self'",
+    )
+    return response
+
+
+# ── 全局异常处理：统一错误响应，不向客户端泄露堆栈信息 ──
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    errors = []
+    for item in (exc.errors() or [])[:5]:
+        loc = ".".join(str(part) for part in item.get("loc", []) if part != "body")
+        errors.append(f"{loc}: {item.get('msg', '参数错误')}")
+    return JSONResponse(
+        status_code=422,
+        content={"detail": "请求参数校验失败", "errors": errors},
+    )
+
+
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception):
+    logger.exception("Unhandled error on %s %s", request.method, request.url.path)
+    return JSONResponse(status_code=500, content={"detail": "服务器内部错误，请稍后重试"})
+
+
 os.makedirs(UPLOAD_DIR, exist_ok=True)
-app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
+
+if UPLOADS_ACCESS_MODE == "public":
+    # public：静态目录直接可访问（小程序 <image> 组件无法携带请求头，必须使用该模式）
+    app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
 
 if os.path.isdir(WEB_DIR):
     app.mount(WEB_MOUNT_PATH, StaticFiles(directory=WEB_DIR, html=True), name="web")
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/login")
+# auto_error=False：允许从 Authorization 头或 httpOnly Cookie 中读取令牌
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/login", auto_error=False)
+
+
+# ── 登录失败限流（内存实现；多实例部署时可替换为 Redis 实现）──
+class LoginRateLimiter:
+    def __init__(self, max_failures: int, lock_seconds: int) -> None:
+        self.max_failures = max_failures
+        self.lock_seconds = lock_seconds
+        self._records: dict[str, dict] = {}
+        self._lock = threading.Lock()
+
+    def _key(self, username: str, ip: str) -> str:
+        return f"{username}@{ip}"
+
+    def check(self, username: str, ip: str) -> tuple[bool, int]:
+        """返回 (是否锁定, 剩余锁定秒数)"""
+        now = time.time()
+        with self._lock:
+            entry = self._records.get(self._key(username, ip))
+            if not entry:
+                return False, 0
+            if entry["locked_until"] and now < entry["locked_until"]:
+                return True, int(entry["locked_until"] - now)
+            if entry["locked_until"]:
+                self._records.pop(self._key(username, ip), None)
+            return False, 0
+
+    def record_failure(self, username: str, ip: str) -> int:
+        """记录一次失败，返回剩余可用尝试次数（0 表示已触发锁定）"""
+        now = time.time()
+        with self._lock:
+            key = self._key(username, ip)
+            entry = self._records.setdefault(key, {"count": 0, "locked_until": 0.0})
+            entry["count"] += 1
+            if entry["count"] >= self.max_failures:
+                entry["locked_until"] = now + self.lock_seconds
+                entry["count"] = 0
+                return 0
+            return self.max_failures - entry["count"]
+
+    def reset(self, username: str, ip: str) -> None:
+        with self._lock:
+            self._records.pop(self._key(username, ip), None)
+
+
+login_limiter = LoginRateLimiter(LOGIN_MAX_FAILURES, LOGIN_LOCK_MINUTES * 60)
+
+
+def client_ip(request: Request) -> str:
+    forwarded = request.headers.get("x-forwarded-for")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    return request.client.host if request.client else "unknown"
 
 
 def verify_password(plain: str, hashed: str) -> bool:
@@ -114,12 +239,20 @@ def create_access_token(data: dict, expires_delta: timedelta | None = None) -> s
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
 
-def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)) -> User:
+def get_current_user(
+    request: Request,
+    db: Session = Depends(get_db),
+    token: str | None = Depends(oauth2_scheme),
+) -> User:
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Could not validate credentials",
         headers={"WWW-Authenticate": "Bearer"},
     )
+    if not token:
+        token = request.cookies.get(TOKEN_COOKIE_NAME)
+    if not token:
+        raise credentials_exception
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         username = payload.get("sub")
@@ -132,6 +265,19 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
     if user is None:
         raise credentials_exception
     return user
+
+
+if UPLOADS_ACCESS_MODE == "protected":
+    # protected：关闭静态目录，改为需登录态的鉴权下载接口
+    # （Web 端同源 <img> 请求会自动携带 httpOnly Cookie 完成鉴权）
+    @app.get("/api/files/{filename}")
+    def download_file(filename: str, current_user: User = Depends(get_current_user)):
+        if not re.fullmatch(r"[0-9a-f]{32}\.(jpg|jpeg|png|webp)", filename, re.IGNORECASE):
+            raise HTTPException(status_code=404, detail="文件不存在")
+        filepath = os.path.join(UPLOAD_DIR, filename)
+        if not os.path.isfile(filepath):
+            raise HTTPException(status_code=404, detail="文件不存在")
+        return FileResponse(filepath)
 
 
 def seed_data(db: Session) -> None:
@@ -201,25 +347,62 @@ def health() -> dict:
         "web_enabled": os.path.isdir(WEB_DIR),
         "web_mount_path": WEB_MOUNT_PATH,
         "location_mode": "AMAP_LIVE" if AMAP_WEB_SERVICE_KEY else "NOT_CONFIGURED",
+        "uploads_mode": UPLOADS_ACCESS_MODE,
+        "env": ENV,
     }
 
 
 @app.post("/auth/login", response_model=LoginResponse)
-def login(req: LoginRequest, db: Session = Depends(get_db)):
+def login(req: LoginRequest, request: Request, db: Session = Depends(get_db)):
+    ip = client_ip(request)
+    locked, remaining = login_limiter.check(req.username, ip)
+    if locked:
+        raise HTTPException(
+            status_code=429,
+            detail=f"登录失败次数过多，请 {max(1, remaining // 60 + 1)} 分钟后再试",
+        )
+
     user = get_user_by_username(db, req.username)
     if not user or not verify_password(req.password, user.password_hash) or user.role != req.role:
-        raise HTTPException(status_code=400, detail="账号、密码或角色不正确")
+        remaining_attempts = login_limiter.record_failure(req.username, ip)
+        if remaining_attempts <= 0:
+            detail = f"登录失败次数过多，账号已锁定 {LOGIN_LOCK_MINUTES} 分钟"
+        else:
+            detail = f"账号、密码或角色不正确（剩余尝试 {remaining_attempts} 次）"
+        raise HTTPException(status_code=400, detail=detail)
 
+    login_limiter.reset(req.username, ip)
     access_token = create_access_token(
         data={"sub": user.username},
         expires_delta=timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES),
     )
-    return {
-        "access_token": access_token,
-        "token_type": "bearer",
-        "role": user.role,
-        "user": user,
-    }
+
+    # 同时下发 httpOnly Cookie：Web 端同源访问无需在 localStorage 保存 Token，
+    # 可有效降低 Token 被 XSS 窃取的风险
+    response = JSONResponse(
+        content={
+            "access_token": access_token,
+            "token_type": "bearer",
+            "role": user.role,
+            "user": UserOut.model_validate(user).model_dump(),
+        }
+    )
+    response.set_cookie(
+        key=TOKEN_COOKIE_NAME,
+        value=access_token,
+        max_age=ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+        httponly=True,
+        samesite="lax",
+        secure=COOKIE_SECURE,
+        path="/",
+    )
+    return response
+
+
+@app.post("/auth/logout")
+def logout(response: Response):
+    response.delete_cookie(TOKEN_COOKIE_NAME, path="/")
+    return {"ok": True}
 
 
 @app.put("/users/me", response_model=UserOut)
@@ -559,20 +742,51 @@ def accept_order(
     return enrich_order(order)
 
 
+def sniff_image_type(head: bytes) -> str | None:
+    """根据文件头魔数识别真实图片格式，忽略客户端伪造的 content_type / 扩展名"""
+    if len(head) >= 3 and head[:3] == b"\xff\xd8\xff":
+        return ".jpg"
+    if len(head) >= 8 and head[:8] == b"\x89PNG\r\n\x1a\n":
+        return ".png"
+    if len(head) >= 12 and head[:4] == b"RIFF" and head[8:12] == b"WEBP":
+        return ".webp"
+    return None
+
+
 @app.post("/api/upload")
 async def upload_image(
     file: UploadFile = File(...),
     current_user: User = Depends(get_current_user),
 ):
-    allowed_types = ["image/jpeg", "image/png", "image/webp"]
-    if file.content_type not in allowed_types:
-        raise HTTPException(status_code=400, detail="仅支持 jpg/png/webp 格式")
+    # 1) 文件头魔数校验：拒绝任何非图片内容（HTML、可执行文件等）
+    head = await file.read(12)
+    ext = sniff_image_type(head)
+    if ext is None:
+        raise HTTPException(status_code=400, detail="仅支持 jpg/png/webp 图片文件")
 
-    ext = os.path.splitext(file.filename)[1] or ".jpg"
+    # 2) 文件名由服务端生成（UUID + 以内容判定的扩展名），不信任用户输入
     filename = f"{uuid.uuid4().hex}{ext}"
     filepath = os.path.join(UPLOAD_DIR, filename)
 
+    # 3) 流式写入并限制总大小，防止上传大文件耗尽磁盘
+    size = len(head)
     with open(filepath, "wb") as output_file:
-        shutil.copyfileobj(file.file, output_file)
+        output_file.write(head)
+        while True:
+            chunk = await file.read(1024 * 1024)
+            if not chunk:
+                break
+            size += len(chunk)
+            if size > UPLOAD_MAX_SIZE:
+                output_file.close()
+                try:
+                    os.remove(filepath)
+                except OSError:
+                    pass
+                raise HTTPException(
+                    status_code=413,
+                    detail=f"文件大小不能超过 {UPLOAD_MAX_SIZE // (1024 * 1024)}MB",
+                )
+            output_file.write(chunk)
 
     return {"url": f"/uploads/{filename}", "filename": filename}

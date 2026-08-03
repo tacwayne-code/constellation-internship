@@ -1,4 +1,5 @@
 const app = getApp();
+const api = require('../../utils/request');
 
 Page({
   data: {
@@ -28,22 +29,14 @@ Page({
       return;
     }
 
-    wx.request({
-      url: `${app.globalData.baseUrl}/auth/login`,
-      method: 'POST',
-      data: { username, password, role: selectedRole },
-      success: (res) => {
-        if (res.statusCode === 200) {
-          app.setLoginInfo(res.data.access_token, res.data.role, res.data.user);
-          this.navigateByRole(res.data.role);
-        } else {
-          wx.showToast({ title: res.data.detail || '登录失败', icon: 'none' });
-        }
-      },
-      fail: () => {
-        wx.showToast({ title: '网络错误', icon: 'none' });
-      }
-    });
+    api.post('/auth/login', { username, password, role: selectedRole })
+      .then((res) => {
+        app.setLoginInfo(res.access_token, res.role, res.user);
+        this.navigateByRole(res.role);
+      })
+      .catch((err) => {
+        wx.showToast({ title: err.message || '登录失败', icon: 'none' });
+      });
   },
 
   navigateByRole(role) {

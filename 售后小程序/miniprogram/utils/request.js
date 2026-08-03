@@ -1,3 +1,7 @@
+/**
+ * 统一请求封装：自动携带 Token、统一处理 401/网络错误/业务错误
+ * 依赖 app.globalData.baseUrl / app.globalData.token / app.logout()
+ */
 function request(options) {
   const app = getApp();
   return new Promise((resolve, reject) => {
@@ -5,6 +9,7 @@ function request(options) {
       url: `${app.globalData.baseUrl}${options.url}`,
       method: options.method || 'GET',
       data: options.data || {},
+      timeout: options.timeout || 15000,
       header: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${app.globalData.token || ''}`
@@ -12,17 +17,17 @@ function request(options) {
       success(res) {
         if (res.statusCode === 401) {
           app.logout();
-          return reject(new Error('登录已过期'));
+          return reject(new Error('登录已过期，请重新登录'));
         }
         if (res.statusCode >= 200 && res.statusCode < 300) {
           resolve(res.data);
         } else {
-          reject(res.data);
+          const detail = (res.data && (res.data.detail || res.data.message)) || `请求失败(${res.statusCode})`;
+          reject(new Error(detail));
         }
       },
       fail(err) {
-        console.error('网络请求失败:', err);
-        reject(err);
+        reject(new Error(err.errMsg || '网络请求失败'));
       }
     });
   });
