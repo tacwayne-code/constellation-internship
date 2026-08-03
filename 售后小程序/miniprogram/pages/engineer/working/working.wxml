@@ -1,0 +1,60 @@
+<header title="现场维修" showBack />
+<view class="container" style="padding-bottom: 80rpx;">
+  <view class="card">
+    <view class="card-title">
+      <text>工单: {{order.order_no || '...'}}</text>
+      <text class="badge badge-pending">{{order.status_text || '待维修'}} ›</text>
+    </view>
+    <view class="info-row"><text class="info-label">客户:</text><text class="info-val">{{order.customer_name}}</text></view>
+    <view class="info-row"><text class="info-label">设备:</text><text class="info-val">{{order.device_name}}{{order.sn_code ? ' / SN: ' + order.sn_code : ''}}</text></view>
+    <view class="info-row"><text class="info-label">服务地址:</text><view class="info-val" style="color:#1e80ff;display:flex;align-items:center;">● {{order.address || '未填写'}}</view></view>
+    <view class="info-row"><text class="info-label">故障类型:</text><text class="info-val">{{order.fault_type}}</text></view>
+    <view class="info-row"><text class="info-label">故障描述:</text><text class="info-val">{{order.fault_desc}}</text></view>
+  </view>
+
+  <view class="card">
+    <view class="card-title">现场维修打卡与记录</view>
+
+    <view class="form-group">
+      <text class="form-label">维修开始时间</text>
+      <view class="time-picker-row">
+        <picker mode="date" value="{{startDate}}" bindchange="onStartDateChange">
+          <view class="form-input picker-input">{{startDate || '选择日期'}}</view>
+        </picker>
+        <picker mode="time" value="{{startTime}}" bindchange="onStartTimeChange">
+          <view class="form-input picker-input">{{startTime || '选择时间'}}</view>
+        </picker>
+      </view>
+    </view>
+
+    <view class="form-group">
+      <text class="form-label">维修结束时间</text>
+      <view class="time-picker-row">
+        <picker mode="date" value="{{endDate}}" bindchange="onEndDateChange">
+          <view class="form-input picker-input">{{endDate || '选择日期'}}</view>
+        </picker>
+        <picker mode="time" value="{{endTime}}" bindchange="onEndTimeChange">
+          <view class="form-input picker-input">{{endTime || '选择时间'}}</view>
+        </picker>
+      </view>
+    </view>
+
+    <view class="form-group">
+      <text class="form-label">故障原因分析与处理方案</text>
+      <textarea class="form-textarea" data-field="analysis" value="{{form.analysis}}" bindinput="onInput" placeholder="填写现场排查出的具体故障原因及处理过程..." />
+    </view>
+
+    <view class="form-group">
+      <text class="form-label">维修后运行凭证 (照片/视频)</text>
+      <view class="upload-box" bindtap="chooseImage">
+        <text style="font-size:36rpx;">📷</text>
+        <text>{{images.length > 0 ? '已选择 ' + images.length + ' 张' : '拍摄维修完成现场照片'}}</text>
+      </view>
+      <view class="image-list" wx:if="{{images.length > 0}}">
+        <image wx:for="{{images}}" wx:key="*this" src="{{item}}" mode="aspectFill" class="preview-img" />
+      </view>
+    </view>
+
+    <button class="btn btn-success" bindtap="submitRecord">提交维修记录</button>
+  </view>
+</view>

@@ -1,0 +1,32 @@
+<view class="login-container">
+  <view class="login-form-wrap">
+    <view class="login-brand">
+      <view class="login-logo">⚙</view>
+      <view class="login-title">售后服务平台</view>
+      <view class="login-subtitle">一站式售后与保修服务系统</view>
+    </view>
+
+    <view class="role-selector">
+      <view class="role-option {{selectedRole === 'paidan' ? 'active' : ''}}" data-role="paidan" bindtap="selectRole">派单</view>
+      <view class="role-option {{selectedRole === 'engineer' ? 'active' : ''}}" data-role="engineer" bindtap="selectRole">售后工程师</view>
+    </view>
+
+    <view class="input-group">
+      <text class="input-label">账号 / 手机号码</text>
+      <view class="input-box">
+        <input type="text" value="{{username}}" data-field="username" bindinput="onInput" placeholder="请输入手机号/工号" />
+      </view>
+    </view>
+
+    <view class="input-group">
+      <text class="input-label">登录密码 / 验证码</text>
+      <view class="input-box">
+        <input type="password" value="{{password}}" data-field="password" bindinput="onInput" placeholder="请输入密码" />
+      </view>
+    </view>
+
+    <button class="login-btn" bindtap="handleLogin">登录系统</button>
+  </view>
+
+  <view class="login-footer">© 2026 中山市新灵感技术有限公司 · 服务保障</view>
+</view>

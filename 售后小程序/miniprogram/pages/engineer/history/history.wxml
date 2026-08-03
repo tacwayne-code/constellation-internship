@@ -1,0 +1,27 @@
+<header title="维修记录" />
+<view class="container" style="padding-bottom: 160rpx;">
+  <block wx:if="{{records.length > 0}}">
+    <view class="card clickable-card" wx:for="{{records}}" wx:key="id" bindtap="showDetail" data-id="{{item.id}}">
+      <view class="card-title">
+        {{item.order_no}}
+        <text class="badge badge-done">已完工 ›</text>
+      </view>
+      <view class="info-row">
+        <text class="info-label">服务客户:</text>
+        <text class="info-val">{{item.customer_name}}</text>
+      </view>
+      <view class="info-row">
+        <text class="info-label">维修设备:</text>
+        <text class="info-val">{{item.device_name}}</text>
+      </view>
+      <view class="info-row">
+        <text class="info-label">维修用时:</text>
+        <text class="info-val">{{item.durationText}}</text>
+      </view>
+    </view>
+  </block>
+
+  <view wx:else class="empty-tip">暂无维修记录</view>
+
+  <bottom-nav role="engineer" active="/pages/engineer/history/history" />
+</view>

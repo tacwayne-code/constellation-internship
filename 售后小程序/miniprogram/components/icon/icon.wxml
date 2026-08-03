@@ -1,0 +1,5 @@
+<image
+  class="icon-img"
+  src="{{iconUrl}}"
+  style="width:{{iconSize}}rpx;height:{{iconSize}}rpx;"
+/>

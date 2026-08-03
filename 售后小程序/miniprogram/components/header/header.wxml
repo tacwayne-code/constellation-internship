@@ -1,0 +1,7 @@
+<view class="header-wrap" style="padding-top: {{statusBarHeight}}px;">
+  <view class="header-bar">
+    <view class="header-left" wx:if="{{showBack}}" bindtap="onBack">‹ 返回</view>
+    <view class="header-center">{{title}}</view>
+  </view>
+</view>
+<view style="height: {{statusBarHeight + 44}}px;"></view>

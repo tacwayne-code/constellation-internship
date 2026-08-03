@@ -1,0 +1,44 @@
+<header title="工单看板" />
+<view class="container" style="padding-bottom: 160rpx;">
+  <view class="grid-3">
+    <view class="stat-box">
+      <view class="stat-num" style="color:#faad14;">{{stats.pending}}</view>
+      <view class="stat-desc">待处理</view>
+    </view>
+    <view class="stat-box">
+      <view class="stat-num" style="color:#1e80ff;">{{stats.completed}}</view>
+      <view class="stat-desc">已完成</view>
+    </view>
+    <view class="stat-box">
+      <view class="stat-num" style="color:#52c41a;">{{stats.completed_this_month}}</view>
+      <view class="stat-desc">本月已完成</view>
+    </view>
+  </view>
+
+  <view class="card-title" style="margin: 12rpx 0;">全员工单列表</view>
+
+  <block wx:if="{{orders.length > 0}}">
+    <view class="card clickable-card" wx:for="{{orders}}" wx:key="id" bindtap="showDetail" data-order="{{item}}">
+      <view class="card-title">
+        工单: {{item.order_no}}
+        <text class="badge {{item.status_class}}">{{item.status_text}} ›</text>
+      </view>
+      <view class="info-row">
+        <text class="info-label">责任工程师:</text>
+        <text class="info-val"><text style="font-weight:bold;">{{item.engineer_name}}</text> ({{item.engineer_phone}})</text>
+      </view>
+      <view class="info-row">
+        <text class="info-label">服务客户:</text>
+        <text class="info-val">{{item.customer_name}}</text>
+      </view>
+      <view class="info-row">
+        <text class="info-label">报修内容:</text>
+        <text class="info-val">{{item.fault_desc}}</text>
+      </view>
+    </view>
+  </block>
+
+  <view wx:else class="empty-tip">暂无工单数据</view>
+
+  <bottom-nav role="paidan" active="/pages/paidan/orders/orders" />
+</view>

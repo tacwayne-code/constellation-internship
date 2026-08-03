@@ -1,0 +1,34 @@
+.bottom-nav {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 170rpx;
+  background: #ffffff;
+  border-top: 1rpx solid #e5e6eb;
+  display: flex;
+  justify-content: space-around;
+  align-items: center;
+  padding-bottom: env(safe-area-inset-bottom);
+  z-index: 999;
+}
+
+.nav-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  font-size: 22rpx;
+  color: #86909c;
+  flex: 1;
+}
+
+.nav-item.active {
+  color: #1e80ff;
+  font-weight: bold;
+}
+
+.nav-icon {
+  font-size: 44rpx;
+  margin-bottom: 4rpx;
+  line-height: 1;
+}

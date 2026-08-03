@@ -1,0 +1,18 @@
+<header title="个人中心" />
+<view class="container" style="padding-bottom: 160rpx;">
+  <view class="card">
+    <view class="card-title">派单员信息</view>
+    <view style="text-align: center; padding: 20rpx 0 32rpx 0;">
+      <view class="avatar-circle">{{userInfo.name ? userInfo.name[0] : '刘'}}</view>
+      <view style="font-size: 32rpx; font-weight: bold; color: #1d2129;">{{userInfo.name || '刘主管'}}</view>
+      <view style="font-size: 24rpx; color: #86909c; margin-top: 4rpx;">工单调度管理员</view>
+    </view>
+    <view class="divider"></view>
+    <view class="info-row"><text class="info-label">工号:</text><text class="info-val">{{userInfo.username || 'PD001'}}</text></view>
+    <view class="info-row"><text class="info-label">角色:</text><text class="info-val">派单员</text></view>
+  </view>
+
+  <button class="btn btn-outline" bindtap="logout">退出登录</button>
+
+  <bottom-nav role="paidan" active="/pages/paidan/mine/mine" />
+</view>

@@ -1,0 +1,19 @@
+.btn-success {
+  background: #52c41a;
+  margin-top: 12rpx;
+}
+
+picker {
+  display: block;
+  width: 100%;
+}
+
+picker .form-select {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  word-break: break-all;
+  overflow-wrap: break-word;
+  min-height: 80rpx;
+  line-height: 44rpx;
+}

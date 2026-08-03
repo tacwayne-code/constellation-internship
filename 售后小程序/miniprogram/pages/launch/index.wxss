@@ -1,0 +1,8 @@
+.launch {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #5f6b7a;
+  font-size: 28rpx;
+}

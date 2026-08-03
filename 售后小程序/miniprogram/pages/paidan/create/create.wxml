@@ -1,0 +1,49 @@
+<header title="创建与派发工单" />
+<view class="container" style="padding-bottom: 160rpx;">
+  <view class="card">
+    <view class="card-title">创建工单</view>
+
+    <view class="form-group">
+      <text class="form-label">报修企业 / 客户名称</text>
+      <input class="form-input" data-field="customer_name" value="{{form.customer_name}}" bindinput="onInput" placeholder="请输入企业或客户名称" />
+    </view>
+
+    <view class="form-group">
+      <text class="form-label">报修设备名称</text>
+      <input class="form-input" data-field="device_name" value="{{form.device_name}}" bindinput="onInput" placeholder="例如：液压打包机" />
+    </view>
+
+    <view class="form-group">
+      <text class="form-label">设备序列号 / SN码（选填）</text>
+      <input class="form-input" data-field="sn_code" value="{{form.sn_code}}" bindinput="onInput" placeholder="请输入设备铭牌上的SN编码" />
+    </view>
+
+    <view class="form-group">
+      <text class="form-label">服务地址</text>
+      <input class="form-input" data-field="address" value="{{form.address}}" bindinput="onInput" placeholder="如：上海市闵行区工业园B区8号厂房" />
+    </view>
+
+    <view class="form-group">
+      <text class="form-label">故障类型</text>
+      <picker mode="selector" range="{{faultTypes}}" value="{{faultIndex}}" bindchange="onFaultChange">
+        <view class="form-select">{{form.fault_type || '请选择故障类型'}}</view>
+      </picker>
+    </view>
+
+    <view class="form-group">
+      <text class="form-label">故障现象描述</text>
+      <textarea class="form-textarea" data-field="fault_desc" value="{{form.fault_desc}}" bindinput="onInput" placeholder="描述设备具体故障现象，如异响、报错代码、泄漏位置等..." />
+    </view>
+
+    <view class="form-group">
+      <text class="form-label">指派服务工程师</text>
+      <picker mode="selector" range="{{engineerNames}}" value="{{engineerIndex}}" bindchange="onEngineerChange">
+        <view class="form-select" style="{{selectedEngineerName ? 'color:#1d2129; font-weight:bold;' : ''}}">{{selectedEngineerName || '请选择工程师（点击下方选择）'}}</view>
+      </picker>
+    </view>
+
+    <button class="btn btn-success" bindtap="submitOrder">创建并派发工单</button>
+  </view>
+
+  <bottom-nav role="paidan" active="/pages/paidan/create/create" />
+</view>

@@ -1,0 +1,19 @@
+<header title="个人中心" />
+<view class="container" style="padding-bottom: 160rpx;">
+  <view class="card">
+    <view class="card-title">工程师信息</view>
+    <view style="text-align: center; padding: 20rpx 0 32rpx 0;">
+      <view class="avatar-circle">{{profile.name ? profile.name[0] : '张'}}</view>
+      <view style="font-size: 32rpx; font-weight: bold; color: #1d2129;">{{profile.name || '张工程师'}}</view>
+      <view style="font-size: 24rpx; color: #86909c; margin-top: 4rpx;">{{profile.specialty || '售后维修工程师'}}</view>
+    </view>
+    <view class="divider"></view>
+    <view class="info-row"><text class="info-label">工号:</text><text class="info-val">{{profile.login_username || 'SH001'}}</text></view>
+    <view class="info-row"><text class="info-label">联系电话:</text><text class="info-val">{{profile.phone || '138****8888'}}</text></view>
+    <view class="info-row"><text class="info-label">所属部门:</text><text class="info-val">{{profile.department || '未分配'}}</text></view>
+  </view>
+
+  <button class="btn btn-outline" bindtap="logout">退出登录</button>
+
+  <bottom-nav role="engineer" active="/pages/engineer/mine/mine" />
+</view>

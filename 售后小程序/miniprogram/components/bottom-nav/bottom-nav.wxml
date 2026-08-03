@@ -1,0 +1,6 @@
+<view class="bottom-nav">
+  <view class="nav-item {{item.active ? 'active' : ''}}" wx:for="{{items}}" wx:key="path" data-path="{{item.path}}" bindtap="switchTab">
+    <text class="nav-icon">{{item.iconText}}</text>
+    <text class="nav-text">{{item.text}}</text>
+  </view>
+</view>

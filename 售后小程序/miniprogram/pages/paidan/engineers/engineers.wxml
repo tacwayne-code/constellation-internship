@@ -1,0 +1,60 @@
+<header title="工程师管理" />
+<view class="container" style="padding-bottom: 160rpx;">
+  <view class="card">
+    <view class="card-title" style="align-items: center;">
+      <text>公司工程师列表</text>
+      <view class="btn-add" bindtap="showAdd">+ 添加工程师</view>
+    </view>
+
+    <block wx:if="{{engineers.length > 0}}">
+      <view class="engineer-item" wx:for="{{engineers}}" wx:key="id">
+        <view class="eng-info">
+          <view class="eng-name">{{item.name}}</view>
+          <view class="eng-meta">电话: {{item.phone}} | {{item.department}} | 账号: {{item.login_username || '暂无'}}</view>
+          <view class="eng-specialty">负责方向: {{item.specialty || '未指定'}}</view>
+        </view>
+        <view class="action-btns">
+          <view class="btn-edit" bindtap="editEngineer" data-id="{{item.id}}">编辑</view>
+          <view class="btn-delete" bindtap="deleteEngineer" data-id="{{item.id}}">删除</view>
+        </view>
+      </view>
+    </block>
+
+    <view wx:else class="empty-tip">暂无工程师数据</view>
+  </view>
+
+  <bottom-nav role="paidan" active="/pages/paidan/engineers/engineers" />
+</view>
+
+<view class="modal-overlay" wx:if="{{showForm}}" bindtap="closeForm" catchtouchmove="noop">
+  <view class="modal-card" catchtap="noop" catchtouchmove="noop">
+    <view class="modal-scroll">
+      <view class="card-title">{{editingId ? '编辑工程师' : '添加工程师'}}</view>
+
+      <view class="form-group">
+        <text class="form-label">姓名</text>
+        <input class="form-input" type="text" data-field="name" value="{{form.name}}" bindinput="onFormInput" placeholder="如：张工程师" adjust-position="{{true}}" hold-keyboard="{{true}}" />
+      </view>
+      <view class="form-group">
+        <text class="form-label">电话</text>
+        <input class="form-input" type="text" data-field="phone" value="{{form.phone}}" bindinput="onFormInput" placeholder="如：138****8888" adjust-position="{{true}}" hold-keyboard="{{true}}" />
+      </view>
+      <view class="form-group">
+        <text class="form-label">所属部门</text>
+        <input class="form-input" type="text" data-field="department" value="{{form.department}}" bindinput="onFormInput" placeholder="如：华东维修一部" adjust-position="{{true}}" hold-keyboard="{{true}}" />
+      </view>
+      <view class="form-group">
+        <text class="form-label">负责方向</text>
+        <input class="form-input" type="text" data-field="specialty" value="{{form.specialty}}" bindinput="onFormInput" placeholder="如：液压/机械维修" adjust-position="{{true}}" hold-keyboard="{{true}}" />
+      </view>
+
+      <view class="modal-btns">
+        <button class="btn btn-outline" bindtap="closeForm">取消</button>
+        <button class="btn btn-success" bindtap="submitForm">{{editingId ? '保存修改' : '确认添加'}}</button>
+      </view>
+      <view wx:if="{{!editingId}}" style="font-size:22rpx;color:#86909c;text-align:center;margin-top:12rpx;">
+        添加后将自动生成登录账号，默认密码 123456
+      </view>
+    </view>
+  </view>
+</view>

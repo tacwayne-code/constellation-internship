@@ -1,0 +1,42 @@
+<view class="container">
+  <view class="card">
+    <view class="card-title">工单信息</view>
+    <view class="info-row"><text class="info-label">工单编号:</text><text class="info-val" style="font-weight:bold;">{{order.order_no}}</text></view>
+    <view class="info-row"><text class="info-label">工单状态:</text><text class="info-val" style="color:#1e80ff; font-weight:bold;">{{order.status_text}}</text></view>
+    <view class="info-row"><text class="info-label">客户名称:</text><text class="info-val">{{order.customer_name}}</text></view>
+    <view class="info-row"><text class="info-label">设备名称:</text><text class="info-val">{{order.device_name}}</text></view>
+    <view class="info-row"><text class="info-label">SN码:</text><text class="info-val">{{order.sn_code || '-'}}</text></view>
+    <view class="info-row"><text class="info-label">故障类型:</text><text class="info-val">{{order.fault_type}}</text></view>
+    <view class="info-row"><text class="info-label">故障描述:</text><text class="info-val">{{order.fault_desc}}</text></view>
+    <view class="info-row"><text class="info-label">责任工程师:</text><text class="info-val">{{order.engineer_name}} {{order.engineer_phone}}</text></view>
+  </view>
+
+  <view class="card">
+    <view class="card-title">维修进度</view>
+    <view class="timeline">
+      <view class="timeline-item {{item.class}}" wx:for="{{timeline}}" wx:key="title">
+        <view class="timeline-dot"></view>
+        <view class="timeline-title">
+          <text>{{item.title}}</text>
+          <text class="timeline-time">{{item.time}}</text>
+        </view>
+        <view class="timeline-desc">{{item.desc}}</view>
+      </view>
+    </view>
+  </view>
+
+  <view class="card" wx:if="{{recordImages.length > 0}}">
+    <view class="card-title">维修图片</view>
+    <view class="image-list">
+      <image
+        wx:for="{{recordImages}}"
+        wx:key="*this"
+        src="{{item}}"
+        mode="aspectFill"
+        class="record-image"
+        data-src="{{item}}"
+        bindtap="previewImage"
+      />
+    </view>
+  </view>
+</view>

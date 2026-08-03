@@ -1,0 +1,3 @@
+.clickable-card:active {
+  background: #f8fafc;
+}

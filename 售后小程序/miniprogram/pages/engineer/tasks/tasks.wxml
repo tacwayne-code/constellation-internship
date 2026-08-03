@@ -1,0 +1,32 @@
+<header title="我的任务" />
+<view class="container" style="padding-bottom: 160rpx;">
+  <view class="card" style="background: #1e80ff; color:#fff;">
+    <view style="font-size:24rpx; opacity:0.9;">今日待执行任务</view>
+    <view style="font-size:44rpx; font-weight:bold; margin-top:8rpx;">{{tasks.length}} 单待处理</view>
+  </view>
+
+  <block wx:if="{{tasks.length > 0}}">
+    <view class="card clickable-card" wx:for="{{tasks}}" wx:key="id" bindtap="goWorking" data-id="{{item.id}}">
+      <view class="card-title">
+        工单: {{item.order_no}}
+        <text class="badge badge-pending">待维修 ›</text>
+      </view>
+      <view class="info-row">
+        <text class="info-label">客户名称:</text>
+        <text class="info-val">{{item.customer_name}}</text>
+      </view>
+      <view class="info-row">
+        <text class="info-label">服务地址:</text>
+        <text class="info-val">{{item.address || '上海市闵行区工业园B区8号厂房'}}</text>
+      </view>
+      <view class="info-row">
+        <text class="info-label">报修问题:</text>
+        <text class="info-val">{{item.fault_desc}}</text>
+      </view>
+    </view>
+  </block>
+
+  <view wx:else class="empty-tip">暂无待处理任务</view>
+
+  <bottom-nav role="engineer" active="/pages/engineer/tasks/tasks" />
+</view>
