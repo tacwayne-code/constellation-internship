@@ -613,6 +613,15 @@ html, body {
   margin-bottom: 6px;
   font-size: 14px;
 }
+.or-sync {
+  font-size: 11px;
+  white-space: nowrap;
+  margin-left: 8px;
+}
+.or-sync.sync-ok { color: var(--green); }
+.or-sync.sync-partial { color: #d97706; }
+.or-sync.sync-failed { color: var(--red); }
+.or-sync.sync-local { color: var(--muted); }
 .or-worker { font-weight: 800; color: var(--text); min-width: 70px; font-size: 15px; }
 .or-detail { color: var(--muted-light); flex: 1; margin: 0 10px; font-size: 13px; }
 .or-qty {

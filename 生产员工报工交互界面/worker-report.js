@@ -8,7 +8,9 @@ const API_BASE = window.location.origin;
 let apiOnline = false;
 
 async function apiGet(path) {
-  const r = await fetch(API_BASE + path);
+  // Reset can happen while this page stays open. Do not reuse an old JSON
+  // response from the browser cache after the reset.
+  const r = await fetch(API_BASE + path, { cache: "no-store" });
   const j = await r.json();
   if (!j.ok) throw new Error(j.error || "API error");
   return j;
@@ -100,6 +102,14 @@ function tickClock() {
   });
 }
 
+function localDateKey(value = new Date()) {
+  const date = value instanceof Date ? value : new Date(value);
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
 // ====== API 状态 ======
 function updateApiBadge() {
   const b = $("#apiStatus");
@@ -121,6 +131,7 @@ function updateModeBadge() {
 
 // ====== 数据加载 ======
 async function loadAll() {
+  const hadReports = S.reports.length > 0;
   // 并行调用所有 API（之前是串行，/api/dashboard 慢时整个加载很慢）
   const settled = await Promise.allSettled([
     fetch(API_BASE + "/api/dashboard", { cache: "no-store" }).then(r => r.json()).catch(() => null),
@@ -151,6 +162,19 @@ async function loadAll() {
     S.workers = defaultWorkers();
   }
 
+  // Keep the current form selection attached to the refreshed records. If a
+  // reset removed the selected worker, return the form to its initial state.
+  if (S.selWorker) {
+    const workerIdx = S.workers.findIndex((w) => String(w.id) === String(S.selWorker.id));
+    if (workerIdx >= 0) {
+      S.selWorkerIdx = workerIdx;
+      S.selWorker = S.workers[workerIdx];
+    } else {
+      S.selWorkerIdx = -1;
+      S.selWorker = null;
+    }
+  }
+
   if (ordersResp) S.orders = (ordersResp.data || []);
   else S.orders = [];
 
@@ -169,6 +193,26 @@ async function loadAll() {
     S.workorders = woResp.data;
   } else {
     S.workorders = [];
+  }
+
+  if (S.selectedWorkorder) {
+    const refreshedWorkorder = S.workorders.find(
+      (w) => String(w.workorderId) === String(S.selectedWorkorder.workorderId)
+    );
+    if (refreshedWorkorder) {
+      S.selectedWorkorder = refreshedWorkorder;
+    } else {
+      S.selectedWorkorder = null;
+      S.selectedProduction = null;
+      S.bomItems = [];
+      S.bomConfirmed = false;
+    }
+  }
+
+  // A reset performed from another process is visible as the report list
+  // changing from non-empty to empty. Clear the form as well as the panels.
+  if (hadReports && reportsResp && reportsResp.ok && S.reports.length === 0) {
+    resetForm();
   }
 
   apiOnline = true;
@@ -219,7 +263,7 @@ function renderKpis() {
   const grid = $("#kpiGrid");
   if (!grid) return;
 
-  const today = new Date().toISOString().split("T")[0];
+  const today = localDateKey();
   const todayR = S.reports.filter((r) => r.date === today);
   const todayQty = todayR.reduce((s, r) => s + (parseInt(r.qty) || 0), 0);
   const todayPeople = new Set(todayR.map((r) => r.workerName)).size;
@@ -301,7 +345,7 @@ function renderActiveWorkers() {
   if (!el) return;
 
   // 取今天报过工的员工 + 当前工单
-  const today = new Date().toISOString().split("T")[0];
+  const today = localDateKey();
   const todayReports = (S.reports || []).filter((r) => r.date === today);
   // 同员工最新报工 = 实时任务
   const lastByWorker = new Map();
@@ -458,7 +502,7 @@ function renderReportOverview() {
   const stat = $("#todayStat");
   if (!el) return;
 
-  const today = new Date().toISOString().split("T")[0];
+  const today = localDateKey();
   const todayR = S.reports.filter((r) => r.date === today);
   const todayQty = todayR.reduce((s, r) => s + (parseInt(r.qty) || 0), 0);
   const todayPeople = new Set(todayR.map((r) => r.workerName)).size;
@@ -477,11 +521,20 @@ function renderReportOverview() {
   '</div>';
 
   todayR.slice(-6).reverse().forEach((r) => {
+    const syncStatus = String(r.syncStatus || "local");
+    const syncLabel = syncStatus === "odoo_synced" ? "Odoo已同步" :
+      syncStatus === "odoo_partial" ? "Odoo部分同步" :
+      syncStatus === "odoo_failed" ? "Odoo未同步" :
+      syncStatus === "mock" ? "模拟数据" : "本地记录";
+    const syncClass = syncStatus === "odoo_synced" ? "sync-ok" :
+      syncStatus === "odoo_partial" ? "sync-partial" :
+      syncStatus === "odoo_failed" ? "sync-failed" : "sync-local";
     html += '<div class="overview-report-item">' +
       '<span class="or-worker">' + esc(r.workerName) + '</span>' +
       '<span class="or-detail">' + esc(r.operationLabel || r.operation) + '</span>' +
       '<span class="or-qty">' + r.qty + '台</span>' +
-    '</div>';
+      '<span class="or-sync ' + syncClass + '" title="' + esc(r.errorMessage || syncLabel) + '">' + syncLabel + '</span>' +
+      '</div>';
   });
 
   el.innerHTML = html;
@@ -496,13 +549,17 @@ function updateSubmit() {
   const opHostType = opInfo ? opInfo.hostType : null;
   const woHostType = S.selectedWorkorder ? S.selectedWorkorder.hostType : null;
   const mismatch = opHostType && woHostType && opHostType !== woHostType;
-  // 工人+工序+qty>0 + 匹配检查 + 未提交中
-  const can = S.selWorkerIdx >= 0 && S.selOperation && S.qty > 0 && !S.submitting && !mismatch;
+  const hasWorkorder = !!(S.selectedWorkorder && S.selectedWorkorder.workorderId);
+  // Odoo sync requires a concrete work order and production order.
+  const can = S.selWorkerIdx >= 0 && S.selOperation && S.qty > 0
+    && hasWorkorder && !S.submitting && !mismatch;
   btn.disabled = !can;
   // 不匹配时更新 title 提示
   if (mismatch) {
     const want = opHostType === "tape" ? "编带机箱" : opHostType === "splitter" ? "分光机箱" : "对应";
     btn.title = `当前工序只能选择${want}工单，请重新选择`;
+  } else if (!hasWorkorder) {
+    btn.title = "请先选择工单";
   } else {
     btn.title = "";
   }
@@ -881,6 +938,10 @@ async function submitReport() {
   if (S.submitting) return;
   if (S.selWorkerIdx < 0) { toast("请先选择工人", "error"); return; }
   if (!S.selOperation) { toast("请先选择工序", "error"); return; }
+  if (!S.selectedWorkorder || !S.selectedWorkorder.workorderId) {
+    toast("请先选择工单", "error");
+    return;
+  }
   if (S.qty <= 0) { toast("请设置完成数量", "error"); return; }
 
   S.submitting = true;
@@ -888,7 +949,7 @@ async function submitReport() {
 
   const worker = S.workers[S.selWorkerIdx];
   const remark = ($("#remarkInput").value || "").trim();
-  const date = new Date().toISOString().split("T")[0];
+  const date = localDateKey();
   const time = new Date().toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit", hour12: false });
   const idempotencyKey = generateUUID();
 
@@ -965,7 +1026,13 @@ async function submitReport() {
       if (refreshed && refreshed.data) S.reports = refreshed.data;
     } catch (_) { /* 提交已成功，刷新列表失败不影响 */ }
 
-    showSuccessMsg(worker.name, S.qty, mode);
+    // 后端只有在物料库存、WO 和 MO 都回读成功时才返回 odoo_synced。
+    // 部分/失败同步仍保留本地报工记录，但必须明确提示，避免误以为 Odoo 已完成。
+    const syncStatus = (response.data && response.data.syncStatus) ||
+      (response.meta && response.meta.syncStatus) ||
+      (mode === "mock" ? "mock" : "odoo_failed");
+    const syncMessage = (response.meta && response.meta.message) || "";
+    showSuccessMsg(worker.name, S.qty, mode, syncStatus, syncMessage);
     renderKpis();
     renderReportOverview();
     renderActiveWorkers();
@@ -980,13 +1047,21 @@ async function submitReport() {
 }
 
 // ====== 弹窗 ======
-function showSuccessMsg(name, qty, mode) {
+function showSuccessMsg(name, qty, mode, syncStatus = "", syncMessage = "") {
   let msg = "报工成功！";
   let sub = name + " 完成 " + qty + " 台";
 
   if (mode === "mock") {
     msg = "模拟报工成功";
     sub += "（未写入 Odoo）";
+  } else if (syncStatus === "odoo_partial") {
+    msg = "报工已保存，Odoo 部分同步";
+    sub += syncMessage ? "（" + syncMessage + "）" : "（请核对库存和制造订单进度）";
+  } else if (syncStatus === "odoo_failed") {
+    msg = "报工已保存，Odoo 未同步完成";
+    sub += syncMessage ? "（" + syncMessage + "）" : "（请核对库存和制造订单进度）";
+  } else if (syncStatus === "odoo_synced") {
+    sub += "（库存、制造订单和工序进度已同步）";
   }
 
   $("#successMsg").textContent = msg;
@@ -996,7 +1071,7 @@ function showSuccessMsg(name, qty, mode) {
 
 // 兼容旧函数名
 function showSuccess(name, qty) {
-  showSuccessMsg(name, qty, S.runtimeMode);
+  showSuccessMsg(name, qty, S.runtimeMode, "", "");
 }
 
 function resetForm() {
@@ -1091,11 +1166,16 @@ async function init() {
   setupSopEvents();
   await loadAll();
 
-  // 定时刷新（用户操作中不刷新，避免打断操作）
+  // Keep an already-open panel synchronized with an out-of-band reset.
   setInterval(() => {
-    if (S.submitting || S.selWorkerIdx >= 0) return; // 正在操作，跳过刷新
+    if (S.submitting) return;
     loadAll().catch(() => {});
-  }, 180000);
+  }, 15000);
+
+  // Refresh immediately when the operator returns to this tab.
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden && !S.submitting) loadAll().catch(() => {});
+  });
 }
 
 document.addEventListener("DOMContentLoaded", init);

@@ -41,7 +41,16 @@ MOCK_MODE = os.getenv("ODOO_MOCK_MODE", "false").lower() == "true"
 LOCAL_TZ = timezone(timedelta(hours=8))
 API_KEY = os.getenv("API_KEY", "").strip()
 DB_FILE = BASE_DIR / ("data.mock.db" if MOCK_MODE else "data.db")
+RESET_MARKER_FILE = BASE_DIR / ".reset.marker"
 WHITE_EXT = {".html", ".css", ".js", ".svg", ".ico", ".png"}
+
+
+def reset_marker_stamp():
+    """Return the cross-process reset marker timestamp."""
+    try:
+        return RESET_MARKER_FILE.stat().st_mtime_ns
+    except OSError:
+        return 0
 
 # ============================================================
 # 日志
@@ -355,7 +364,7 @@ def _normalize_report(row):
     }
     # 新字段（同时输出 snake_case 和 camelCase 以兼容前端）
     for f in ["production_id", "workorder_id", "odoo_employee_id", "idempotency_key",
-              "odoo_report_id", "sync_status"]:
+              "odoo_report_id", "odoo_stock_move_ids", "sync_status", "error_message"]:
         if f in row.keys():
             base[f] = row[f]
     # camelCase 别名（前端使用）
@@ -364,7 +373,9 @@ def _normalize_report(row):
     base["odooEmployeeId"] = row.get("odoo_employee_id", 0)
     base["idempotencyKey"] = row.get("idempotency_key", "")
     base["odooReportId"] = row.get("odoo_report_id", "")
+    base["odooStockMoveIds"] = row.get("odoo_stock_move_ids", "")
     base["syncStatus"] = row.get("sync_status", "")
+    base["errorMessage"] = row.get("error_message", "")
     return base
 
 
@@ -411,6 +422,19 @@ def db_get_report_by_idempotency(key):
         row = c.execute(
             "SELECT * FROM reports WHERE idempotency_key = ? AND idempotency_key != ''",
             (key,)
+        ).fetchone()
+        c.close()
+    return dict(row) if row else None
+
+
+def db_get_report_by_workorder(worker_id, workorder_id, date, operation):
+    """按工人+Odoo工单+日期+工序查询报工，兼容旧记录的 order_id。"""
+    with DB_LOCK:
+        c = sqlite3.connect(str(DB_FILE))
+        c.row_factory = sqlite3.Row
+        row = c.execute(
+            "SELECT * FROM reports WHERE worker_id=? AND workorder_id=? AND date=? AND operation=?",
+            (str(worker_id), str(workorder_id), str(date), str(operation)),
         ).fetchone()
         c.close()
     return dict(row) if row else None
@@ -563,14 +587,17 @@ def get_valid_worker_ids():
         return {w["id"] for w in workers}
 
 
-_order_ids_cache = {"ids": set(), "ts": 0}
+_order_ids_cache = {"ids": set(), "ts": 0, "marker": 0}
 _ORDER_CACHE_TTL = 60
 _order_ids_lock = threading.Lock()
 
 def get_valid_order_ids():
     now = time.time()
+    marker = reset_marker_stamp()
     with _order_ids_lock:
-        if now - _order_ids_cache["ts"] < _ORDER_CACHE_TTL and _order_ids_cache["ids"]:
+        if (now - _order_ids_cache["ts"] < _ORDER_CACHE_TTL
+                and _order_ids_cache["marker"] == marker
+                and _order_ids_cache["ids"]):
             return _order_ids_cache["ids"]
     try:
         data = load_dashboard()
@@ -578,6 +605,7 @@ def get_valid_order_ids():
         with _order_ids_lock:
             _order_ids_cache["ids"] = ids
             _order_ids_cache["ts"] = time.time()
+            _order_ids_cache["marker"] = reset_marker_stamp()
         return ids
     except Exception:
         with _order_ids_lock:
@@ -714,14 +742,17 @@ def build_stages(qty, delivered, remaining, need_qty, supplier, mrp, delivery_st
 # ============================================================
 # Dashboard 数据加载
 # ============================================================
-_DASH_CACHE = {"data": None, "ts": 0}
+_DASH_CACHE = {"data": None, "ts": 0, "marker": 0}
 _DASH_CACHE_TTL = 120  # 2分钟缓存，准实时
 
 
 def load_dashboard():
     """加载Dashboard数据（30秒缓存，减少Odoo重复查询）"""
     now = time.time()
-    if _DASH_CACHE["data"] is not None and (now - _DASH_CACHE["ts"]) < _DASH_CACHE_TTL:
+    marker = reset_marker_stamp()
+    if (_DASH_CACHE["data"] is not None
+            and _DASH_CACHE["marker"] == marker
+            and (now - _DASH_CACHE["ts"]) < _DASH_CACHE_TTL):
         logger.info("Dashboard缓存命中")
         return _DASH_CACHE["data"]
 
@@ -913,6 +944,7 @@ def load_dashboard():
     }
     _DASH_CACHE["data"] = result
     _DASH_CACHE["ts"] = time.time()
+    _DASH_CACHE["marker"] = reset_marker_stamp()
     return result
 
 
@@ -986,7 +1018,7 @@ EXCEL_BOM = {
 # ============================================================
 # BOM 数据缓存（线程安全）
 # ============================================================
-_BOM_CACHE = {"data": None, "ts": 0, "key": None}
+_BOM_CACHE = {"data": None, "ts": 0, "key": None, "marker": 0}
 _BOM_CACHE_LOCK = threading.Lock()
 _BOM_CACHE_TTL = 30      # 30秒缓存，确保 Odoo BOM 修改后能快速生效
 
@@ -997,9 +1029,13 @@ def get_bom_data(host_type):
         return []
 
     now = time.time()
+    marker = reset_marker_stamp()
     cache_key = f"{get_odoo_mode()}:{host_type}"
     with _BOM_CACHE_LOCK:
-        if _BOM_CACHE["key"] == cache_key and _BOM_CACHE["data"] is not None and (now - _BOM_CACHE["ts"]) < _BOM_CACHE_TTL:
+        if (_BOM_CACHE["key"] == cache_key
+                and _BOM_CACHE["data"] is not None
+                and _BOM_CACHE["marker"] == marker
+                and (now - _BOM_CACHE["ts"]) < _BOM_CACHE_TTL):
             logger.info(f"BOM缓存命中 [{host_type}]")
             return _BOM_CACHE["data"]
 
@@ -1215,6 +1251,7 @@ def get_bom_data(host_type):
         _BOM_CACHE["data"] = items
         _BOM_CACHE["ts"] = time.time()
         _BOM_CACHE["key"] = cache_key
+        _BOM_CACHE["marker"] = reset_marker_stamp()
     return items
 
 
@@ -1231,7 +1268,7 @@ def models_query_tmpl_by_code(client, default_code):
     return None
 
 
-_WO_CACHE = {"data": None, "ts": 0}
+_WO_CACHE = {"data": None, "ts": 0, "marker": 0}
 _WO_CACHE_TTL = 60  # 30秒缓存，准实时
 
 
@@ -1245,7 +1282,10 @@ def get_workorders_data():
       - 工序 PDF 优先但非必须
     """
     now = time.time()
-    if _WO_CACHE["data"] is not None and (now - _WO_CACHE["ts"]) < _WO_CACHE_TTL:
+    marker = reset_marker_stamp()
+    if (_WO_CACHE["data"] is not None
+            and _WO_CACHE["marker"] == marker
+            and (now - _WO_CACHE["ts"]) < _WO_CACHE_TTL):
         return _WO_CACHE["data"]
     mode = get_odoo_mode()
     try:
@@ -1372,6 +1412,7 @@ def get_workorders_data():
             })
         _WO_CACHE["data"] = workorders
         _WO_CACHE["ts"] = time.time()
+        _WO_CACHE["marker"] = reset_marker_stamp()
         return workorders
     except Exception as e:
         logger.warning(f"获取工单失败: {e}")
@@ -1465,7 +1506,17 @@ def odoo_update_workorder_progress(client, workorder_id: int, qty: float, produc
         return {"ok": False, "error": "缺少参数"}
     try:
         # 1) 更新工单（WO.qty_produced 是基础字段，必须写）
-        wo = client.read("mrp.workorder", [workorder_id], ["qty_produced", "qty_production", "state"])[0]
+        wo_rows = client.read("mrp.workorder", [workorder_id],
+                              ["id", "production_id", "qty_produced",
+                               "qty_production", "state"])
+        if not wo_rows:
+            return {"ok": False, "error": f"工单 #{workorder_id} 不存在"}
+        wo = wo_rows[0]
+        actual_production_id = rel_id(wo.get("production_id"))
+        if production_id and actual_production_id != int(production_id):
+            return {"ok": False, "error": "工单与生产订单不匹配"}
+        if wo.get("state") in ("done", "cancel"):
+            return {"ok": False, "error": "工单已完成或已取消"}
         new_wo_qty = float(wo.get("qty_produced", 0)) + float(qty)
         wo_vals = {"qty_produced": new_wo_qty}
         # 自动 mark done
@@ -1474,74 +1525,78 @@ def odoo_update_workorder_progress(client, workorder_id: int, qty: float, produc
             wo_vals["date_finished"] = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
         client.call("mrp.workorder", "write", [[workorder_id], wo_vals])
         logger.info(f"工单#{workorder_id} qty_produced {wo.get('qty_produced',0)} -> {new_wo_qty}")
+        wo_check = client.read("mrp.workorder", [workorder_id], ["qty_produced"] )
+        if not wo_check or abs(float(wo_check[0].get("qty_produced", 0)) - new_wo_qty) > 1e-6:
+            return {"ok": False, "error": "工单已写入但回读数量不一致",
+                    "new_qty": new_wo_qty}
 
         # 2) 同步 finished move：quantity = sum of all WO.qty_produced，state='done'
         #    Odoo 的 MO.qty_produced 是 computed field，依赖 move_finished_ids
         #    但只有 state='done' 的 finished move 才会被计入，所以必须设 state=done
         #    （实测 state='done' 不会让 MO 自动 done，MO state 由 qty_produced vs product_qty 决定）
         if production_id:
-            try:
-                all_wos = client.call("mrp.workorder", "search_read",
-                    [[("production_id", "=", production_id)]],
-                    {"fields": ["id", "qty_produced"]})
-                total_produced = sum(float(w.get("qty_produced", 0)) for w in all_wos)
+            all_wos = client.call("mrp.workorder", "search_read",
+                [[("production_id", "=", production_id)]],
+                {"fields": ["id", "qty_produced"]})
+            total_produced = sum(float(w.get("qty_produced", 0)) for w in all_wos)
 
-                mo = client.read("mrp.production", [production_id], ["move_finished_ids", "state", "product_qty"])
-                for fm_id in (mo[0].get("move_finished_ids") or []):
-                    try:
-                        client.call("stock.move", "write", [[fm_id], {
-                            "quantity": total_produced,
-                            "state": "done",
-                        }])
-                    except Exception as e:
-                        logger.warning(f"finished move {fm_id} 同步失败: {e}")
-                logger.info(f"MO#{production_id} finished move 同步为 quantity={total_produced}, state=done")
-
-                # 3) 更新 MO.qty_producing (驱动 UI 待消耗显示整数)
-                # Odoo 公式: should = (qty_producing-1) * product_uom_qty / (product_qty-1)
-                # 反向求 qty_producing 让 should = product_uom_qty - qty_produced (整数)
-                product_qty = float(mo[0].get("product_qty", 0))
-                fm_ids_list = mo[0].get("move_finished_ids") or []
-                # 从 finished move 读 product_uom_qty
-                product_uom_qty = 0
-                if fm_ids_list:
-                    fm_data = client.call("stock.move", "read", [fm_ids_list], {"fields": ["product_uom_qty"]})
-                    if fm_data:
-                        product_uom_qty = float(fm_data[0].get("product_uom_qty", 0))
-                if product_uom_qty == 0:
-                    product_uom_qty = product_qty
-                for fm_id in fm_ids_list:
-                    try:
-                        client.call("stock.move", "write", [[fm_id], {
-                            "quantity": total_produced,
-                            "state": "done",
-                        }])
-                    except Exception as e:
-                        logger.warning(f"finished move {fm_id} 同步失败: {e}")
-                logger.info(f"MO#{production_id} finished move 同步为 quantity={total_produced}, state=done")
-
-                # 3) 更新 MO.qty_producing (驱动 UI 待消耗显示整数)
-                # Odoo 公式: should = (qty_producing - raw_qty) * product_uom_qty / (product_qty - raw_qty)
-                # 反向求 qty_producing 让 should = product_qty - qty_produced (整数)
-                # qty_producing = raw_qty + desired_should * (product_qty - raw_qty) / product_uom_qty
-                product_qty = float(mo[0].get("product_qty", 0))
-                raw_qty = float(total_produced)
-                if product_qty > 0 and raw_qty < product_qty:
-                    desired_should = product_qty - raw_qty
-                    new_qty_producing = raw_qty + desired_should * (product_qty - raw_qty) / 50.0
-                else:
-                    new_qty_producing = max(product_qty - raw_qty, 0)
+            mo_rows = client.read("mrp.production", [production_id],
+                                  ["id", "move_finished_ids", "state",
+                                   "product_qty", "qty_producing"])
+            if not mo_rows:
+                return {"ok": False, "error": f"生产订单 #{production_id} 不存在",
+                        "new_qty": new_wo_qty}
+            mo = mo_rows[0]
+            fm_ids_list = mo.get("move_finished_ids") or []
+            move_errors = []
+            finished_uom_qty = 0.0
+            if fm_ids_list:
+                fm_data = client.read("stock.move", fm_ids_list,
+                                      ["id", "product_uom_qty", "quantity", "state"])
+                if fm_data:
+                    finished_uom_qty = float(fm_data[0].get("product_uom_qty", 0) or 0)
+            for fm_id in fm_ids_list:
                 try:
-                    client.call("mrp.production", "write", [[production_id], {
-                        "qty_producing": new_qty_producing,
+                    client.call("stock.move", "write", [[fm_id], {
+                        "quantity": total_produced,
+                        "state": "done",
                     }])
-                    logger.info(f"MO#{production_id} qty_producing={new_qty_producing:.2f} (UI 待消耗={int(product_qty - raw_qty)})")
                 except Exception as e:
-                    logger.warning(f"MO qty_producing update failed: {e}")
+                    move_errors.append(f"成品移动 {fm_id}: {e}")
+            if move_errors:
+                return {"ok": False,
+                        "error": "; ".join(move_errors),
+                        "new_qty": new_wo_qty,
+                        "total_produced": total_produced}
+            logger.info(f"MO#{production_id} finished move 同步为 quantity={total_produced}, state=done")
 
-                # MO state 推进（confirmed → progress，仅当 qty > 0 时）
-            except Exception as e:
-                logger.warning(f"finished move 同步异常: {e}")
+            # 3) 更新 MO.qty_producing。分母使用成品移动的计划数量，
+            # 不再写死 50，避免不同生产订单出现错误的待消耗数量。
+            product_qty = float(mo.get("product_qty", 0) or 0)
+            raw_qty = float(total_produced)
+            denominator = finished_uom_qty or product_qty or 1.0
+            if product_qty > 0 and raw_qty < product_qty:
+                desired_should = product_qty - raw_qty
+                new_qty_producing = raw_qty + desired_should * max(product_qty - raw_qty, 0) / denominator
+            else:
+                new_qty_producing = max(product_qty - raw_qty, 0)
+            client.call("mrp.production", "write", [[production_id], {
+                "qty_producing": new_qty_producing,
+            }])
+            logger.info(f"MO#{production_id} qty_producing={new_qty_producing:.2f} (UI 待消耗={int(max(product_qty - raw_qty, 0))})")
+
+            # 回读关键字段，确认面板下一次查询拿到的是本次报工结果。
+            mo_check = client.read("mrp.production", [production_id],
+                                  ["qty_produced", "qty_producing"])
+            if not mo_check:
+                return {"ok": False, "error": "生产订单写入后无法回读",
+                        "new_qty": new_wo_qty}
+            mo_qty = float(mo_check[0].get("qty_produced", 0) or 0)
+            if abs(mo_qty - total_produced) > 1e-6:
+                return {"ok": False,
+                        "error": f"生产订单已写入但回读产量不一致（期望 {total_produced:g}，实际 {mo_qty:g}）",
+                        "new_qty": new_wo_qty,
+                        "total_produced": total_produced}
 
         return {"ok": True, "new_qty": new_wo_qty}
     except Exception as e:
@@ -1557,7 +1612,10 @@ def _direct_deduct_quant(client, product_id, code, actual_qty):
     ])
     if quant_ids:
         quants = client.call("stock.quant", "read", [quant_ids], {"fields": ["id", "quantity"]})
-        for q in quants:
+        # 负库存 quant 不应参与“可扣数量”计算；否则 min(负数, actual_qty)
+        # 会让 remaining 反而增加，造成错误的库存结果。
+        positive_quants = [q for q in quants if float(q.get("quantity", 0) or 0) > 0]
+        for q in positive_quants:
             if remaining <= 0:
                 break
             qty = float(q["quantity"])
@@ -1566,11 +1624,22 @@ def _direct_deduct_quant(client, product_id, code, actual_qty):
                 "quantity": qty - take, "inventory_quantity": qty - take,
             }])
             remaining -= take
-        if remaining > 0 and quants:
-            last = quants[-1]
+        if remaining > 0 and positive_quants:
+            last = positive_quants[-1]
+            # 上面的循环已经写过 last quant；重新读取当前值再扣剩余量，
+            # 避免用旧值回写导致库存被“加回”。
+            latest = client.call("stock.quant", "read", [[last["id"]]],
+                                 {"fields": ["quantity"]})
+            current_last_qty = float(latest[0].get("quantity", 0)) if latest else 0.0
             client.call("stock.quant", "write", [[last["id"]], {
-                "quantity": float(last["quantity"]) - remaining,
-                "inventory_quantity": float(last["quantity"]) - remaining,
+                "quantity": current_last_qty - remaining,
+                "inventory_quantity": current_last_qty - remaining,
+            }])
+        elif remaining > 0:
+            # 没有正库存时允许落到负库存，但数量计算仍保持精确。
+            client.call("stock.quant", "create", [{
+                "product_id": product_id, "location_id": SRC_LOCATION_ID,
+                "quantity": -remaining, "inventory_quantity": -remaining,
             }])
     else:
         client.call("stock.quant", "create", [{
@@ -1608,7 +1677,10 @@ def odoo_deduct_materials(materials, production_id=None, qty=0, idempotency_key=
             pass
 
     client = get_odoo()
+    # 这里保存真正更新过的 stock.move ID；此前误把 product_id 写入此字段，
+    # 导致排查时误认为 Odoo 移动记录与报工记录不一致。
     stock_move_ids = []
+    successful_material_count = 0
     errors = []
 
     # 0) 预加载 MO 的 raw moves（按 product_id 分组）
@@ -1642,20 +1714,24 @@ def odoo_deduct_materials(materials, production_id=None, qty=0, idempotency_key=
             # 1) 更新 MO 的 raw stock.move.quantity
             #    只改 quantity，不改 state（否则 MO 会自动 done）
             rm_ids = raw_move_ids_by_pid.get(product_id, [])
+            if not rm_ids:
+                errors.append(f"物料 {code}: 不属于生产订单 #{production_id} 的原料移动")
+                continue
+            updated_move_ids = []
             for rm_id in rm_ids:
-                try:
-                    rm = client.call("stock.move", "read", [[rm_id], ["quantity"]])
-                    if rm:
-                        current = float(rm[0].get("quantity", 0))
-                        client.call("stock.move", "write", [[rm_id], {"quantity": current + actual_qty}])
-                except Exception as e:
-                    logger.warning(f"raw move {rm_id} 更新失败: {e}")
+                rm = client.call("stock.move", "read", [[rm_id], ["quantity"]])
+                if not rm:
+                    raise ValueError(f"原料移动 {rm_id} 不存在")
+                current = float(rm[0].get("quantity", 0))
+                client.call("stock.move", "write", [[rm_id], {"quantity": current + actual_qty}])
+                updated_move_ids.append(rm_id)
 
             # 2) 直接扣 stock.quant（精确 = actualQty，不重复扣减）
             _direct_deduct_quant(client, product_id, code, actual_qty)
 
             logger.info(f"物料 {code}({product_id}): 已扣减 {actual_qty}")
-            stock_move_ids.append(product_id)
+            stock_move_ids.extend(updated_move_ids)
+            successful_material_count += 1
 
         except Exception as e:
             errors.append(f"物料 {code}: {e}")
@@ -1665,17 +1741,16 @@ def odoo_deduct_materials(materials, production_id=None, qty=0, idempotency_key=
     # 这里不再重复更新 finished move，由 odoo_update_workorder_progress 同步
     # （覆盖同步，保证 MO.qty_produced 始终 = sum(WO.qty_produced)）
 
-    real_errors = [e for e in errors if "无效" not in e]
-    all_failed = len(materials) > 0 and len(stock_move_ids) == 0 and len(real_errors) > 0
-    partial = len(real_errors) > 0 and len(stock_move_ids) > 0
+    all_failed = len(materials) > 0 and successful_material_count == 0
+    partial = len(errors) > 0 and successful_material_count > 0
 
     if all_failed:
         return {"ok": False, "stock_move_ids": [], "errors": errors,
-                "message": f"全部 {len(real_errors)} 项物料扣减失败",
+                "message": f"全部 {len(materials)} 项物料扣减失败",
                 "meta": {"mode": "real", "source": "odoo"}}
     if partial:
         return {"ok": True, "partial": True, "stock_move_ids": stock_move_ids, "errors": errors,
-                "message": f"{len(stock_move_ids)} 项已扣减，{len(real_errors)} 项失败",
+                "message": f"{successful_material_count} 项物料已扣减，{len(errors)} 项失败",
                 "meta": {"mode": "real", "source": "odoo"}}
     return {"ok": True, "stock_move_ids": stock_move_ids,
             "message": f"已完成 {len(stock_move_ids)} 项物料库存扣减",
@@ -1705,6 +1780,145 @@ def _ensure_negative_stock_ok(client, product_id):
     except Exception:
         pass
 
+
+
+def server_reset_all():
+    """完整重置：清空 SQLite 报工记录 + 重置 Odoo 库存/MO/WO 到初始值"""
+    summary = {"sqlite_cleared": 0, "materials_cleared": 0,
+               "bom_reset": 0, "mo_reset": 0, "wo_reset": 0}
+
+    try:
+        with DB_LOCK:
+            c = sqlite3.connect(str(DB_FILE))
+            cur = c.execute("SELECT COUNT(*) FROM reports")
+            summary["sqlite_cleared"] = cur.fetchone()[0]
+            # report_materials 没有 ON DELETE CASCADE，必须先显式清理，避免留下孤立物料记录。
+            try:
+                summary["materials_cleared"] = c.execute(
+                    "SELECT COUNT(*) FROM report_materials"
+                ).fetchone()[0]
+                c.execute("DELETE FROM report_materials")
+            except sqlite3.OperationalError:
+                pass
+            c.execute("DELETE FROM reports")
+            try:
+                c.execute("DELETE FROM sop_view_logs")
+            except sqlite3.OperationalError:
+                pass
+            c.commit()
+            c.close()
+    except Exception as e:
+        logger.warning(f"清空 SQLite 失败: {e}")
+
+    client = get_odoo()
+    if not client:
+        return summary
+
+    ALL_BOM_CODES = [
+        "P04725", "P04726", "P05346", "P05347", "P05348",
+        "P05350", "P05351", "P05352", "P05353", "P05931",
+    ]
+    PROD_BEFORE_QTY = {
+        "P04725": 200, "P04726": 200, "P05346": 200, "P05347": 200,
+        "P05348": 200, "P05350": 200, "P05351": 200, "P05352": 200,
+        "P05353": 200, "P05930": 50, "P05931": 100,
+    }
+
+    def _call(model, method, args=None, kwargs=None):
+        if hasattr(client, "call"):
+            return client.call(model, method, args, kwargs)
+        return client.execute_kw(ODOO_DB, ODOO_UID, ODOO_PASSWORD, model, method, args or [], kwargs or {})
+
+    def _reset_quant(product_id, location_id, target_qty):
+        qids = _call("stock.quant", "search", [[("product_id", "=", product_id), ("location_id", "=", location_id)]])
+        if qids:
+            for qid in qids[1:]:
+                _call("stock.quant", "write", [[qid], {"quantity": 0, "inventory_quantity": 0}])
+            _call("stock.quant", "write", [[qids[0]], {"quantity": target_qty, "inventory_quantity": target_qty}])
+        else:
+            _call("stock.quant", "create", [{"product_id": product_id, "location_id": location_id,
+                                            "quantity": target_qty, "inventory_quantity": target_qty}])
+
+    for code in ALL_BOM_CODES + ["P05930"]:
+        prod = client.search_read("product.product", [("default_code", "=", code)], ["id"], limit=1)
+        if not prod:
+            continue
+        pid = prod[0]["id"]
+        prod_before = PROD_BEFORE_QTY.get(code, 200)
+        try:
+            _reset_quant(pid, 8, 100)
+            _reset_quant(pid, 17, prod_before)
+            summary["bom_reset"] += 1
+        except Exception as e:
+            logger.warning(f"重置 {code} 库存失败: {e}")
+
+    mos = _call("mrp.production", "search", [[("state", "not in", ["done", "cancel"])]])
+    for mo_id in mos:
+        try:
+            mo = client.read("mrp.production", [mo_id], ["move_raw_ids", "move_finished_ids", "product_qty"])
+            for rm_id in (mo[0].get("move_raw_ids") or []):
+                try:
+                    _call("stock.move", "write", [[rm_id], {"quantity": 0}])
+                except Exception:
+                    pass
+            for fm_id in (mo[0].get("move_finished_ids") or []):
+                try:
+                    _call("stock.move", "write", [[fm_id], {"quantity": 0, "state": "assigned"}])
+                except Exception:
+                    pass
+            try:
+                _call("mrp.production", "write", [[mo_id], {"qty_producing": mo[0].get("product_qty", 0)}])
+            except Exception:
+                pass
+            summary["mo_reset"] += 1
+        except Exception as e:
+            logger.warning(f"重置 MO#{mo_id} 失败: {e}")
+
+    wos = _call("mrp.workorder", "search", [[("state", "not in", ["done", "cancel"])]])
+    for wid in wos:
+        try:
+            _call("mrp.workorder", "write", [[wid], {"qty_produced": 0}])
+            summary["wo_reset"] += 1
+        except Exception:
+            pass
+
+    # 清零 WO 可能触发 Odoo 重算成品移动状态，最后再恢复初始的 assigned 状态。
+    for mo_id in mos:
+        try:
+            mo = client.read("mrp.production", [mo_id], ["move_finished_ids"])
+            for fm_id in (mo[0].get("move_finished_ids") or []) if mo else []:
+                _call("stock.move", "write", [[fm_id], {"quantity": 0, "state": "assigned"}])
+        except Exception:
+            pass
+
+    # Odoo 已重置后立即失效服务端缓存，避免面板继续显示旧进度/BOM。
+    with _BOM_CACHE_LOCK:
+        _BOM_CACHE["data"] = None
+        _BOM_CACHE["ts"] = 0
+        _BOM_CACHE["key"] = None
+        _BOM_CACHE["marker"] = 0
+        _DASH_CACHE["data"] = None
+        _DASH_CACHE["ts"] = 0
+        _DASH_CACHE["marker"] = 0
+        _WO_CACHE["data"] = None
+        _WO_CACHE["ts"] = 0
+        _WO_CACHE["marker"] = 0
+
+    # Persist the reset event so a separately running panel process drops its
+    # in-memory Odoo caches on the next request as well.
+    try:
+        RESET_MARKER_FILE.touch()
+    except OSError as marker_err:
+        logger.warning(f"写入重置标记失败: {marker_err}")
+
+    # This cache is used by report validation and must not retain identifiers
+    # from the pre-reset dashboard.
+    with _order_ids_lock:
+        _order_ids_cache["ids"] = set()
+        _order_ids_cache["ts"] = 0
+        _order_ids_cache["marker"] = 0
+
+    return summary
 
 
 class Handler(SimpleHTTPRequestHandler):
@@ -1815,6 +2029,8 @@ class Handler(SimpleHTTPRequestHandler):
                                  "data": [], "meta": {"mode": get_odoo_mode(), "hostType": host_type}},
                                 status=HTTPStatus.INTERNAL_SERVER_ERROR)
 
+        elif path == "/api/dashboard":
+            self.write_json(self.dashboard_payload())
         elif path == "/api/order-summary":
             # 订单进度摘要（从工单汇总 MO 进度）
             try:
@@ -1944,6 +2160,26 @@ class Handler(SimpleHTTPRequestHandler):
             self.handle_report_post()
         elif path == "/api/workers":
             self.handle_worker_post()
+        elif path == "/api/reset":
+            # 远程触发：清空本地 SQLite + Odoo 库存/MO/WO 重置
+            # 可选 confirm=true 才执行（防止误触）
+            try:
+                raw = self.rfile.read(length)
+                body = json.loads(raw) if raw else {}
+            except Exception:
+                body = {}
+            if not body.get("confirm"):
+                self.write_json({"ok": False, "error": "需要 confirm=true 才执行"},
+                                status=HTTPStatus.BAD_REQUEST)
+                return
+            logger.warning(f"[API] 远程触发 reset from {self.client_address}")
+            try:
+                summary = server_reset_all()
+                self.write_json({"ok": True, "data": summary})
+            except Exception as e:
+                logger.error(f"[API] reset 失败: {e}")
+                self.write_json({"ok": False, "error": str(e)},
+                                status=HTTPStatus.INTERNAL_SERVER_ERROR)
         elif path == "/api/sop/view-log":
             # SOP 查看日志上报（无需 token，日志而已）
             try:
@@ -2030,6 +2266,34 @@ class Handler(SimpleHTTPRequestHandler):
             workorder_id = str(report.get("workorderId", report.get("orderId", "")))
             production_id = str(report.get("productionId", ""))
 
+            # A report without an Odoo work order can only change the local
+            # report table and cannot be synchronized to a production order.
+            # Reject it before any material deduction takes place.
+            if (not workorder_id.isdigit() or int(workorder_id) <= 0
+                    or not production_id.isdigit() or int(production_id) <= 0):
+                self.write_json({"ok": False, "error": "请先选择有效的工单后再报工"},
+                                status=HTTPStatus.BAD_REQUEST)
+                return
+
+            if mode == "real":
+                try:
+                    check_client = get_odoo()
+                    check_rows = check_client.read(
+                        "mrp.workorder", [int(workorder_id)],
+                        ["production_id", "state"]
+                    )
+                    if not check_rows:
+                        raise ValueError("工单不存在")
+                    actual_production_id = rel_id(check_rows[0].get("production_id"))
+                    if actual_production_id != int(production_id):
+                        raise ValueError("工单与生产订单不匹配")
+                    if check_rows[0].get("state") in ("done", "cancel"):
+                        raise ValueError("工单已完成或已取消")
+                except Exception as check_err:
+                    self.write_json({"ok": False, "error": f"工单校验失败: {check_err}"},
+                                    status=HTTPStatus.BAD_REQUEST)
+                    return
+
             operation = str(report["operation"])
             op_info = OPERATION_MAP.get(operation)
             if not op_info:
@@ -2069,6 +2333,27 @@ class Handler(SimpleHTTPRequestHandler):
             except ValueError:
                 self.write_json({"ok": False, "error": "日期格式错误，需要 YYYY-MM-DD"},
                                 status=HTTPStatus.BAD_REQUEST)
+                return
+
+            # 业务唯一键在写入 Odoo 前检查。若上一次请求已经完成/部分完成，
+            # 不能再次执行物料扣减，否则重试会造成库存重复扣减。
+            existing_workorder_report = db_get_report_by_workorder(
+                worker_id, workorder_id, date_str, operation
+            )
+            if existing_workorder_report:
+                old_status = existing_workorder_report.get("sync_status", "local")
+                old_error = existing_workorder_report.get("error_message", "")
+                status_text = {
+                    "odoo_synced": "已完整同步",
+                    "odoo_partial": "仅部分同步",
+                    "odoo_failed": "同步失败",
+                }.get(old_status, old_status or "本地已保存")
+                detail = f"（{old_error}）" if old_error else ""
+                self.write_json({
+                    "ok": False,
+                    "error": f"该工人今天已对该工单/工序报工（{status_text}）{detail}，为避免重复扣库存未再次提交",
+                    "data": _normalize_report(existing_workorder_report),
+                }, status=HTTPStatus.CONFLICT)
                 return
 
             # === 构建记录 ===
@@ -2147,48 +2432,64 @@ class Handler(SimpleHTTPRequestHandler):
                     logger.warning(f"Odoo 进度同步异常: {e}")
                     progress_result = {"ok": False, "error": str(e)}
 
-            # 保存到 SQLite
-            report["odooReportId"] = ""
-            report["odooStockMoveIds"] = json.dumps(odoo_result.get("stock_move_ids", [])) if odoo_result else ""
+            # 只有所有需要写入 Odoo 的部分都成功，才能标记为完整同步。
+            # 之前只要物料扣减成功就写成 odoo_synced，导致“库存已变、MO/WO 未变”
+            # 被面板误显示为成功。
+            report["odooReportId"] = str(workorder_id)
+            report["odooStockMoveIds"] = json.dumps(
+                (odoo_result or {}).get("stock_move_ids", []), ensure_ascii=False
+            )
+            material_required = bool(materials)
+            material_ok = (not material_required) or bool(odoo_result and odoo_result.get("ok"))
+            progress_ok = bool(progress_result and progress_result.get("ok"))
+            material_partial = bool(odoo_result and odoo_result.get("partial"))
+            material_write_ok = bool(odoo_result and odoo_result.get("ok"))
+            # 历史兼容：旧客户端可能在没有 workorder/production ID 时把物料写入 Odoo。
+            # 新请求已在上方拒绝这种数据；这里即使被旧进程处理，也不能再标记为完整同步。
+            if not str(workorder_id).isdigit() or not str(production_id).isdigit():
+                progress_ok = False
+                errors_list = ["缺少有效的工单/生产订单 ID，无法同步制造订单进度"]
+            else:
+                errors_list = []
+            if material_required and not material_ok:
+                material_errors = (odoo_result or {}).get("errors") or [(odoo_result or {}).get("error", "物料库存扣减失败")]
+                errors_list.extend(material_errors if isinstance(material_errors, list) else [material_errors])
+            elif material_partial:
+                partial_errors = odoo_result.get("errors") or ["部分物料库存扣减失败"]
+                errors_list.extend(partial_errors if isinstance(partial_errors, list) else [partial_errors])
+            if not progress_ok:
+                progress_error = (progress_result or {}).get("error", "制造订单/工序进度同步失败")
+                errors_list.append(progress_error)
 
-            if odoo_result and odoo_result.get("ok"):
+            if material_ok and progress_ok and not material_partial:
                 report["syncStatus"] = "odoo_synced"
-                report["odooReportId"] = str(odoo_result.get("workorder_id", workorder_id))
-                # 进度同步也成功才算完全同步
-                if progress_result and progress_result.get("ok"):
-                    report["syncStatus"] = "odoo_synced"
-                # 清除所有缓存（线程安全）
+                report["errorMessage"] = ""
+            elif progress_ok or (material_required and material_write_ok):
+                # 任一 Odoo 子步骤已成功但另一子步骤失败，都属于部分同步。
+                # 例如：库存已经扣减、但 WO/MO 回读失败，不能标成“未同步”。
+                report["syncStatus"] = "odoo_partial"
+                report["errorMessage"] = "; ".join(str(e) for e in errors_list)
+            else:
+                report["syncStatus"] = "odoo_failed"
+                report["errorMessage"] = "; ".join(str(e) for e in errors_list) or "Odoo 同步失败"
+
+            # 任一 Odoo 写入成功后都失效相关缓存，避免面板显示旧数据。
+            if material_ok or progress_ok:
                 with _BOM_CACHE_LOCK:
                     _BOM_CACHE["data"] = None
-                with _BOM_CACHE_LOCK:
                     _DASH_CACHE["data"] = None
                     _WO_CACHE["data"] = None
-            elif progress_result and progress_result.get("ok"):
-                # 没扣物料但进度同步成功（如：未选择物料）
-                report["syncStatus"] = "odoo_synced"
-                with _BOM_CACHE_LOCK:
-                    _DASH_CACHE["data"] = None
-                    _WO_CACHE["data"] = None
-            elif odoo_result:
-                report["syncStatus"] = "odoo_failed"
-                errors_list = odoo_result.get("errors", [odoo_result.get("error", "未知错误")])
-                report["errorMessage"] = "; ".join(errors_list) if isinstance(errors_list, list) else errors_list
 
             if db_add_report(report, materials):
                 saved = db_get_report(report["id"]) or report
                 result = _normalize_report(saved) if isinstance(saved, dict) else saved
 
-                if odoo_result and odoo_result.get("ok"):
-                    if odoo_result.get("partial"):
-                        msg = odoo_result.get("message", "部分物料扣减成功")
-                    else:
-                        msg = "报工成功，已完成物料库存扣减"
-                elif materials and not odoo_result:
-                    msg = "报工已保存（未提交物料）"
-                elif not materials:
-                    msg = "报工已保存（本次未选择物料，如需扣减库存请重新提交）"
+                if report["syncStatus"] == "odoo_synced":
+                    msg = "报工成功，Odoo 物料库存与制造订单进度已同步"
+                elif report["syncStatus"] == "odoo_partial":
+                    msg = "报工已保存，但 Odoo 仅部分同步：" + report["errorMessage"]
                 else:
-                    msg = "报工已保存，但物料扣减失败"
+                    msg = "报工已保存，但 Odoo 未完成同步：" + report["errorMessage"]
 
                 self.write_json({
                     "ok": True,
@@ -2198,6 +2499,9 @@ class Handler(SimpleHTTPRequestHandler):
                         "source": "odoo",
                         "message": msg,
                         "odoo_result": odoo_result,
+                        "progress_result": progress_result,
+                        "syncStatus": report["syncStatus"],
+                        "errorMessage": report["errorMessage"],
                     },
                 })
             else:
@@ -2277,6 +2581,11 @@ class Handler(SimpleHTTPRequestHandler):
         body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
+        # API data includes live Odoo and local report state. Prevent browsers
+        # from displaying a pre-reset response while the page remains open.
+        self.send_header("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
+        self.send_header("Pragma", "no-cache")
+        self.send_header("Expires", "0")
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
