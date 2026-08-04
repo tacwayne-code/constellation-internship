@@ -975,7 +975,6 @@ async function submitReport() {
   updateSubmit();
 
   const worker = S.workers[S.selWorkerIdx];
-  const remark = ($("#remarkInput").value || "").trim();
   const date = localDateKey();
   const time = new Date().toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit", hour12: false });
   const idempotencyKey = generateUUID();
@@ -1012,7 +1011,7 @@ async function submitReport() {
     qty: S.qty,
     qualified: S.qty,
     hours: 0,
-    remark: remark,
+    remark: "",
     date: date,
     time: time,
     materials: materials,
@@ -1110,7 +1109,6 @@ function resetForm() {
   S.bomError = ""; S.bomLoading = false;
   S.submitRequestId = "";
   $("#qtyDisplay").textContent = "0";
-  $("#remarkInput").value = "";
   $$(".chip").forEach((c) => c.classList.remove("active"));
   $$(".op-chip").forEach((c) => c.classList.remove("active"));
   $$(".order-card").forEach((c) => c.classList.remove("active"));

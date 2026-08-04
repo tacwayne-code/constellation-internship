@@ -64,6 +64,10 @@ logging.basicConfig(
     level=getattr(logging, os.getenv("LOG_LEVEL", "INFO")),
     format="%(asctime)s [%(levelname)s] %(message)s",
     datefmt="%Y-%m-%d %H:%M:%S",
+    handlers=[
+        logging.StreamHandler(),
+        logging.FileHandler(BASE_DIR / "server.log", encoding="utf-8"),
+    ],
 )
 logger = logging.getLogger("production-dashboard")
 if MOCK_MODE:
@@ -243,6 +247,30 @@ def _migrate_db():
             WHERE idempotency_key != ''
         """)
 
+        # Reports may be submitted multiple times for the same worker and day.
+        # Keep this as a lookup index only; request-level deduplication is
+        # enforced exclusively by idx_reports_idempotency.
+        worker_date_index = next(
+            (row for row in cursor.execute("PRAGMA index_list('reports')").fetchall()
+             if row[1] == "idx_reports_worker_date"),
+            None,
+        )
+        worker_date_columns = []
+        if worker_date_index:
+            worker_date_columns = [
+                row[2] for row in cursor.execute(
+                    "PRAGMA index_info('idx_reports_worker_date')"
+                ).fetchall()
+            ]
+        if (worker_date_index is None
+                or bool(worker_date_index[2])
+                or worker_date_columns != ["worker_id", "date"]):
+            cursor.execute("DROP INDEX IF EXISTS idx_reports_worker_date")
+            cursor.execute("""
+                CREATE INDEX idx_reports_worker_date
+                ON reports(worker_id, date)
+            """)
+
         conn.commit()
         conn.close()
     logger.info(f"SQLite 迁移完成 (DB: {DB_FILE})")
@@ -294,8 +322,6 @@ def _init_db():
             );
             CREATE INDEX IF NOT EXISTS idx_reports_date ON reports(date);
             CREATE INDEX IF NOT EXISTS idx_reports_worker_date ON reports(worker_id, date);
-            CREATE UNIQUE INDEX IF NOT EXISTS idx_reports_worker_date
-                ON reports(worker_id, order_id, date, operation);
 
             -- ESOP：SOP 查看日志
             CREATE TABLE IF NOT EXISTS sop_view_logs (
@@ -500,19 +526,6 @@ def db_get_report_by_idempotency(key):
         row = c.execute(
             "SELECT * FROM reports WHERE idempotency_key = ? AND idempotency_key != ''",
             (key,)
-        ).fetchone()
-        c.close()
-    return dict(row) if row else None
-
-
-def db_get_report_by_workorder(worker_id, workorder_id, date, operation):
-    """按工人+Odoo工单+日期+工序查询报工，兼容旧记录的 order_id。"""
-    with DB_LOCK:
-        c = sqlite3.connect(str(DB_FILE))
-        c.row_factory = sqlite3.Row
-        row = c.execute(
-            "SELECT * FROM reports WHERE worker_id=? AND workorder_id=? AND date=? AND operation=?",
-            (str(worker_id), str(workorder_id), str(date), str(operation)),
         ).fetchone()
         c.close()
     return dict(row) if row else None
@@ -2474,15 +2487,28 @@ class Handler(SimpleHTTPRequestHandler):
 
             mode = get_odoo_mode()
 
-            # === 幂等检查（仅 sync_status=odoo_synced 才短路，允许失败重试） ===
+            # === Request idempotency: replay completed requests, retry failures ===
             idempotency_key = report.get("idempotencyKey", "")
+            existing_idempotent_report = None
             if idempotency_key:
-                existing = db_get_report_by_idempotency(idempotency_key)
-                if existing and existing.get("sync_status") == "odoo_synced":
+                existing_idempotent_report = db_get_report_by_idempotency(idempotency_key)
+                existing_status = (
+                    existing_idempotent_report.get("sync_status")
+                    if existing_idempotent_report else ""
+                )
+                if existing_idempotent_report and existing_status == "odoo_pending":
+                    self.write_json({
+                        "ok": False,
+                        "error": "该报工的 Odoo 同步状态尚未确认，为避免重复扣料，未再次执行",
+                        "data": _normalize_report(existing_idempotent_report),
+                    }, status=HTTPStatus.CONFLICT)
+                    return
+                if (existing_idempotent_report
+                        and existing_status not in ("odoo_partial", "odoo_failed")):
                     logger.info(f"幂等请求: {idempotency_key} - 返回已有结果")
                     self.write_json({
                         "ok": True,
-                        "data": _normalize_report(existing),
+                        "data": _normalize_report(existing_idempotent_report),
                         "meta": {"mode": mode, "source": "idempotent_replay",
                                  "message": "该报工已处理过，返回已有结果"}
                     })
@@ -2613,33 +2639,18 @@ class Handler(SimpleHTTPRequestHandler):
                                 status=HTTPStatus.BAD_REQUEST)
                 return
 
-            # 业务唯一键在写入 Odoo 前检查。若上一次请求已经完成/部分完成，
-            # 不能再次执行物料扣减，否则重试会造成库存重复扣减。
-            existing_workorder_report = db_get_report_by_workorder(
-                worker_id, workorder_id, date_str, operation
-            )
+            # Only the same request key retries an incomplete synchronization.
+            # A new key is a new report, even for the same worker/work order,
+            # operation and day.
+            existing_workorder_report = existing_idempotent_report
             retry_existing_report = None
             if existing_workorder_report:
                 old_status = existing_workorder_report.get("sync_status", "local")
-                old_error = existing_workorder_report.get("error_message", "")
                 if old_status in ("odoo_partial", "odoo_failed"):
                     # A retry only re-runs the WO/MO progress synchronization.
                     # Material deductions from the original attempt are never
                     # repeated, even when the client sends the BOM again.
                     retry_existing_report = existing_workorder_report
-                else:
-                    status_text = {
-                        "odoo_synced": "已完整同步",
-                        "odoo_partial": "仅部分同步",
-                        "odoo_failed": "同步失败",
-                    }.get(old_status, old_status or "本地已保存")
-                    detail = f"（{old_error}）" if old_error else ""
-                    self.write_json({
-                        "ok": False,
-                        "error": f"该工人今天已对该工单/工序报工（{status_text}）{detail}，为避免重复扣库存未再次提交",
-                        "data": _normalize_report(existing_workorder_report),
-                    }, status=HTTPStatus.CONFLICT)
-                    return
 
             # === 构建记录 ===
             report["id"] = str(uuid.uuid4())
@@ -2714,11 +2725,25 @@ class Handler(SimpleHTTPRequestHandler):
                 else:
                     self.write_json({
                         "ok": False,
-                        "error": "重复报工：该工人已对此工单、此工序报过工"
+                        "error": "重复请求：该幂等键已被使用"
                     }, status=HTTPStatus.CONFLICT)
                 return
 
             # === 真实模式 - Odoo 写入 ===
+            # Persist before touching Odoo. If the process stops during an
+            # external call, the report remains visible as odoo_pending and an
+            # identical retry is blocked instead of deducting stock twice.
+            if not retry_existing_report:
+                report["syncStatus"] = "odoo_pending"
+                report["materialSyncStatus"] = "pending" if materials else "not_required"
+                report["errorMessage"] = "Odoo 同步处理中"
+                if not db_add_report(report, materials):
+                    self.write_json({
+                        "ok": False,
+                        "error": "重复请求：该幂等键已被使用",
+                    }, status=HTTPStatus.CONFLICT)
+                    return
+
             # 调用 Odoo 物料扣减（不依赖工单）
             odoo_result = None
             if materials and not MOCK_MODE:
@@ -2839,18 +2864,15 @@ class Handler(SimpleHTTPRequestHandler):
             if material_ok or progress_ok:
                 _invalidate_runtime_caches()
 
-            if retry_existing_report:
-                saved_ok = db_update_report_sync(
-                    report_id=report["id"],
-                    sync_status=report["syncStatus"],
-                    error_message=report["errorMessage"],
-                    odoo_report_id=report.get("odooReportId"),
-                    odoo_stock_move_ids=report.get("odooStockMoveIds"),
-                    material_sync_status=report.get("materialSyncStatus"),
-                    odoo_progress_qty=report.get("odooProgressQty"),
-                )
-            else:
-                saved_ok = db_add_report(report, materials)
+            saved_ok = db_update_report_sync(
+                report_id=report["id"],
+                sync_status=report["syncStatus"],
+                error_message=report["errorMessage"],
+                odoo_report_id=report.get("odooReportId"),
+                odoo_stock_move_ids=report.get("odooStockMoveIds"),
+                material_sync_status=report.get("materialSyncStatus"),
+                odoo_progress_qty=report.get("odooProgressQty"),
+            )
 
             if saved_ok:
                 saved = db_get_report(report["id"]) or report
@@ -2879,8 +2901,8 @@ class Handler(SimpleHTTPRequestHandler):
             else:
                 self.write_json({
                     "ok": False,
-                    "error": "重复报工：该工人已对此工单、此工序报过工"
-                }, status=HTTPStatus.CONFLICT)
+                    "error": "本地报工已保留，但同步状态更新失败；请勿重复提交并联系管理员"
+                }, status=HTTPStatus.INTERNAL_SERVER_ERROR)
 
         except json.JSONDecodeError:
             self.write_json({"ok": False, "error": "无效的 JSON 格式"}, status=HTTPStatus.BAD_REQUEST)

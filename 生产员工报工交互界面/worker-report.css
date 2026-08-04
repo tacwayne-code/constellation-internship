@@ -435,20 +435,6 @@ html, body {
   flex-shrink: 0;
 }
 
-/* ===================== 备注 ===================== */
-.input-remark {
-  width: 100%;
-  padding: 8px 10px;
-  border: 2px solid var(--border);
-  border-radius: var(--radius-sm);
-  background: var(--surface);
-  color: var(--text);
-  font-size: 13px;
-  resize: none;
-  outline: none;
-}
-.input-remark:focus { border-color: var(--cyan); }
-
 /* ===================== 数量 + 提交行 ===================== */
 .qty-submit-row {
   display: flex;
