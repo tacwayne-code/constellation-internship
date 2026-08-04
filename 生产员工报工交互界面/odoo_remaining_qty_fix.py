@@ -9,9 +9,8 @@ that technical field intact and displays a separate computed value instead.
 from __future__ import annotations
 
 import argparse
+import math
 import sys
-
-import server
 
 
 FIELD_NAME = "x_worker_report_qty_remaining"
@@ -37,7 +36,64 @@ VIEW_ARCH = """
 """.strip()
 
 
+class OdooRemainingQuantityFix:
+    """Normalize Odoo quantities without writing to Odoo.
+
+    The service must not use ``qty_producing`` as a display-only field because
+    Odoo also uses it for component inverse calculations.  These helpers keep
+    the display/consumption calculations derived from the source quantities
+    and are safe to use with both the real and fake clients.
+    """
+
+    @staticmethod
+    def _number(value):
+        try:
+            value = float(value or 0)
+        except (TypeError, ValueError):
+            return None
+        return value if math.isfinite(value) else None
+
+    @classmethod
+    def apply_to_workorder_fix(cls, workorder, client=None):
+        """Populate a workorder's remaining quantity from planned/produced.
+
+        ``client`` is accepted for compatibility with callers that pass an
+        Odoo client, but no remote write is performed by this method.
+        """
+        if not isinstance(workorder, dict):
+            return workorder
+        planned = cls._number(workorder.get("qty_production"))
+        produced = cls._number(workorder.get("qty_produced"))
+        if planned is None or produced is None:
+            return workorder
+        workorder["qty_remaining"] = max(planned - produced, 0.0)
+        return workorder
+
+    @classmethod
+    def remaining_consumption_qty(cls, move):
+        """Return a bounded remaining component quantity.
+
+        Prefer Odoo's ``should_consume_qty`` when it is a valid value.  If a
+        custom view or older Odoo version returns a missing/out-of-range value,
+        derive the remaining amount from the planned and consumed quantities.
+        """
+        if not isinstance(move, dict):
+            return 0.0
+        planned = cls._number(move.get("product_uom_qty"))
+        if planned is None:
+            return 0.0
+        planned = max(planned, 0.0)
+        candidate = cls._number(move.get("should_consume_qty"))
+        if candidate is not None and 0.0 <= candidate <= planned:
+            return candidate
+        consumed = cls._number(move.get("quantity")) or 0.0
+        return max(planned - max(consumed, 0.0), 0.0)
+
+
 def _client():
+    # Import lazily so server.py can reuse the pure helpers without a circular
+    # import during module initialization.
+    import server
     return server.get_odoo()
 
 

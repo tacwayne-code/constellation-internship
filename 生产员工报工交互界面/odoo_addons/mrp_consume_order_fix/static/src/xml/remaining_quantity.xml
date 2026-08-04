@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<templates id="template" xml:space="preserve">
+    <t t-name="mrp_consume_order_fix.RemainingQuantity" owl="1">
+        <span class="o_mrp_consume_order_fix_remaining">
+            <t t-esc="remaining"/>
+            <span aria-hidden="true">/</span>
+            <t t-esc="total"/>
+        </span>
+    </t>
+</templates>

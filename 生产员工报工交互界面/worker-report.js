@@ -405,29 +405,6 @@ function renderActiveWorkers() {
 }
 
 // ====== 工人渲染 ======
-function renderWorkersLegacy() {
-  const el = $("#workerChips");
-  const cnt = $("#workerCount");
-  if (!el) return;
-
-  // 只保留罗伟华（电脑装机工序的真实操作员）
-  const visibleWorkers = S.workers.filter((w) => w.name === "罗伟华");
-  if (cnt) cnt.textContent = visibleWorkers.length + " 人";
-
-  if (!visibleWorkers.length) {
-    el.innerHTML = '<div style="color:var(--muted);font-size:13px;padding:8px">暂无工人</div>';
-    return;
-  }
-
-  el.innerHTML = visibleWorkers.map((w, i) => {
-    const act = S.selWorkerIdx >= 0 && S.workers[S.selWorkerIdx] && S.workers[S.selWorkerIdx].name === "罗伟华" ? " active" : "";
-    const odoo = w.source === "odoo" ? " (Odoo)" : "";
-    const label = w.name + (w.team ? " · " + w.team : "") + odoo;
-    return '<button class="chip worker-chip' + act + '" data-wi="' + i + '" data-wname="' + esc(w.name) + '">' + esc(label) + '</button>';
-  }).join("");
-}
-
-// ====== 工序渲染（动态） ======
 function renderWorkers() {
   const el = $("#workerChips");
   const cnt = $("#workerCount");
@@ -447,34 +424,7 @@ function renderWorkers() {
   }).join("");
 }
 
-function isLuoweihua() {
-  return S.selWorker && S.selWorker.name === "罗伟华";
-}
-
-function renderOperationsLegacy() {
-  const el = $("#operationChips");
-  if (!el) return;
-
-  // 工序只保留电脑装机（编带主机）+ 电脑装机（分光主机）
-  // - 如果后端返回了工序列表（应包括这两个），过滤掉其他；
-  // - 否则直接兜底为这两个
-  const PC_OP_CODES = ["pc_assembly_tape", "pc_assembly_splitter"];
-  let ops = (S.operations || []).filter((op) => PC_OP_CODES.includes(op.code));
-  if (!ops.length) {
-    ops = [
-      { code: "pc_assembly_tape", name: "电脑装机（编带主机）" },
-      { code: "pc_assembly_splitter", name: "电脑装机（分光主机）" },
-    ];
-  }
-
-  el.innerHTML = ops.map((op) => {
-    const act = S.selOperation === op.code ? " active" : "";
-    const cls = "chip op-chip op-pc" + act;
-    return '<button class="' + cls + '" data-op="' + esc(op.code) + '">' + esc(op.name || op.code) + '</button>';
-  }).join("");
-}
-
-// ====== 工单渲染（合并原订单 + 新工单） ======
+// ====== 工序渲染（动态） ======
 function renderOperations() {
   const el = $("#operationChips");
   if (!el) return;

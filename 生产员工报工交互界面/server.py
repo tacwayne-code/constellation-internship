@@ -15,6 +15,9 @@ from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlparse
 
+import odoo_adapter
+from odoo_remaining_qty_fix import OdooRemainingQuantityFix
+
 # ---- 加载 .env 文件 ----
 _ENV_FILE = Path(__file__).resolve().parent / ".env"
 if _ENV_FILE.exists():
@@ -142,14 +145,11 @@ _odoo_mode = None
 def get_odoo():
     global _odoo_client, _odoo_mode
     if _odoo_client is None:
-        if MOCK_MODE:
-            from fake_odoo_client import FakeOdooClient
-            _odoo_client = FakeOdooClient()
-            _odoo_mode = "mock"
+        _odoo_client, _odoo_mode, _ = odoo_adapter.create_odoo_client(
+            OdooClient, OdooError
+        )
+        if _odoo_mode == "mock":
             logger.warning("FakeOdooClient 已激活 - 模拟模式")
-        else:
-            _odoo_client = OdooClient()
-            _odoo_mode = "real"
     return _odoo_client
 
 def get_odoo_mode():
@@ -157,6 +157,25 @@ def get_odoo_mode():
     if _odoo_mode is None:
         get_odoo()
     return _odoo_mode or ("mock" if MOCK_MODE else "real")
+
+
+def odoo_call(client, model, method, args=None, kwargs=None):
+    """Call either the project client wrapper or an execute_kw-compatible client."""
+    call = getattr(client, "call", None)
+    if callable(call):
+        return call(model, method, args, kwargs)
+    execute_kw = getattr(client, "execute_kw", None)
+    if callable(execute_kw):
+        uid = getattr(client, "_uid", None)
+        if uid is None and hasattr(client, "authenticate"):
+            uid = client.authenticate()
+        if uid is None:
+            raise OdooError("Odoo client is not authenticated")
+        return execute_kw(
+            ODOO_DB, uid, ODOO_PASSWORD, model, method,
+            args or [], kwargs or {},
+        )
+    raise TypeError("Unsupported Odoo client: missing call/execute_kw")
 
 # ============================================================
 # SQLite 数据层
@@ -304,16 +323,19 @@ def _seed_workers():
         count = conn.execute("SELECT COUNT(*) FROM workers").fetchone()[0]
         if count == 0:
             default = [
-                ("WK001", "张建国", "A班", "local", 0),
-                ("WK002", "周明辉", "A班", "local", 0),
-                ("WK003", "王志强", "B班", "local", 0),
-                ("WK004", "陈晓峰", "B班", "local", 0),
-                ("WK005", "刘大伟", "C班", "local", 0),
-                ("WK006", "赵永刚", "夜班", "local", 0),
-                ("LOCAL_LWH", "罗伟华", "组装班", "local", 0),
+                ("WK001", "张建国", "A班", "local", 0, '["assembly"]'),
+                ("WK002", "周明辉", "A班", "local", 0, '["packing"]'),
+                ("WK003", "王志强", "B班", "local", 0, '["test_tape_operation"]'),
+                ("WK004", "陈晓峰", "B班", "local", 0, '["test_splitter_operation"]'),
+                ("WK005", "刘大伟", "C班", "local", 0, '["test_assembly_operation"]'),
+                ("WK006", "赵永刚", "夜班", "local", 0, '["test_packing_operation"]'),
+                ("LOCAL_LWH", "罗伟华", "组装班", "local", 0,
+                 '["pc_assembly_tape", "pc_assembly_splitter"]'),
             ]
             conn.executemany(
-                "INSERT INTO workers (id, name, team, source, odoo_employee_id) VALUES (?, ?, ?, ?, ?)",
+                "INSERT INTO workers "
+                "(id, name, team, source, odoo_employee_id, operation_codes) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
                 default
             )
             conn.commit()
@@ -323,8 +345,11 @@ def _seed_workers():
             existing = conn.execute("SELECT id FROM workers WHERE name = '罗伟华'").fetchone()
             if not existing:
                 conn.execute(
-                    "INSERT INTO workers (id, name, team, source, odoo_employee_id) VALUES (?, ?, ?, ?, ?)",
-                    ("LOCAL_LWH", "罗伟华", "组装班", "local", 0)
+                    "INSERT INTO workers "
+                    "(id, name, team, source, odoo_employee_id, operation_codes) "
+                    "VALUES (?, ?, ?, ?, ?, ?)",
+                    ("LOCAL_LWH", "罗伟华", "组装班", "local", 0,
+                     '["pc_assembly_tape", "pc_assembly_splitter"]')
                 )
                 conn.commit()
                 logger.info("已添加罗伟华（本地工人）")
@@ -610,13 +635,17 @@ OPERATIONS = [
     {"id": "pc_assembly_splitter", "code": "pc_assembly_splitter", "name": "电脑装机（分光主机）", "hostType": "splitter",
      "odooWorkcenterId": 102, "odooWorkcenterCode": "pc_assembly_splitter"},
     {"id": "test_tape_operation", "code": "test_tape_operation", "name": "测试工序（编带）",
-     "hostType": "tape"},
+     "hostType": "tape", "odooWorkcenterId": 101,
+     "odooWorkcenterCode": "pc_assembly_tape", "mockOnly": True},
     {"id": "test_splitter_operation", "code": "test_splitter_operation", "name": "测试工序（分光）",
-     "hostType": "splitter"},
+     "hostType": "splitter", "odooWorkcenterId": 102,
+     "odooWorkcenterCode": "pc_assembly_splitter", "mockOnly": True},
     {"id": "test_assembly_operation", "code": "test_assembly_operation", "name": "测试工序（组装）",
-     "hostType": None, "workorderNames": ["组装"]},
+     "hostType": None, "workorderNames": ["组装"], "odooWorkcenterId": 103,
+     "odooWorkcenterCode": "test_assembly", "mockOnly": True},
     {"id": "test_packing_operation", "code": "test_packing_operation", "name": "测试工序（打包）",
-     "hostType": None, "workorderNames": ["打包"]},
+     "hostType": None, "workorderNames": ["打包"], "odooWorkcenterId": 104,
+     "odooWorkcenterCode": "test_packing", "mockOnly": True},
 ]
 
 VALID_OPERATIONS = {op["code"] for op in OPERATIONS}
@@ -639,10 +668,12 @@ DEST_LOCATION_ID = 15     # Virtual Locations/Production
 
 
 def get_operations():
-    """返回完整工序列表"""
+    """Return operations that are valid for the active Odoo mode."""
     mode = get_odoo_mode()
     ops = []
     for op in OPERATIONS:
+        if mode == "real" and op.get("mockOnly"):
+            continue
         o = dict(op)
         o["meta"] = {"mode": mode, "source": "odoo" if mode == "real" else "mock"}
         ops.append(o)
@@ -744,11 +775,21 @@ def product_code(display, default=""):
     return match.group(1) if match else default
 
 
-def workorder_host_type(product):
-    code = product_code(product)
+def workorder_host_type(product, workcenter=None):
+    """Infer the host type from product/workcenter data.
+
+    Product codes remain the strongest signal, while names provide a stable
+    fallback when a new product code is introduced in Odoo.
+    """
+    code = product_code(product).upper()
     if code == "P04725":
         return "tape"
     if code == "P04726":
+        return "splitter"
+    searchable = f"{rel_name(product)} {rel_name(workcenter)}".casefold()
+    if any(token in searchable for token in ("编带", "tape")):
+        return "tape"
+    if any(token in searchable for token in ("分光", "splitter")):
         return "splitter"
     return None
 
@@ -1519,7 +1560,10 @@ def get_workorders_data():
             pcode = product_code(wo.get("product_id"))  # 传入 tuple，不要传 pid(int)
 
             # 确定主机类型（用产品编码，不依赖固定 ID）
-            host_type = workorder_host_type(wo.get("product_id"))
+            host_type = workorder_host_type(
+                wo.get("product_id"), wo.get("workcenter_id")
+            )
+            OdooRemainingQuantityFix.apply_to_workorder_fix(wo)
 
             raw_state = wo.get("state", "")
             state_cn = WO_STATE_MAP.get(raw_state, raw_state)
@@ -1771,11 +1815,12 @@ def odoo_update_workorder_progress(client, workorder_id: int, qty: float, produc
 def _direct_deduct_quant(client, product_id, code, actual_qty):
     """降级方案：直接扣 stock.quant（当 stock.move 找不到时）"""
     remaining = actual_qty
-    quant_ids = client.call("stock.quant", "search", [
+    quant_ids = odoo_call(client, "stock.quant", "search", [
         [("product_id", "=", product_id), ("location_id", "=", SRC_LOCATION_ID)]
     ])
     if quant_ids:
-        quants = client.call("stock.quant", "read", [quant_ids], {"fields": ["id", "quantity"]})
+        quants = odoo_call(client, "stock.quant", "read", [quant_ids],
+                           {"fields": ["id", "quantity"]})
         # 负库存 quant 不应参与“可扣数量”计算；否则 min(负数, actual_qty)
         # 会让 remaining 反而增加，造成错误的库存结果。
         positive_quants = [q for q in quants if float(q.get("quantity", 0) or 0) > 0]
@@ -1784,7 +1829,7 @@ def _direct_deduct_quant(client, product_id, code, actual_qty):
                 break
             qty = float(q["quantity"])
             take = min(qty, remaining)
-            client.call("stock.quant", "write", [[q["id"]], {
+            odoo_call(client, "stock.quant", "write", [[q["id"]], {
                 "quantity": qty - take, "inventory_quantity": qty - take,
             }])
             remaining -= take
@@ -1792,21 +1837,21 @@ def _direct_deduct_quant(client, product_id, code, actual_qty):
             last = positive_quants[-1]
             # 上面的循环已经写过 last quant；重新读取当前值再扣剩余量，
             # 避免用旧值回写导致库存被“加回”。
-            latest = client.call("stock.quant", "read", [[last["id"]]],
-                                 {"fields": ["quantity"]})
+            latest = odoo_call(client, "stock.quant", "read", [[last["id"]]],
+                               {"fields": ["quantity"]})
             current_last_qty = float(latest[0].get("quantity", 0)) if latest else 0.0
-            client.call("stock.quant", "write", [[last["id"]], {
+            odoo_call(client, "stock.quant", "write", [[last["id"]], {
                 "quantity": current_last_qty - remaining,
                 "inventory_quantity": current_last_qty - remaining,
             }])
         elif remaining > 0:
             # 没有正库存时允许落到负库存，但数量计算仍保持精确。
-            client.call("stock.quant", "create", [{
+            odoo_call(client, "stock.quant", "create", [{
                 "product_id": product_id, "location_id": SRC_LOCATION_ID,
                 "quantity": -remaining, "inventory_quantity": -remaining,
             }])
     else:
-        client.call("stock.quant", "create", [{
+        odoo_call(client, "stock.quant", "create", [{
             "product_id": product_id, "location_id": SRC_LOCATION_ID,
             "quantity": -actual_qty, "inventory_quantity": -actual_qty,
         }])
@@ -1884,9 +1929,9 @@ def odoo_deduct_materials(materials, production_id=None, qty=0, idempotency_key=
             updated_move_ids = []
             with MATERIAL_QUANTITY_LOCK:
                 for rm_id in rm_ids:
-                    rm = client.call(
-                        "stock.move", "read", [[rm_id], [
-                            "product_uom_qty", "should_consume_qty",
+                    rm = odoo_call(
+                        client, "stock.move", "read", [[rm_id], [
+                            "product_uom_qty", "quantity", "should_consume_qty",
                         ]]
                     )
                     if not rm:
@@ -1897,16 +1942,14 @@ def odoo_deduct_materials(materials, production_id=None, qty=0, idempotency_key=
                     planned_qty = float(
                         rm[0].get("product_uom_qty", 0) or 0
                     )
-                    remaining_qty = float(
-                        rm[0].get("should_consume_qty", 0) or 0
-                    )
+                    remaining_qty = OdooRemainingQuantityFix.remaining_consumption_qty(rm[0])
                     consumed_before = max(planned_qty - remaining_qty, 0.0)
                     consumed_after = consumed_before + float(actual_qty)
-                    client.call("stock.move", "write", [[rm_id], {
+                    odoo_call(client, "stock.move", "write", [[rm_id], {
                         "quantity": consumed_after,
                         "picked": True,
                     }])
-                    check = client.call("stock.move", "read", [[rm_id], [
+                    check = odoo_call(client, "stock.move", "read", [[rm_id], [
                         "quantity", "should_consume_qty",
                     ]])
                     if not check or abs(
@@ -1969,13 +2012,15 @@ def _ensure_negative_stock_ok(client, product_id):
         if product_id in _NEGATIVE_STOCK_DONE:
             return
         try:
-            rows = client.call("product.product", "search_read", [[("id", "=", product_id)]],
-                               {"fields": ["product_tmpl_id"], "limit": 1})
+            rows = odoo_call(client, "product.product", "search_read",
+                             [[("id", "=", product_id)]],
+                             {"fields": ["product_tmpl_id"], "limit": 1})
             if rows:
                 tmpl = rows[0].get("product_tmpl_id", 0)
                 if isinstance(tmpl, (list, tuple)):
                     tmpl = tmpl[0]
-                client.call("product.template", "write", [[tmpl], {"allow_negative_stock": True}])
+                odoo_call(client, "product.template", "write",
+                          [[tmpl], {"allow_negative_stock": True}])
                 _NEGATIVE_STOCK_DONE.add(product_id)
                 logger.info(f"物料 #{product_id} tmpl#{tmpl} 负库存已启用")
         except Exception:
@@ -2026,9 +2071,7 @@ def server_reset_all():
     }
 
     def _call(model, method, args=None, kwargs=None):
-        if hasattr(client, "call"):
-            return client.call(model, method, args, kwargs)
-        return client.execute_kw(ODOO_DB, ODOO_UID, ODOO_PASSWORD, model, method, args or [], kwargs or {})
+        return odoo_call(client, model, method, args, kwargs)
 
     def _reset_quant(product_id, location_id, target_qty):
         qids = _call("stock.quant", "search", [[("product_id", "=", product_id), ("location_id", "=", location_id)]])
@@ -2175,6 +2218,10 @@ class Handler(SimpleHTTPRequestHandler):
         elif path == "/api/reports":
             reports = load_reports()
             self.write_json({"ok": True, "data": [_normalize_report(r) for r in reports]})
+        elif path == "/api/report-stats":
+            payload = self.report_stats_payload()
+            status = HTTPStatus.OK if payload.get("ok") else HTTPStatus.INTERNAL_SERVER_ERROR
+            self.write_json(payload, status=status)
         elif path == "/api/operations":
             ops = get_operations()
             self.write_json({"ok": True, "data": ops,
@@ -2473,7 +2520,7 @@ class Handler(SimpleHTTPRequestHandler):
                     check_client = get_odoo()
                     check_rows = check_client.read(
                         "mrp.workorder", [int(workorder_id)],
-                        ["production_id", "state", "name", "product_id"]
+                        ["production_id", "state", "name", "product_id", "workcenter_id"]
                     )
                     if not check_rows:
                         raise ValueError("工单不存在")
@@ -2493,6 +2540,10 @@ class Handler(SimpleHTTPRequestHandler):
                 self.write_json({"ok": False, "error": f"无效工序: {operation}"},
                                 status=HTTPStatus.BAD_REQUEST)
                 return
+            if mode == "real" and op_info.get("mockOnly"):
+                self.write_json({"ok": False, "error": "测试工序仅可在 Mock 模式使用"},
+                                status=HTTPStatus.BAD_REQUEST)
+                return
             if not worker_allows_operation(worker_id, operation):
                 self.write_json({
                     "ok": False,
@@ -2502,7 +2553,10 @@ class Handler(SimpleHTTPRequestHandler):
             if mode == "real":
                 workorder_view = {
                     "workorderName": check_rows[0].get("name", ""),
-                    "hostType": workorder_host_type(check_rows[0].get("product_id")),
+                    "hostType": workorder_host_type(
+                        check_rows[0].get("product_id"),
+                        check_rows[0].get("workcenter_id"),
+                    ),
                 }
                 if not operation_matches_workorder(op_info, workorder_view):
                     self.write_json({
@@ -2897,7 +2951,7 @@ class Handler(SimpleHTTPRequestHandler):
                         "orderId": r["order_id"], "qty": r["qty"],
                         "operationLabel": r["operation_label"], "operation": r["operation"],
                         "hours": r["hours"], "time": r["time"],
-                    } for r in reports[-8:]],
+                    } for r in reports[:8]],
                 },
                 "meta": {"mode": mode, "source": "odoo" if mode == "real" else "mock"},
             }

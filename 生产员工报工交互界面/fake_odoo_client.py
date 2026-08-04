@@ -205,6 +205,8 @@ class FakeOdooClient:
         self._workcenters = [
             {"id": 101, "name": "电脑装机（编带主机）", "code": "pc_assembly_tape"},
             {"id": 102, "name": "电脑装机（分光主机）", "code": "pc_assembly_splitter"},
+            {"id": 103, "name": "测试工序（组装）", "code": "test_assembly"},
+            {"id": 104, "name": "测试工序（打包）", "code": "test_packing"},
         ]
 
         # 库存不足产品列表（用于测试）
