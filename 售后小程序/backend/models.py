@@ -39,9 +39,11 @@ class WorkOrder(Base):
     id = Column(Integer, primary_key=True, index=True)
     order_no = Column(String, unique=True, index=True)
     customer_name = Column(String)
+    customer_phone = Column(String)  # 客户联系电话（选 Odoo 客户时自动带出，可手动编辑）
     device_name = Column(String)
     sn_code = Column(String)
     address = Column(String)
+    odoo_partner_id = Column(String, index=True)  # 客户来源：Odoo res.partner id（可空，手动输入时为空）
     fault_type = Column(String)
     fault_desc = Column(Text)
     fault_images = Column(Text)  # JSON string of fault image URLs

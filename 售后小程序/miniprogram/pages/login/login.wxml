@@ -12,14 +12,14 @@
     </view>
 
     <view class="input-group">
-      <text class="input-label">账号 / 手机号码</text>
+      <text class="input-label">手机号码</text>
       <view class="input-box">
-        <input type="text" value="{{username}}" data-field="username" bindinput="onInput" placeholder="请输入手机号/工号" />
+        <input type="number" maxlength="11" value="{{phone}}" data-field="phone" bindinput="onInput" placeholder="请输入11位手机号" />
       </view>
     </view>
 
     <view class="input-group">
-      <text class="input-label">登录密码 / 验证码</text>
+      <text class="input-label">登录密码</text>
       <view class="input-box">
         <input type="password" value="{{password}}" data-field="password" bindinput="onInput" placeholder="请输入密码" />
       </view>

@@ -167,6 +167,138 @@ button {
   font-size: 13px;
 }
 
+.form-hint {
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+/* ── Odoo 客户搜索下拉 ── */
+.customer-search-wrap {
+  position: relative;
+}
+
+.odoo-dropdown {
+  position: absolute;
+  z-index: 100;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  max-height: 280px;
+  overflow-y: auto;
+  background: var(--bg, #ffffff);
+  border: 1px solid var(--line, #e5e6eb);
+  border-radius: 10px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.12);
+}
+
+.odoo-dropdown-item {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--line, #f2f3f5);
+  cursor: pointer;
+}
+
+.odoo-dropdown-item:last-child {
+  border-bottom: none;
+}
+
+.odoo-dropdown-item:hover,
+.odoo-dropdown-item:active {
+  background: var(--hover, #f2f3f5);
+}
+
+.odoo-dropdown-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.odoo-dropdown-meta {
+  margin-top: 3px;
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+/* ── 地址自动带出卡片 ── */
+.address-auto-box {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  background: var(--auto-bg, #f0f9ff);
+  border: 1px solid var(--auto-line, #b7e0ff);
+  border-radius: 10px;
+}
+
+.address-auto-text {
+  flex: 1;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--text);
+  word-break: break-all;
+}
+
+.link-btn {
+  flex-shrink: 0;
+  border: none;
+  background: none;
+  color: var(--primary, #2563eb);
+  font-size: 12px;
+  cursor: pointer;
+  padding: 2px 0;
+  white-space: nowrap;
+}
+
+.link-btn:hover {
+  text-decoration: underline;
+}
+
+/* ── 图片点击查看大图（lightbox）── */
+.image-preview-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  background: rgba(0, 0, 0, 0.78);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: zoom-out;
+}
+
+.image-preview-box {
+  position: relative;
+  max-width: 92vw;
+  max-height: 92vh;
+}
+
+.image-preview-img {
+  max-width: 92vw;
+  max-height: 92vh;
+  border-radius: 8px;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.55);
+  object-fit: contain;
+  cursor: default;
+}
+
+.image-preview-close {
+  position: absolute;
+  top: -40px;
+  right: 0;
+  width: 34px;
+  height: 34px;
+  border: none;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.22);
+  color: #ffffff;
+  font-size: 15px;
+  cursor: pointer;
+}
+
+.image-preview-close:hover {
+  background: rgba(255, 255, 255, 0.38);
+}
+
 .form-input,
 .form-select,
 .form-textarea,
@@ -214,16 +346,6 @@ button {
   color: var(--muted);
   font-size: 12px;
   line-height: 1.4;
-}
-
-.address-grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 8px;
-}
-
-.address-detail-input {
-  margin-top: 8px;
 }
 
 .form-textarea {

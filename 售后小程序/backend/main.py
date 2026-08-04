@@ -1,6 +1,4 @@
 from datetime import datetime, timedelta, timezone
-import csv
-import io
 import json
 import logging
 import os
@@ -8,16 +6,26 @@ import re
 import secrets
 import threading
 import time
-from sqlalchemy import func, inspect, text
+from sqlalchemy import func, inspect, or_, text
 import urllib.error
 import urllib.parse
 import urllib.request
 import uuid
 
+# ── 加载 backend/.env（必须在导入 database / odoo_client 之前执行，
+#    它们的模块级代码会立即读取环境变量，如 DATABASE_URL / ODOO_URL）──
+try:
+    from dotenv import load_dotenv
+    _ENV_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env")
+    if os.path.isfile(_ENV_FILE):
+        load_dotenv(_ENV_FILE, override=False)
+except ImportError:  # 未安装 python-dotenv 时静默跳过（仍可走系统环境变量）
+    pass
+
 from fastapi import Depends, FastAPI, File, HTTPException, Query, Request, Response, UploadFile, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse, Response
+from fastapi.responses import FileResponse, JSONResponse, Response, StreamingResponse
 from fastapi.security import OAuth2PasswordBearer
 from fastapi.staticfiles import StaticFiles
 from jose import JWTError, jwt
@@ -31,6 +39,7 @@ from crud import (
     delete_engineer,
     delete_work_order,
     get_engineers,
+    get_user_by_phone,
     get_user_by_username,
     get_work_order,
     get_work_orders,
@@ -42,6 +51,7 @@ from crud import (
 )
 from database import Base, engine, get_db
 from models import Engineer, User, WorkOrder
+from odoo_client import OdooError, odoo_client
 from schemas import (
     EngineerCreate,
     LoginRequest,
@@ -111,6 +121,12 @@ def ensure_schema() -> None:
     if "fault_images" not in columns:
         with engine.begin() as connection:
             connection.execute(text("ALTER TABLE work_orders ADD COLUMN fault_images TEXT"))
+    if "odoo_partner_id" not in columns:
+        with engine.begin() as connection:
+            connection.execute(text("ALTER TABLE work_orders ADD COLUMN odoo_partner_id VARCHAR"))
+    if "customer_phone" not in columns:
+        with engine.begin() as connection:
+            connection.execute(text("ALTER TABLE work_orders ADD COLUMN customer_phone VARCHAR"))
 
 
 ensure_schema()
@@ -282,6 +298,11 @@ if UPLOADS_ACCESS_MODE == "protected":
         return FileResponse(filepath)
 
 
+# ── 演示账号手机号映射：seed 数据使用真实手机号，确保「手机号登录」可用 ──
+# PD001 派单员手机号为 13800010002（与存量库一致）
+SEED_PHONES = {"PD001": "13800010002", "SH001": "13800000002", "SH002": "13800000003"}
+
+
 def seed_data(db: Session) -> None:
     if db.query(User).first():
         return
@@ -291,21 +312,21 @@ def seed_data(db: Session) -> None:
         password_hash=get_password_hash("123456"),
         role="paidan",
         name="刘主管",
-        phone="138****0001",
+        phone=SEED_PHONES["PD001"],
     )
     eng_user = User(
         username="SH001",
         password_hash=get_password_hash("123456"),
         role="engineer",
         name="张售后工程师",
-        phone="138****8888",
+        phone=SEED_PHONES["SH001"],
     )
     eng_user2 = User(
         username="SH002",
         password_hash=get_password_hash("123456"),
         role="engineer",
         name="李工程师",
-        phone="137****9999",
+        phone=SEED_PHONES["SH002"],
     )
 
     db.add_all([paidan, eng_user, eng_user2])
@@ -314,20 +335,20 @@ def seed_data(db: Session) -> None:
     eng1 = Engineer(
         user_id=eng_user.id,
         name="张工程师",
-        phone="138****8888",
+        phone=SEED_PHONES["SH001"],
         department="华东维修一部",
         specialty="液压/机械维修",
     )
     eng2 = Engineer(
         user_id=eng_user2.id,
         name="李工程师",
-        phone="137****9999",
+        phone=SEED_PHONES["SH002"],
         department="华东维修二部",
         specialty="电气控制",
     )
     eng3 = Engineer(
         name="王工程师",
-        phone="135****6666",
+        phone="13566668888",
         department="华南维修部",
         specialty="机械装配",
     )
@@ -335,10 +356,21 @@ def seed_data(db: Session) -> None:
     db.commit()
 
 
+def ensure_phone_login_data(db: Session) -> None:
+    """存量库修复：将早期脱敏手机号（如 138****0001）回填为真实手机号，保证手机号登录可用。
+    仅修正 seed 账号，管理员创建的其他账号不受影响。"""
+    for username, phone in SEED_PHONES.items():
+        user = db.query(User).filter(User.username == username).first()
+        if user and (not user.phone or "*" in user.phone):
+            user.phone = phone
+    db.commit()
+
+
 @app.on_event("startup")
 def on_startup() -> None:
     db = next(get_db())
     seed_data(db)
+    ensure_phone_login_data(db)
 
 
 @app.get("/health")
@@ -350,30 +382,81 @@ def health() -> dict:
         "web_mount_path": WEB_MOUNT_PATH,
         "location_mode": "AMAP_LIVE" if AMAP_WEB_SERVICE_KEY else "NOT_CONFIGURED",
         "uploads_mode": UPLOADS_ACCESS_MODE,
+        "odoo": odoo_client.config_summary(),
         "env": ENV,
     }
+
+
+# ── Odoo 客户数据查询 ──
+def _require_odoo():
+    if not odoo_client.is_configured():
+        raise HTTPException(
+            status_code=503,
+            detail="Odoo 未配置（请检查 ODOO_URL/ODOO_DB/ODOO_USERNAME/ODOO_PASSWORD），可手动输入客户信息",
+        )
+
+
+@app.get("/api/odoo/customers")
+def search_odoo_customers(
+    keyword: str | None = Query(None, max_length=100, description="按客户名称/电话/税号模糊搜索"),
+    limit: int = Query(20, ge=1, le=50),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """从 Odoo 搜索客户数据（仅派单员可用）。"""
+    if current_user.role != "paidan":
+        raise HTTPException(status_code=403, detail="无权操作")
+    _require_odoo()
+    try:
+        customers = odoo_client.search_customers(keyword=keyword or "", limit=limit)
+    except OdooError as exc:
+        logger.warning("Odoo 客户搜索失败: %s", exc)
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    return {"items": customers, "total": len(customers), "source": "odoo"}
+
+
+@app.get("/api/odoo/customers/{partner_id}")
+def get_odoo_customer(
+    partner_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """获取单个 Odoo 客户详情（仅派单员可用）。"""
+    if current_user.role != "paidan":
+        raise HTTPException(status_code=403, detail="无权操作")
+    _require_odoo()
+    try:
+        customer = odoo_client.get_customer(partner_id)
+    except OdooError as exc:
+        logger.warning("Odoo 客户详情获取失败: %s", exc)
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    if customer is None:
+        raise HTTPException(status_code=404, detail="客户不存在")
+    return {"item": customer, "source": "odoo"}
 
 
 @app.post("/auth/login", response_model=LoginResponse)
 def login(req: LoginRequest, request: Request, db: Session = Depends(get_db)):
     ip = client_ip(request)
-    locked, remaining = login_limiter.check(req.username, ip)
+    # 手机号优先，其次账号；限流按「登录标识 + IP」统计
+    identifier = req.phone or req.username
+    locked, remaining = login_limiter.check(identifier, ip)
     if locked:
         raise HTTPException(
             status_code=429,
             detail=f"登录失败次数过多，请 {max(1, remaining // 60 + 1)} 分钟后再试",
         )
 
-    user = get_user_by_username(db, req.username)
+    user = get_user_by_phone(db, req.phone) if req.phone else get_user_by_username(db, req.username)
     if not user or not verify_password(req.password, user.password_hash) or user.role != req.role:
-        remaining_attempts = login_limiter.record_failure(req.username, ip)
+        remaining_attempts = login_limiter.record_failure(identifier, ip)
         if remaining_attempts <= 0:
             detail = f"登录失败次数过多，账号已锁定 {LOGIN_LOCK_MINUTES} 分钟"
         else:
-            detail = f"账号、密码或角色不正确（剩余尝试 {remaining_attempts} 次）"
+            detail = f"手机号/账号、密码或角色不正确（剩余尝试 {remaining_attempts} 次）"
         raise HTTPException(status_code=400, detail=detail)
 
-    login_limiter.reset(req.username, ip)
+    login_limiter.reset(identifier, ip)
     access_token = create_access_token(
         data={"sub": user.username},
         expires_delta=timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES),
@@ -638,47 +721,84 @@ def list_work_orders(
 
 
 @app.get("/api/stats/overview")
-def stats_overview(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    """统计看板：近30天完成趋势、故障类型分布、工程师完成排行"""
-    now = datetime.utcnow()
-    since = now - timedelta(days=29)
+def stats_overview(
+    status: str | None = Query(None, pattern="^(pending|assigned|processing|done|rejected)$"),
+    keyword: str | None = Query(None, max_length=100),
+    date_from: str | None = Query(None, pattern=r"^\d{4}-\d{2}-\d{2}$"),
+    date_to: str | None = Query(None, pattern=r"^\d{4}-\d{2}-\d{2}$"),
+    engineer_id: int | None = Query(None, ge=1),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """统计看板：与工单列表同一筛选口径（status/keyword/date/engineer 过滤生效）。"""
 
+    def apply_filters(query):
+        if status:
+            query = query.filter(WorkOrder.status == status)
+        if keyword:
+            like = f"%{keyword}%"
+            query = query.filter(
+                or_(
+                    WorkOrder.order_no.like(like),
+                    WorkOrder.customer_name.like(like),
+                    WorkOrder.device_name.like(like),
+                    WorkOrder.sn_code.like(like),
+                )
+            )
+        if date_from:
+            query = query.filter(WorkOrder.created_at >= datetime.strptime(date_from, "%Y-%m-%d"))
+        if date_to:
+            query = query.filter(
+                WorkOrder.created_at <= datetime.strptime(date_to, "%Y-%m-%d") + timedelta(days=1)
+            )
+        if engineer_id:
+            query = query.filter(WorkOrder.engineer_id == engineer_id)
+        return query
+
+    today = datetime.utcnow().date()
+    since_date = today - timedelta(days=29)
+
+    # 近30天完成趋势（过滤条件 + 已完成）
     daily_rows = (
-        db.query(func.date(WorkOrder.updated_at).label("day"), func.count(WorkOrder.id))
-        .filter(WorkOrder.status == "done", WorkOrder.updated_at >= since)
+        apply_filters(
+            db.query(func.date(WorkOrder.updated_at).label("day"), func.count(WorkOrder.id))
+        )
+        .filter(WorkOrder.status == "done", WorkOrder.updated_at >= since_date)
         .group_by(func.date(WorkOrder.updated_at))
         .all()
     )
     daily_map = {str(day): count for day, count in daily_rows}
     daily_completed = [
-        {"date": (since + timedelta(days=i)).strftime("%Y-%m-%d"), "count": daily_map.get((since + timedelta(days=i)).strftime("%Y-%m-%d"), 0)}
+        {"date": (since_date + timedelta(days=i)).isoformat(), "count": daily_map.get((since_date + timedelta(days=i)).isoformat(), 0)}
         for i in range(30)
     ]
 
+    # 故障类型分布（过滤条件内）
     fault_rows = (
-        db.query(WorkOrder.fault_type, func.count(WorkOrder.id))
+        apply_filters(db.query(WorkOrder.fault_type, func.count(WorkOrder.id)))
         .group_by(WorkOrder.fault_type)
         .order_by(func.count(WorkOrder.id).desc())
         .all()
     )
     fault_distribution = [{"type": fault_type or "未知", "count": count} for fault_type, count in fault_rows]
 
-    engineer_rows = (
-        db.query(func.coalesce(Engineer.name, "未指派").label("name"), func.count(WorkOrder.id))
-        .outerjoin(WorkOrder, WorkOrder.engineer_id == Engineer.id)
+    # 工程师完成排行（过滤条件 + 已完成）
+    engineer_query = (
+        db.query(func.coalesce(Engineer.name, "未指派").label("name"), func.count(WorkOrder.id).label("cnt"))
+        .select_from(WorkOrder)
+        .outerjoin(Engineer, WorkOrder.engineer_id == Engineer.id)
         .filter(WorkOrder.status == "done")
         .group_by(func.coalesce(Engineer.name, "未指派"))
-        .order_by(func.count(WorkOrder.id).desc())
-        .limit(5)
-        .all()
     )
-    engineer_ranking = [{"name": name, "count": count} for name, count in engineer_rows]
+    engineer_query = apply_filters(engineer_query)
+    engineer_query = engineer_query.order_by(func.count(WorkOrder.id).desc()).limit(5)
+    engineer_ranking = [{"name": name, "count": cnt} for name, cnt in engineer_query.all()]
 
     return {
         "daily_completed": daily_completed,
         "fault_distribution": fault_distribution,
         "engineer_ranking": engineer_ranking,
-        "total_orders": db.query(WorkOrder).count(),
+        "total_orders": apply_filters(db.query(WorkOrder)).count(),
     }
 
 
@@ -692,46 +812,60 @@ def export_work_orders(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """按当前筛选条件导出工单 CSV（带 BOM，Excel 可直接打开中文不乱码）"""
+    """按当前筛选条件导出工单 CSV（带 BOM，Excel 可直接打开中文不乱码）。
+
+    流式导出：分批（每批 500 条）从数据库读取并即时写出，避免一次性加载全部数据。
+    """
     if current_user.role != "paidan":
         raise HTTPException(status_code=403, detail="无权导出")
 
-    orders, _ = get_work_orders(
-        db,
-        status=status,
-        keyword=keyword,
-        date_from=date_from,
-        date_to=date_to,
-        engineer_id=engineer_id,
-        skip=0,
-        limit=10000,
-    )
-
-    buffer = io.StringIO()
-    writer = csv.writer(buffer)
-    writer.writerow(["工单号", "客户", "设备", "SN", "故障类型", "故障描述", "地址", "状态", "工程师", "创建时间", "更新时间"])
     status_names = {"pending": "待派单", "assigned": "已指派", "processing": "处理中", "done": "已完成", "rejected": "已拒绝"}
-    for order in orders:
-        writer.writerow(
-            [
-                order.order_no,
-                order.customer_name,
-                order.device_name,
-                order.sn_code or "",
-                order.fault_type,
-                (order.fault_desc or "").replace("\n", " "),
-                order.address or "",
-                status_names.get(order.status, order.status),
-                order.engineer.name if order.engineer else "",
-                order.created_at.strftime("%Y-%m-%d %H:%M") if order.created_at else "",
-                order.updated_at.strftime("%Y-%m-%d %H:%M") if order.updated_at else "",
-            ]
-        )
+    BATCH = 500
 
-    content = "\ufeff" + buffer.getvalue()
+    def iter_csv():
+        yield "\ufeff"
+        yield "工单号,客户,联系电话,设备,SN,故障类型,故障描述,地址,状态,工程师,创建时间,更新时间\n"
+        skip = 0
+        while True:
+            batch, _ = get_work_orders(
+                db,
+                status=status,
+                keyword=keyword,
+                date_from=date_from,
+                date_to=date_to,
+                engineer_id=engineer_id,
+                skip=skip,
+                limit=BATCH,
+            )
+            if not batch:
+                break
+            for order in batch:
+                row = [
+                    order.order_no,
+                    order.customer_name or "",
+                    order.customer_phone or "",
+                    order.device_name or "",
+                    order.sn_code or "",
+                    order.fault_type or "",
+                    (order.fault_desc or "").replace("\n", " "),
+                    order.address or "",
+                    status_names.get(order.status, order.status),
+                    order.engineer.name if order.engineer else "",
+                    order.created_at.strftime("%Y-%m-%d %H:%M") if order.created_at else "",
+                    order.updated_at.strftime("%Y-%m-%d %H:%M") if order.updated_at else "",
+                ]
+                # 简单 CSV 转义：字段含逗号/引号/换行时用双引号包裹
+                yield ",".join(
+                    f'"{cell.replace(chr(34), chr(34) * 2)}"' if any(ch in cell for ch in ',"\n') else cell
+                    for cell in row
+                ) + "\n"
+            if len(batch) < BATCH:
+                break
+            skip += BATCH
+
     filename = f"workorders_{datetime.now().strftime('%Y%m%d%H%M%S')}.csv"
-    return Response(
-        content=content,
+    return StreamingResponse(
+        iter_csv(),
         media_type="text/csv; charset=utf-8",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )

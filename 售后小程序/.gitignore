@@ -1,0 +1,14 @@
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+backend/.env
+backend/aftersales.db
+backend/uploads/*
+!backend/uploads/.gitkeep
+
+miniprogram/project.private.config.json
+
+node_modules/
+dist/

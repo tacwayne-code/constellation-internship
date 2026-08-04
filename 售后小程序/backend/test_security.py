@@ -6,6 +6,11 @@ import tempfile
 os.environ["DATABASE_URL"] = f"sqlite:///{tempfile.mkdtemp()}/test_sec.db"
 os.environ["ENV"] = "development"
 os.environ["UPLOAD_MAX_SIZE_MB"] = "10"
+# 隔离测试环境：模拟 Odoo 未配置（不依赖真实 Odoo 服务，验证 503 降级路径）
+os.environ["ODOO_URL"] = ""
+os.environ["ODOO_DB"] = ""
+os.environ["ODOO_USERNAME"] = ""
+os.environ["ODOO_PASSWORD"] = ""
 
 from fastapi.testclient import TestClient  # noqa: E402
 from main import LOGIN_MAX_FAILURES, app  # noqa: E402
@@ -27,11 +32,38 @@ with TestClient(app) as client:
     set_cookie = r.headers.get("set-cookie", "")
     assert "aftersales_token=" in set_cookie and "HttpOnly" in set_cookie, set_cookie
 
+    # 3.1 手机号登录（新登录方式，seed 数据已回填真实手机号）
+    r = client.post("/auth/login", json={"phone": "13800010002", "password": "123456", "role": "paidan"})
+    assert r.status_code == 200, r.text
+    r = client.post("/auth/login", json={"phone": "13800000002", "password": "123456", "role": "engineer"})
+    assert r.status_code == 200, r.text
+
+    # 3.2 非法手机号 → 422（参数校验）
+    r = client.post("/auth/login", json={"phone": "123", "password": "123456", "role": "paidan"})
+    assert r.status_code == 422, r.text
+
+    # 3.3 手机号与角色不匹配 → 400
+    r = client.post("/auth/login", json={"phone": "13800000002", "password": "123456", "role": "paidan"})
+    assert r.status_code == 400, r.text
+
     # 4. Authorization 头鉴权
     assert client.get("/workorders", headers={"Authorization": f"Bearer {token}"}).status_code == 200
 
     # 5. Cookie 自动鉴权（TestClient cookie jar）
     assert client.get("/engineers").status_code == 200
+
+    # 5.1 Odoo 客户接口：需登录态；未配置 Odoo 时返回 503
+    client.cookies.clear()  # 清除 cookie → 未登录 → 401
+    assert client.get("/api/odoo/customers?keyword=abc").status_code == 401
+    r = client.post("/auth/login", json={"phone": "13800010002", "password": "123456", "role": "paidan"})
+    assert r.status_code == 200, r.text
+    r = client.get("/api/odoo/customers?keyword=abc")
+    assert r.status_code in (503, 502), r.text  # 未配置 Odoo 时返回 503
+    # 工程师角色访问 → 403
+    r = client.post("/auth/login", json={"phone": "13800000002", "password": "123456", "role": "engineer"})
+    assert r.status_code == 200, r.text
+    r = client.get("/api/odoo/customers?keyword=abc")
+    assert r.status_code == 403, r.text
 
     # 6. 上传非图片（文本伪装）被拒
     r = client.post("/api/upload", files={"file": ("evil.txt", io.BytesIO(b"<script>alert(1)</script>"), "text/plain")})

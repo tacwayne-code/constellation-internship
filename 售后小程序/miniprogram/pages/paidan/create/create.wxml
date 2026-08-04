@@ -5,7 +5,34 @@
 
     <view class="form-group">
       <text class="form-label">报修企业 / 客户名称</text>
-      <input class="form-input" data-field="customer_name" value="{{form.customer_name}}" bindinput="onInput" placeholder="请输入企业或客户名称" />
+      <view class="customer-search-wrap">
+        <input class="form-input" data-field="customer_name" value="{{form.customer_name}}" bindinput="onCustomerInput" placeholder="输入关键字从 Odoo 客户库中选择，或直接手动输入" />
+        <view class="customer-search-list" wx:if="{{customerOptions.length > 0}}">
+          <view class="customer-search-item" wx:for="{{customerOptions}}" wx:key="id" data-id="{{item.id}}" data-name="{{item.name}}" data-address="{{item.address}}" data-phone="{{item.phone || item.mobile}}" bindtap="onCustomerSelect">
+            <view class="cs-name">{{item.name}}</view>
+            <view class="cs-meta" wx:if="{{item.phone || item.mobile}}">电话：{{item.phone || item.mobile}}</view>
+            <view class="cs-meta" wx:if="{{item.address}}">地址：{{item.address}}</view>
+          </view>
+        </view>
+      </view>
+    </view>
+
+    <view class="form-group">
+      <text class="form-label">服务地址</text>
+      <view wx:if="{{addressAutoMode}}">
+        <view class="address-auto-box">
+          <text class="address-auto-text">{{form.address}}</text>
+          <text class="link-btn" bindtap="onAddressEdit">手动修改</text>
+        </view>
+      </view>
+      <view wx:else>
+        <input class="form-input" data-field="address" value="{{form.address}}" bindinput="onInput" placeholder="如：上海市闵行区工业园B区8号厂房" />
+      </view>
+    </view>
+
+    <view class="form-group">
+      <text class="form-label">客户联系电话</text>
+      <input class="form-input" type="number" data-field="customer_phone" value="{{form.customer_phone}}" bindinput="onInput" placeholder="选择客户自动带出，也可手动修改" />
     </view>
 
     <view class="form-group">
@@ -16,11 +43,6 @@
     <view class="form-group">
       <text class="form-label">设备序列号 / SN码（选填）</text>
       <input class="form-input" data-field="sn_code" value="{{form.sn_code}}" bindinput="onInput" placeholder="请输入设备铭牌上的SN编码" />
-    </view>
-
-    <view class="form-group">
-      <text class="form-label">服务地址</text>
-      <input class="form-input" data-field="address" value="{{form.address}}" bindinput="onInput" placeholder="如：上海市闵行区工业园B区8号厂房" />
     </view>
 
     <view class="form-group">

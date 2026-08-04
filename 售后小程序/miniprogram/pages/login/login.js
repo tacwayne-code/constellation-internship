@@ -4,7 +4,7 @@ const api = require('../../utils/request');
 Page({
   data: {
     selectedRole: 'paidan',
-    username: '',
+    phone: '',
     password: ''
   },
 
@@ -12,7 +12,7 @@ Page({
     const role = e.currentTarget.dataset.role;
     this.setData({
       selectedRole: role,
-      username: '',
+      phone: '',
       password: ''
     });
   },
@@ -23,13 +23,17 @@ Page({
   },
 
   handleLogin() {
-    const { username, password, selectedRole } = this.data;
-    if (!username || !password) {
-      wx.showToast({ title: '请输入账号和密码', icon: 'none' });
+    const { phone, password, selectedRole } = this.data;
+    if (!phone || !password) {
+      wx.showToast({ title: '请输入手机号和密码', icon: 'none' });
+      return;
+    }
+    if (!/^1\d{10}$/.test(phone)) {
+      wx.showToast({ title: '请输入正确的11位手机号', icon: 'none' });
       return;
     }
 
-    api.post('/auth/login', { username, password, role: selectedRole })
+    api.post('/auth/login', { phone, password, role: selectedRole })
       .then((res) => {
         app.setLoginInfo(res.access_token, res.role, res.user);
         this.navigateByRole(res.role);

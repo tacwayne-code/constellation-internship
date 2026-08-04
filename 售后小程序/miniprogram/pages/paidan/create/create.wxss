@@ -17,3 +17,78 @@ picker .form-select {
   min-height: 80rpx;
   line-height: 44rpx;
 }
+
+/* ── Odoo 客户搜索选择 ── */
+.customer-search-wrap {
+  position: relative;
+}
+
+.customer-search-hint {
+  margin-top: 8rpx;
+  font-size: 22rpx;
+  color: #86909c;
+}
+
+.customer-search-hint.error {
+  color: #e5484d;
+}
+
+.customer-search-list {
+  margin-top: 8rpx;
+  background: #ffffff;
+  border: 1rpx solid #e5e6eb;
+  border-radius: 12rpx;
+  max-height: 560rpx;
+  overflow-y: auto;
+}
+
+.customer-search-item {
+  padding: 20rpx 24rpx;
+  border-bottom: 1rpx solid #f2f3f5;
+}
+
+.customer-search-item:last-child {
+  border-bottom: none;
+}
+
+.customer-search-item .cs-name {
+  font-size: 28rpx;
+  font-weight: 600;
+  color: #1d2129;
+}
+
+.customer-search-item .cs-meta {
+  margin-top: 6rpx;
+  font-size: 24rpx;
+  color: #86909c;
+  line-height: 34rpx;
+}
+
+.customer-search-item:active {
+  background: #f2f3f5;
+}
+
+/* ── 地址自动带出卡片 ── */
+.address-auto-box {
+  display: flex;
+  align-items: flex-start;
+  padding: 20rpx 24rpx;
+  background: #f0f9ff;
+  border: 1rpx solid #b7e0ff;
+  border-radius: 12rpx;
+}
+
+.address-auto-text {
+  flex: 1;
+  font-size: 28rpx;
+  line-height: 40rpx;
+  color: #1d2129;
+  word-break: break-all;
+}
+
+.link-btn {
+  flex-shrink: 0;
+  margin-left: 16rpx;
+  font-size: 26rpx;
+  color: #2563eb;
+}

@@ -47,6 +47,11 @@ const state = {
   editingEngineerId: null,
   loginError: "",
   loading: false,
+  // Odoo 客户搜索（建单页）
+  odooClients: [],
+  odooPartnerId: "",
+  odooHint: "",
+  odooAddressMode: "manual", // auto: 显示客户带出地址; manual: 显示省市区手动填写
 };
 
 const ORDER_STATUS_OPTIONS = [
@@ -232,41 +237,9 @@ function resetOrderEditing() {
   state.editingOrderId = null;
 }
 
-function splitAddress(address = "") {
-  const parts = String(address || "").split(" / ");
-  const province = findProvince(parts[0]) || ADDRESS_DATA[0] || { name: "", cities: [] };
-  const city = findCity(province.name, parts[1]) || province.cities[0] || { name: "", districts: [] };
-  const district = city.districts.includes(parts[2]) ? parts[2] : city.districts[0] || "";
-  return {
-    province: province.name,
-    city: city.name,
-    district,
-    detail: parts.slice(3).join(" / ") || "",
-  };
-}
-
 function joinAddress(formData) {
-  const province = String(formData.get("address_province") || "").trim();
-  const city = String(formData.get("address_city") || "").trim();
-  const district = String(formData.get("address_district") || "").trim();
-  const detail = String(formData.get("address_detail") || "").trim();
-  return [province, city, district, detail].filter(Boolean).join(" / ");
-}
-
-function findProvince(name) {
-  return ADDRESS_DATA.find((item) => item.name === name);
-}
-
-function findCity(provinceName, cityName) {
-  const province = findProvince(provinceName);
-  return province?.cities.find((item) => item.name === cityName);
-}
-
-function renderAddressOptions(items, selected) {
-  return items.map((item) => {
-    const value = typeof item === "string" ? item : item.name;
-    return `<option value="${esc(value)}" ${selected === value ? "selected" : ""}>${esc(value)}</option>`;
-  }).join("");
+  // 地址为单输入框：直接返回，无需省市县拼接
+  return String(formData.get("address") || "").trim();
 }
 
 function isInChina(longitude, latitude) {
@@ -360,10 +333,16 @@ async function loadOrders(reset = false) {
 
 async function loadDashboard() {
   try {
-    state.dashboard = await api("/api/stats/overview");
+    // 看板与工单列表共用同一筛选口径，保证"看板指标与详情一致"
+    state.dashboard = await api(`/api/stats/overview${buildOrderQuery()}`);
   } catch (e) {
     state.dashboard = null;
   }
+}
+
+function hasActiveFilters() {
+  const f = state.orderFilters;
+  return Boolean(f.status || f.keyword || f.dateFrom || f.dateTo);
 }
 
 function resetOrderFilters() {
@@ -380,6 +359,7 @@ function applyOrderFilters() {
     return;
   }
   loadOrders(true);
+  loadDashboard();
 }
 
 async function downloadOrdersExport() {
@@ -411,9 +391,7 @@ async function downloadOrdersExport() {
 async function refreshAll() {
   if (!state.token && !state.role) return;
   if (state.role === "paidan") {
-    const engineersPromise = api("/engineers");
-    if (state.dashboard === null) loadDashboard();
-    const [engineers] = await Promise.all([engineersPromise, loadOrders(true)]);
+    const [engineers] = await Promise.all([api("/engineers"), loadOrders(true), loadDashboard()]);
     state.engineers = engineers || [];
   } else {
     const [tasks, history, profile] = await Promise.all([
@@ -642,8 +620,8 @@ function renderLogin() {
           </div>
           <input type="hidden" name="role" value="paidan">
           <div class="input-group">
-            <label class="input-label">账号</label>
-            <div class="input-box"><input name="username" value="PD001" placeholder="请输入账号"></div>
+            <label class="input-label">手机号 / 账号</label>
+            <div class="input-box"><input name="username" value="13800010002" placeholder="请输入手机号或工号"></div>
           </div>
           <div class="input-group">
             <label class="input-label">密码</label>
@@ -653,7 +631,7 @@ function renderLogin() {
           ${state.loginError ? `<div class="error-box">${esc(state.loginError)}</div>` : ""}
         </form>
       </div>
-      <div class="login-footer">演示账号：PD001 / SH001，密码均为 123456</div>
+      <div class="login-footer">演示账号：13800010002（派单）/ 13800000002（工程师），密码均为 123456</div>
     </div>
   `;
 }
@@ -678,10 +656,10 @@ function renderStats() {
 }
 
 function renderCreate() {
+  // 每次进入建单/编辑页都从「手动填写地址」开始；选中 Odoo 客户带出地址后由 JS 切换为自动显示
+  state.odooAddressMode = "manual";
   const current = editingOrder();
-  const address = splitAddress(current?.address || "");
-  const province = findProvince(address.province) || ADDRESS_DATA[0] || { cities: [] };
-  const city = findCity(address.province, address.city) || province.cities[0] || { districts: [] };
+  const addressText = current?.address || "";
   return renderShell(`
     <section class="card">
       <div class="card-title">
@@ -692,7 +670,27 @@ function renderCreate() {
         <input type="hidden" name="order_id" value="${esc(current?.id || "")}">
         <div class="form-group">
           <label class="form-label">报修企业 / 客户名称</label>
-          <input class="form-input" name="customer_name" value="${esc(current?.customer_name || "")}" placeholder="请输入企业或客户名称">
+          <div class="customer-search-wrap">
+            <input class="form-input" name="customer_name" value="${esc(current?.customer_name || "")}" placeholder="输入关键字从 Odoo 客户库选择，或手动输入" autocomplete="off">
+            <div class="odoo-dropdown" id="odoo-dropdown" style="display:none;"></div>
+          </div>
+          <input type="hidden" name="odoo_partner_id" value="${esc(state.odooPartnerId || current?.odoo_partner_id || "")}">
+        </div>
+        <div class="form-group">
+          <label class="form-label">服务地址</label>
+          <!-- 自动模式：客户地址已带出，直接显示 -->
+          <div class="address-auto-box" id="address-auto-box" style="${state.odooAddressMode === "auto" ? "" : "display:none;"}">
+            <div class="address-auto-text" id="address-auto-text"></div>
+            <button type="button" class="link-btn" id="address-edit-btn">手动修改地址</button>
+          </div>
+          <!-- 手动模式：客户地址未带出时，直接输入地址 -->
+          <div id="address-manual-box" style="${state.odooAddressMode === "auto" ? "display:none;" : ""}">
+            <input class="form-input" name="address" value="${esc(addressText)}" placeholder="请输入服务地址（省/市/区/道路/门牌号等）">
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">客户联系电话</label>
+          <input class="form-input" name="customer_phone" value="${esc(current?.customer_phone || "")}" placeholder="选择客户自动带出，也可手动修改" autocomplete="off">
         </div>
         <div class="form-group">
           <label class="form-label">报修设备名称</label>
@@ -701,21 +699,6 @@ function renderCreate() {
         <div class="form-group">
           <label class="form-label">设备序列号 / SN 码</label>
           <input class="form-input" name="sn_code" value="${esc(current?.sn_code || "")}" placeholder="请输入设备铭牌上的 SN 编码">
-        </div>
-        <div class="form-group">
-          <label class="form-label">服务地址</label>
-          <div class="address-grid">
-            <select class="form-select" name="address_province" data-address-province>
-              ${renderAddressOptions(ADDRESS_DATA, address.province)}
-            </select>
-            <select class="form-select" name="address_city" data-address-city>
-              ${renderAddressOptions(province.cities, address.city)}
-            </select>
-            <select class="form-select" name="address_district" data-address-district>
-              ${renderAddressOptions(city.districts, address.district)}
-            </select>
-          </div>
-          <input class="form-input address-detail-input" name="address_detail" value="${esc(address.detail)}" placeholder="填写园区、道路、门牌号、楼栋、车间等详细地址">
         </div>
         <div class="form-group">
           <label class="form-label">故障类型</label>
@@ -763,7 +746,7 @@ function renderOrderCard(order) {
         <span class="badge ${meta.cls}">${esc(meta.text)}</span>
       </div>
       <div class="info-row"><span class="info-label">责任工程师</span><span class="info-val"><strong>${esc(order.engineer_name || "-")}</strong> (${esc(order.engineer_phone || "-")})</span></div>
-      <div class="info-row"><span class="info-label">服务客户</span><span class="info-val">${esc(order.customer_name || "-")}</span></div>
+      <div class="info-row"><span class="info-label">服务客户</span><span class="info-val">${esc(order.customer_name || "-")}${order.customer_phone ? `（${esc(order.customer_phone)}）` : ""}</span></div>
       <div class="info-row"><span class="info-label">设备名称</span><span class="info-val">${esc(order.device_name || "-")}</span></div>
       <div class="info-row"><span class="info-label">报修内容</span><span class="info-val">${esc(order.fault_desc || "-")}</span></div>
       <div class="action-row">
@@ -789,7 +772,7 @@ function renderDashboard() {
   `).join("") || '<div class="dash-list-item"><span>暂无数据</span></div>';
   return `
     <div class="card dashboard-card">
-      <div class="card-title">经营看板</div>
+      <div class="card-title">经营看板${hasActiveFilters() ? '<span class="subtle-text" style="font-size:12px;margin-left:6px;">(当前筛选)</span>' : ""}</div>
       <div class="dashboard-full">
         <div class="dash-subtitle">近 30 天完成工单趋势</div>
         <div class="chart-wrap"><canvas id="chart-trend"></canvas></div>
@@ -1111,6 +1094,7 @@ function renderDetail() {
       <div class="info-row"><span class="info-label">工单编号</span><span class="info-val strong-text">${esc(order.order_no)}</span></div>
       <div class="info-row"><span class="info-label">工单状态</span><span class="info-val"><span class="badge ${statusMeta(order.status).cls}">${esc(statusMeta(order.status).text)}</span></span></div>
       <div class="info-row"><span class="info-label">客户名称</span><span class="info-val">${esc(order.customer_name)}</span></div>
+      ${order.customer_phone ? `<div class="info-row"><span class="info-label">联系电话</span><span class="info-val">${esc(order.customer_phone)}</span></div>` : ""}
       <div class="info-row"><span class="info-label">设备名称</span><span class="info-val">${esc(order.device_name)}</span></div>
       <div class="info-row"><span class="info-label">SN 码</span><span class="info-val">${esc(order.sn_code || "-")}</span></div>
       <div class="info-row"><span class="info-label">故障类型</span><span class="info-val">${esc(order.fault_type)}</span></div>
@@ -1186,6 +1170,34 @@ function renderApp() {
   return renderTasks();
 }
 
+/* ── 图片点击查看大图（lightbox）── */
+function openImagePreview(src) {
+  const overlay = document.createElement("div");
+  overlay.className = "image-preview-overlay";
+  overlay.innerHTML = `
+    <div class="image-preview-box">
+      <img class="image-preview-img" src="${esc(src)}" alt="预览大图">
+      <button class="image-preview-close" type="button" title="关闭">✕</button>
+    </div>`;
+  document.body.appendChild(overlay);
+  document.body.style.overflow = "hidden";
+  const close = () => {
+    overlay.remove();
+    document.body.style.overflow = "";
+  };
+  overlay.addEventListener("click", (e) => {
+    if (e.target === overlay || e.target.closest(".image-preview-close")) close();
+  });
+  const escClose = (e) => { if (e.key === "Escape") { close(); document.removeEventListener("keydown", escClose); } };
+  document.addEventListener("keydown", escClose);
+}
+
+// 全局事件委托（只绑定一次）：点击任意工单/维修图片打开大图预览
+document.addEventListener("click", (e) => {
+  const img = e.target.closest("img.record-image, img[data-preview]");
+  if (img && img.src) openImagePreview(img.src);
+});
+
 function render() {
   if (state.chart) { state.chart.destroy(); state.chart = null; }
   root.innerHTML = renderApp();
@@ -1199,7 +1211,7 @@ function bindEvents() {
       const form = document.getElementById("login-form");
       document.querySelectorAll("[data-role]").forEach((item) => item.classList.toggle("active", item === button));
       form.role.value = button.dataset.role;
-      form.username.value = button.dataset.role === "paidan" ? "PD001" : "SH001";
+      form.username.value = button.dataset.role === "paidan" ? "13800010002" : "13800000002";
       form.password.value = "123456";
     });
   });
@@ -1212,14 +1224,12 @@ function bindEvents() {
       state.loginError = "";
       render();
       try {
-        const payload = await api("/auth/login", {
-          method: "POST",
-          body: {
-            username: loginForm.username.value.trim(),
-            password: loginForm.password.value,
-            role: loginForm.role.value,
-          },
-        });
+        const identifier = loginForm.username.value.trim();
+        // 手机号格式优先走 phone 登录，其余（工号等）走账号登录
+        const body = /^1\d{10}$/.test(identifier)
+          ? { phone: identifier, password: loginForm.password.value, role: loginForm.role.value }
+          : { username: identifier, password: loginForm.password.value, role: loginForm.role.value };
+        const payload = await api("/auth/login", { method: "POST", body });
         saveSession(payload);
         await refreshAll();
         setRoute(payload.role === "paidan" ? "create" : "tasks");
@@ -1249,6 +1259,7 @@ function bindEvents() {
       resetOrderFilters();
       render();
       loadOrders(true);
+      loadDashboard();
     });
   });
 
@@ -1374,6 +1385,119 @@ function bindEvents() {
 
   const createOrderForm = document.getElementById("create-order-form");
   if (createOrderForm) {
+    // ── Odoo 客户搜索（建单页）：防抖 400ms，自定义下拉动态渲染 ──
+    const customerInput = createOrderForm.querySelector('input[name="customer_name"]');
+    const dropdown = document.getElementById("odoo-dropdown");
+    const hintBox = document.getElementById("odoo-hint");
+    let odooSearchTimer = null;
+
+    const hideDropdown = () => { if (dropdown) dropdown.style.display = "none"; };
+    const showDropdown = () => { if (dropdown && dropdown.innerHTML) dropdown.style.display = "block"; };
+    const updateHint = (text) => { if (hintBox) hintBox.textContent = text; };
+
+    const renderDropdown = () => {
+      if (!dropdown) return;
+      if (!state.odooClients.length) { hideDropdown(); return; }
+      dropdown.innerHTML = state.odooClients.map((c) => `
+        <div class="odoo-dropdown-item" data-oid="${esc(String(c.id))}" data-address="${esc(c.address || "")}" data-phone="${esc(c.phone || c.mobile || "")}">
+          <div class="odoo-dropdown-name">${esc(c.name)}</div>
+          <div class="odoo-dropdown-meta">${esc([c.phone, c.mobile, c.email].filter(Boolean).join(" / ") || "暂无联系方式")}</div>
+          ${c.address ? `<div class="odoo-dropdown-meta">${esc(c.address)}</div>` : ""}
+        </div>`).join("");
+      showDropdown();
+    };
+
+    const searchOdoo = async () => {
+      const keyword = customerInput.value.trim();
+      if (!keyword) { state.odooClients = []; hideDropdown(); updateHint(""); return; }
+      updateHint("搜索中...");
+      try {
+        const res = await api(`/api/odoo/customers?keyword=${encodeURIComponent(keyword)}&limit=10`);
+        const items = (res && res.items) || [];
+        state.odooClients = items;
+        renderDropdown();
+        updateHint(items.length ? `已从 Odoo 找到 ${items.length} 个客户，点击选择（也可手动输入）` : "Odoo 未找到匹配客户，可直接手动输入");
+      } catch (err) {
+        state.odooClients = [];
+        hideDropdown();
+        updateHint(err.message || "Odoo 服务不可用，请手动输入客户信息");
+      }
+    };
+
+    const setAddressMode = (mode) => {
+      state.odooAddressMode = mode;
+      const autoBox = document.getElementById("address-auto-box");
+      const manualBox = document.getElementById("address-manual-box");
+      if (autoBox) autoBox.style.display = mode === "auto" ? "" : "none";
+      if (manualBox) manualBox.style.display = mode === "auto" ? "none" : "";
+    };
+
+    // 「手动修改地址」：从自动模式切回手动输入
+    const addressEditBtn = document.getElementById("address-edit-btn");
+    if (addressEditBtn) {
+      addressEditBtn.addEventListener("click", () => setAddressMode("manual"));
+    }
+
+    const selectOdooCustomer = (name, partnerId, address, phone) => {
+      customerInput.value = name;
+      state.odooPartnerId = String(partnerId);
+      state.odooClients = [];
+      hideDropdown();
+      updateHint("");
+      // 联系电话：客户带出（优先手机号，其次座机），可手动修改
+      const phoneInput = createOrderForm.querySelector('input[name="customer_phone"]');
+      if (phoneInput && phone) phoneInput.value = phone;
+      if (address) {
+        // 客户地址已带出：直接显示，同时填充隐藏的地址输入框
+        const addressInput = createOrderForm.querySelector('input[name="address"]');
+        if (addressInput) addressInput.value = address;
+        const autoText = document.getElementById("address-auto-text");
+        if (autoText) autoText.textContent = address;
+        setAddressMode("auto");
+      } else {
+        // 客户无地址：切回手动填写
+        setAddressMode("manual");
+      }
+    };
+
+    if (customerInput) {
+      customerInput.addEventListener("input", () => {
+        clearTimeout(odooSearchTimer);
+        state.odooPartnerId = "";
+        if (!customerInput.value.trim()) {
+          state.odooClients = [];
+          hideDropdown();
+          updateHint("");
+          return;
+        }
+        odooSearchTimer = setTimeout(searchOdoo, 400);
+      });
+      // 点击外部关闭下拉（点击输入框自身除外）
+      customerInput.addEventListener("blur", () => setTimeout(hideDropdown, 180));
+    }
+    if (dropdown) {
+      dropdown.addEventListener("mousedown", (event) => event.preventDefault()); // 防止 input 失焦导致下拉提前关闭
+      dropdown.addEventListener("click", (event) => {
+        const item = event.target.closest(".odoo-dropdown-item");
+        if (!item) return;
+        selectOdooCustomer(
+          item.querySelector(".odoo-dropdown-name").textContent,
+          item.dataset.oid,
+          item.dataset.address || "",
+          item.dataset.phone || ""
+        );
+      });
+    }
+    // 页面导航/路由切换时重置 Odoo 状态
+    const resetOdooState = () => {
+      if (!document.getElementById("create-order-form")) {
+        state.odooClients = [];
+        state.odooHint = "";
+        state.odooPartnerId = "";
+      }
+    };
+    window.addEventListener("hashchange", resetOdooState);
+
     bindFieldValidation(createOrderForm);
     createOrderForm.addEventListener("submit", async (event) => {
       event.preventDefault();
@@ -1387,9 +1511,11 @@ function bindEvents() {
       const uploadedFaultImages = await uploadFiles(createOrderForm.fault_images.files);
       const payload = {
         customer_name: formData.get("customer_name"),
+        customer_phone: formData.get("customer_phone") || null,
         device_name: formData.get("device_name"),
         sn_code: formData.get("sn_code"),
         address: joinAddress(formData),
+        odoo_partner_id: formData.get("odoo_partner_id") || null,
         fault_type: formData.get("fault_type"),
         fault_desc: formData.get("fault_desc"),
         fault_images: uploadedFaultImages.length ? uploadedFaultImages : current?.fault_images || [],
@@ -1518,28 +1644,6 @@ function bindEvents() {
       button.disabled = true;
       button.textContent = "...";
       fallbackToBrowserLocation();
-    });
-  });
-
-  document.querySelectorAll("[data-address-province]").forEach((select) => {
-    select.addEventListener("change", () => {
-      const citySelect = document.querySelector("[data-address-city]");
-      const districtSelect = document.querySelector("[data-address-district]");
-      const province = findProvince(select.value) || ADDRESS_DATA[0];
-      const cities = province?.cities || [];
-      if (!citySelect || !districtSelect) return;
-      citySelect.innerHTML = renderAddressOptions(cities, cities[0]?.name || "");
-      districtSelect.innerHTML = renderAddressOptions(cities[0]?.districts || [], cities[0]?.districts?.[0] || "");
-    });
-  });
-
-  document.querySelectorAll("[data-address-city]").forEach((select) => {
-    select.addEventListener("change", () => {
-      const provinceSelect = document.querySelector("[data-address-province]");
-      const districtSelect = document.querySelector("[data-address-district]");
-      if (!provinceSelect || !districtSelect) return;
-      const city = findCity(provinceSelect.value, select.value);
-      districtSelect.innerHTML = renderAddressOptions(city?.districts || [], city?.districts?.[0] || "");
     });
   });
 

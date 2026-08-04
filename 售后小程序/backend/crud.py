@@ -1,4 +1,4 @@
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 from sqlalchemy import or_
 from models import User, Engineer, WorkOrder, WorkRecord
 from datetime import datetime, timedelta
@@ -10,6 +10,10 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 def get_user_by_username(db: Session, username: str):
     return db.query(User).filter(User.username == username).first()
+
+
+def get_user_by_phone(db: Session, phone: str):
+    return db.query(User).filter(User.phone == phone).first()
 
 
 def update_user_profile(db: Session, user: User, data):
@@ -106,9 +110,11 @@ def create_work_order(db: Session, data, created_by: int):
     order = WorkOrder(
         order_no=generate_order_no(db),
         customer_name=data.customer_name,
+        customer_phone=getattr(data, "customer_phone", None) or None,
         device_name=data.device_name,
         sn_code=data.sn_code,
         address=data.address,
+        odoo_partner_id=getattr(data, "odoo_partner_id", None) or None,
         fault_type=data.fault_type,
         fault_desc=data.fault_desc,
         fault_images=json.dumps(data.fault_images or []),
@@ -133,7 +139,11 @@ def get_work_orders(
     limit: int = 50,
 ):
     """按条件过滤工单并分页，返回 (分页结果, 总条数)。过滤下推到 SQL，避免全量加载。"""
-    query = db.query(WorkOrder)
+    # selectinload 批量加载工程师与维修记录，避免列表接口 N+1 查询
+    query = db.query(WorkOrder).options(
+        selectinload(WorkOrder.engineer),
+        selectinload(WorkOrder.records),
+    )
     if status:
         query = query.filter(WorkOrder.status == status)
     if keyword:
@@ -166,7 +176,15 @@ def get_work_orders(
 
 
 def get_work_order(db: Session, order_id: int):
-    return db.query(WorkOrder).filter(WorkOrder.id == order_id).first()
+    return (
+        db.query(WorkOrder)
+        .options(
+            selectinload(WorkOrder.engineer),
+            selectinload(WorkOrder.records),
+        )
+        .filter(WorkOrder.id == order_id)
+        .first()
+    )
 
 
 def update_work_order(db: Session, order_id: int, data):
@@ -174,9 +192,10 @@ def update_work_order(db: Session, order_id: int, data):
     if not order:
         return None
 
-    for field in ("customer_name", "device_name", "sn_code", "address", "fault_type", "fault_desc", "engineer_id"):
+    for field in ("customer_name", "customer_phone", "device_name", "sn_code", "address", "fault_type", "fault_desc", "engineer_id"):
         setattr(order, field, getattr(data, field))
     order.fault_images = json.dumps(data.fault_images or [])
+    order.odoo_partner_id = getattr(data, "odoo_partner_id", None) or None
 
     if getattr(data, "status", None):
         order.status = data.status
@@ -200,7 +219,14 @@ def delete_work_order(db: Session, order_id: int):
 
 
 def get_work_orders_by_engineer(db: Session, engineer_id: int, status: str = None):
-    query = db.query(WorkOrder).filter(WorkOrder.engineer_id == engineer_id)
+    query = (
+        db.query(WorkOrder)
+        .options(
+            selectinload(WorkOrder.engineer),
+            selectinload(WorkOrder.records),
+        )
+        .filter(WorkOrder.engineer_id == engineer_id)
+    )
     if status:
         query = query.filter(WorkOrder.status == status)
     return query.order_by(WorkOrder.created_at.desc()).all()

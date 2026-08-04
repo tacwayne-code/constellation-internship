@@ -1,4 +1,6 @@
-from pydantic import BaseModel, Field, field_validator
+import re
+
+from pydantic import BaseModel, Field, field_validator, model_validator
 from typing import Optional, List
 from datetime import datetime
 
@@ -15,9 +17,27 @@ class UserOut(BaseModel):
 
 
 class LoginRequest(BaseModel):
-    username: str
-    password: str
+    """登录请求：支持「手机号 + 密码」登录，同时兼容旧的「账号(工号) + 密码」登录。"""
+    phone: Optional[str] = Field(default=None, max_length=20, description="登录手机号（优先）")
+    username: Optional[str] = Field(default=None, max_length=50, description="兼容：账号/工号")
+    password: str = Field(..., min_length=1, max_length=128)
     role: str
+
+    @field_validator("phone")
+    @classmethod
+    def validate_phone(cls, value: Optional[str]) -> Optional[str]:
+        if value is None or value == "":
+            return None
+        value = str(value).strip()
+        if not re.fullmatch(r"1\d{10}", value):
+            raise ValueError("手机号格式不正确，应为 11 位大陆手机号")
+        return value
+
+    @model_validator(mode="after")
+    def check_identifier(self):
+        if not self.phone and not self.username:
+            raise ValueError("手机号或账号不能为空")
+        return self
 
 
 class LoginResponse(BaseModel):
@@ -55,9 +75,11 @@ class EngineerOut(BaseModel):
 
 class WorkOrderCreate(BaseModel):
     customer_name: str = Field(..., max_length=200)
+    customer_phone: Optional[str] = Field(default=None, max_length=50, description="客户联系电话")
     device_name: str = Field(..., max_length=200)
     sn_code: Optional[str] = Field(default=None, max_length=100)
     address: Optional[str] = Field(default=None, max_length=500)
+    odoo_partner_id: Optional[str] = Field(default=None, max_length=50, description="Odoo 客户(res.partner)ID")
     fault_type: str = Field(..., max_length=50)
     fault_desc: str = Field(..., max_length=5000)
     fault_images: Optional[List[str]] = []
@@ -66,9 +88,11 @@ class WorkOrderCreate(BaseModel):
 
 class WorkOrderUpdate(BaseModel):
     customer_name: str = Field(..., max_length=200)
+    customer_phone: Optional[str] = Field(default=None, max_length=50, description="客户联系电话")
     device_name: str = Field(..., max_length=200)
     sn_code: Optional[str] = Field(default=None, max_length=100)
     address: Optional[str] = Field(default=None, max_length=500)
+    odoo_partner_id: Optional[str] = Field(default=None, max_length=50, description="Odoo 客户(res.partner)ID")
     fault_type: str = Field(..., max_length=50)
     fault_desc: str = Field(..., max_length=5000)
     fault_images: Optional[List[str]] = []
@@ -90,9 +114,11 @@ class WorkOrderOut(BaseModel):
     id: int
     order_no: str
     customer_name: str
+    customer_phone: Optional[str] = None
     device_name: str
     sn_code: Optional[str]
     address: Optional[str] = None
+    odoo_partner_id: Optional[str] = None
     fault_type: str
     fault_desc: str
     fault_images: Optional[List[str]] = []
