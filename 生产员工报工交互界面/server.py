@@ -77,6 +77,7 @@ else:
 
 DB_LOCK = threading.Lock()
 ODOO_LOCK = threading.Lock()
+MATERIAL_QUANTITY_LOCK = threading.Lock()
 
 # ============================================================
 # Odoo 客户端
@@ -173,6 +174,7 @@ def _migrate_db():
         worker_migrations = [
             ("source", "TEXT DEFAULT 'local'"),
             ("odoo_employee_id", "INTEGER DEFAULT 0"),
+            ("operation_codes", "TEXT DEFAULT '[]'"),
         ]
         for col_name, col_def in worker_migrations:
             if col_name not in existing_wcols:
@@ -239,6 +241,7 @@ def _init_db():
                 team  TEXT DEFAULT '',
                 source TEXT DEFAULT 'local',
                 odoo_employee_id INTEGER DEFAULT 0,
+                operation_codes TEXT DEFAULT '[]',
                 created_at TEXT DEFAULT (datetime('now','localtime'))
             );
             CREATE TABLE IF NOT EXISTS reports (
@@ -326,29 +329,70 @@ def _seed_workers():
                 conn.commit()
                 logger.info("已添加罗伟华（本地工人）")
         conn.close()
+    _ensure_worker_operation_bindings()
+
+
+WORKER_OPERATION_BINDINGS = {
+    "LOCAL_LWH": ["pc_assembly_tape", "pc_assembly_splitter"],
+    "WK001": ["assembly"],
+    "WK002": ["packing"],
+    "WK003": ["test_tape_operation"],
+    "WK004": ["test_splitter_operation"],
+    "WK005": ["test_assembly_operation"],
+    "WK006": ["test_packing_operation"],
+}
+
+def _ensure_worker_operation_bindings():
+    """Persist the allowed operation codes for configured local workers."""
+    with DB_LOCK:
+        conn = sqlite3.connect(str(DB_FILE))
+        for worker_id, operation_codes in WORKER_OPERATION_BINDINGS.items():
+            encoded = json.dumps(operation_codes, ensure_ascii=False)
+            conn.execute(
+                "UPDATE workers SET operation_codes=? "
+                "WHERE id=? AND (operation_codes IS NULL OR trim(operation_codes) IN ('', '[]'))",
+                (encoded, worker_id),
+            )
+        conn.commit()
+        conn.close()
 
 
 def db_workers():
     with DB_LOCK:
         c = sqlite3.connect(str(DB_FILE))
         c.row_factory = sqlite3.Row
-        rows = c.execute("SELECT id, name, team, source, odoo_employee_id FROM workers ORDER BY id").fetchall()
+        rows = c.execute(
+            "SELECT id, name, team, source, odoo_employee_id, operation_codes "
+            "FROM workers ORDER BY id"
+        ).fetchall()
         c.close()
     results = []
     for r in rows:
+        try:
+            operation_codes = json.loads(r["operation_codes"] or "[]")
+        except (TypeError, ValueError):
+            operation_codes = []
+        if not isinstance(operation_codes, list):
+            operation_codes = []
         w = {"id": r["id"], "name": r["name"], "team": r["team"],
              "source": r["source"] if "source" in r.keys() else "local",
-             "odooEmployeeId": r["odoo_employee_id"] if "odoo_employee_id" in r.keys() else 0}
+             "odooEmployeeId": r["odoo_employee_id"] if "odoo_employee_id" in r.keys() else 0,
+             "operationCodes": [str(code) for code in operation_codes]}
         results.append(w)
     return results
 
 
-def db_add_worker(wid, name, team, source="local", odoo_employee_id=0):
+def db_add_worker(wid, name, team, source="local", odoo_employee_id=0,
+                  operation_codes=None):
+    operation_codes = operation_codes or []
     with DB_LOCK:
         c = sqlite3.connect(str(DB_FILE))
         c.execute(
-            "INSERT INTO workers (id, name, team, source, odoo_employee_id) VALUES (?, ?, ?, ?, ?)",
-            (wid, name, team, source, odoo_employee_id)
+            "INSERT INTO workers "
+            "(id, name, team, source, odoo_employee_id, operation_codes) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (wid, name, team, source, odoo_employee_id,
+             json.dumps(operation_codes, ensure_ascii=False))
         )
         c.commit()
         c.close()
@@ -554,15 +598,25 @@ def load_reports():
 # ============================================================
 
 OPERATIONS = [
-    {"id": "assembly", "code": "assembly", "name": "总装", "hostType": None},
+    {"id": "assembly", "code": "assembly", "name": "总装", "hostType": None,
+     "workorderNames": ["组装"]},
     {"id": "testing", "code": "testing", "name": "测试", "hostType": None},
     {"id": "qc", "code": "qc", "name": "质检", "hostType": None},
-    {"id": "packing", "code": "packing", "name": "包装", "hostType": None},
+    {"id": "packing", "code": "packing", "name": "包装", "hostType": None,
+     "workorderNames": ["打包"]},
     {"id": "debug", "code": "debug", "name": "调试", "hostType": None},
     {"id": "pc_assembly_tape", "code": "pc_assembly_tape", "name": "电脑装机（编带主机）", "hostType": "tape",
      "odooWorkcenterId": 101, "odooWorkcenterCode": "pc_assembly_tape"},
     {"id": "pc_assembly_splitter", "code": "pc_assembly_splitter", "name": "电脑装机（分光主机）", "hostType": "splitter",
      "odooWorkcenterId": 102, "odooWorkcenterCode": "pc_assembly_splitter"},
+    {"id": "test_tape_operation", "code": "test_tape_operation", "name": "测试工序（编带）",
+     "hostType": "tape"},
+    {"id": "test_splitter_operation", "code": "test_splitter_operation", "name": "测试工序（分光）",
+     "hostType": "splitter"},
+    {"id": "test_assembly_operation", "code": "test_assembly_operation", "name": "测试工序（组装）",
+     "hostType": None, "workorderNames": ["组装"]},
+    {"id": "test_packing_operation", "code": "test_packing_operation", "name": "测试工序（打包）",
+     "hostType": None, "workorderNames": ["打包"]},
 ]
 
 VALID_OPERATIONS = {op["code"] for op in OPERATIONS}
@@ -627,6 +681,16 @@ def get_valid_worker_ids():
         return {w["id"] for w in workers}
 
 
+def get_worker_by_id(worker_id):
+    worker_id = str(worker_id or "")
+    return next((w for w in db_workers() if str(w.get("id")) == worker_id), None)
+
+
+def worker_allows_operation(worker_id, operation_code):
+    worker = get_worker_by_id(worker_id)
+    return bool(worker and operation_code in set(worker.get("operationCodes") or []))
+
+
 _order_ids_cache = {"ids": set(), "ts": 0, "marker": 0}
 _ORDER_CACHE_TTL = 60
 _order_ids_lock = threading.Lock()
@@ -678,6 +742,28 @@ def product_code(display, default=""):
     text = rel_name(display)
     match = re.match(r"^\[([^\]]+)\]", text)
     return match.group(1) if match else default
+
+
+def workorder_host_type(product):
+    code = product_code(product)
+    if code == "P04725":
+        return "tape"
+    if code == "P04726":
+        return "splitter"
+    return None
+
+
+def operation_matches_workorder(operation, workorder):
+    """Return whether an operation binding can use a specific Odoo WO."""
+    if not operation or not workorder:
+        return False
+    expected_host = operation.get("hostType")
+    if expected_host and workorder.get("hostType") != expected_host:
+        return False
+    names = operation.get("workorderNames") or []
+    if names and workorder.get("workorderName") not in names:
+        return False
+    return True
 
 
 def bracket_code(value):
@@ -1433,11 +1519,7 @@ def get_workorders_data():
             pcode = product_code(wo.get("product_id"))  # 传入 tuple，不要传 pid(int)
 
             # 确定主机类型（用产品编码，不依赖固定 ID）
-            host_type = None
-            if pcode == "P04725":
-                host_type = "tape"
-            elif pcode == "P04726":
-                host_type = "splitter"
+            host_type = workorder_host_type(wo.get("product_id"))
 
             raw_state = wo.get("state", "")
             state_cn = WO_STATE_MAP.get(raw_state, raw_state)
@@ -1451,6 +1533,7 @@ def get_workorders_data():
                 "productionId": mo_id,
                 "productionName": mo.get("name", ""),
                 "productId": pid,
+                "productCode": pcode,
                 "productName": product_name or raw_product,
                 "workcenterId": rel_id(wo.get("workcenter_id")),
                 "workcenterName": rel_name(wo.get("workcenter_id"), ""),
@@ -1799,16 +1882,51 @@ def odoo_deduct_materials(materials, production_id=None, qty=0, idempotency_key=
                 errors.append(f"物料 {code}: 不属于生产订单 #{production_id} 的原料移动")
                 continue
             updated_move_ids = []
-            for rm_id in rm_ids:
-                rm = client.call("stock.move", "read", [[rm_id], ["quantity"]])
-                if not rm:
-                    raise ValueError(f"原料移动 {rm_id} 不存在")
-                current = float(rm[0].get("quantity", 0))
-                client.call("stock.move", "write", [[rm_id], {"quantity": current + actual_qty}])
-                updated_move_ids.append(rm_id)
+            with MATERIAL_QUANTITY_LOCK:
+                for rm_id in rm_ids:
+                    rm = client.call(
+                        "stock.move", "read", [[rm_id], [
+                            "product_uom_qty", "should_consume_qty",
+                        ]]
+                    )
+                    if not rm:
+                        raise ValueError(f"原料移动 {rm_id} 不存在")
+                    # stock.move.quantity can contain reserved stock, so it is
+                    # not a safe accumulation base. Odoo's correct remaining
+                    # amount gives the consumed total before this report.
+                    planned_qty = float(
+                        rm[0].get("product_uom_qty", 0) or 0
+                    )
+                    remaining_qty = float(
+                        rm[0].get("should_consume_qty", 0) or 0
+                    )
+                    consumed_before = max(planned_qty - remaining_qty, 0.0)
+                    consumed_after = consumed_before + float(actual_qty)
+                    client.call("stock.move", "write", [[rm_id], {
+                        "quantity": consumed_after,
+                        "picked": True,
+                    }])
+                    check = client.call("stock.move", "read", [[rm_id], [
+                        "quantity", "should_consume_qty",
+                    ]])
+                    if not check or abs(
+                        float(check[0].get("quantity", 0) or 0) - consumed_after
+                    ) > 1e-6:
+                        raise ValueError(
+                            f"原料移动 {rm_id} 的实际消耗数量写入后不一致"
+                        )
+                    if abs(
+                        float(check[0].get("should_consume_qty", 0) or 0)
+                        - remaining_qty
+                    ) > 1e-6:
+                        raise ValueError(
+                            f"原料移动 {rm_id} 的待消耗数量被意外改变"
+                        )
+                    updated_move_ids.append(rm_id)
 
-            # 2) 直接扣 stock.quant（精确 = actualQty，不重复扣减）
-            _direct_deduct_quant(client, product_id, code, actual_qty)
+                # Keep the stock deduction atomic with the cumulative display
+                # quantity so concurrent reports cannot overwrite each other.
+                _direct_deduct_quant(client, product_id, code, actual_qty)
 
             logger.info(f"物料 {code}({product_id}): 已扣减 {actual_qty}")
             stock_move_ids.extend(updated_move_ids)
@@ -2355,7 +2473,7 @@ class Handler(SimpleHTTPRequestHandler):
                     check_client = get_odoo()
                     check_rows = check_client.read(
                         "mrp.workorder", [int(workorder_id)],
-                        ["production_id", "state"]
+                        ["production_id", "state", "name", "product_id"]
                     )
                     if not check_rows:
                         raise ValueError("工单不存在")
@@ -2375,6 +2493,23 @@ class Handler(SimpleHTTPRequestHandler):
                 self.write_json({"ok": False, "error": f"无效工序: {operation}"},
                                 status=HTTPStatus.BAD_REQUEST)
                 return
+            if not worker_allows_operation(worker_id, operation):
+                self.write_json({
+                    "ok": False,
+                    "error": "当前工人未绑定该工序，不能提交报工",
+                }, status=HTTPStatus.FORBIDDEN)
+                return
+            if mode == "real":
+                workorder_view = {
+                    "workorderName": check_rows[0].get("name", ""),
+                    "hostType": workorder_host_type(check_rows[0].get("product_id")),
+                }
+                if not operation_matches_workorder(op_info, workorder_view):
+                    self.write_json({
+                        "ok": False,
+                        "error": "所选工单不属于当前工序",
+                    }, status=HTTPStatus.BAD_REQUEST)
+                    return
 
             qty = report["qty"]
             # Production reports are counted in whole units. Reject decimal
@@ -2713,13 +2848,22 @@ class Handler(SimpleHTTPRequestHandler):
             team = worker.get("team", "").strip()
             source = worker.get("source", "local")
             odoo_eid = worker.get("odooEmployeeId", 0)
+            operation_codes = worker.get("operationCodes", [])
+            if not isinstance(operation_codes, list):
+                operation_codes = []
+            unknown_ops = [code for code in operation_codes if code not in VALID_OPERATIONS]
+            if unknown_ops:
+                self.write_json({"ok": False, "error": "包含无效工序绑定"},
+                                status=HTTPStatus.BAD_REQUEST)
+                return
             existing = get_valid_worker_ids()
             if wid in existing:
                 self.write_json({"ok": False, "error": f"工号 {wid} 已存在"}, status=HTTPStatus.CONFLICT)
                 return
-            db_add_worker(wid, name, team, source, odoo_eid)
+            db_add_worker(wid, name, team, source, odoo_eid, operation_codes)
             self.write_json({"ok": True, "data": {"id": wid, "name": name, "team": team,
-                                                   "source": source, "odooEmployeeId": odoo_eid}})
+                                                   "source": source, "odooEmployeeId": odoo_eid,
+                                                   "operationCodes": operation_codes}})
         except json.JSONDecodeError:
             self.write_json({"ok": False, "error": "无效的 JSON 格式"}, status=HTTPStatus.BAD_REQUEST)
         except Exception as exc:

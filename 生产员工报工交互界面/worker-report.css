@@ -313,23 +313,24 @@ html, body {
   color: #34d399;
 }
 
-/* ===================== 工单卡片（触摸大屏远距版） ===================== */
+/* ===================== 工单卡片（近距离高密度版） ===================== */
 .order-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
-  gap: 14px;
+  grid-template-columns: repeat(auto-fill, minmax(178px, 1fr));
+  gap: 8px;
   align-content: start;
 }
 .order-card {
-  padding: 24px;
-  border: 2px solid var(--border);
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   background: var(--surface);
   cursor: pointer;
   transition: all .12s;
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 8px;
 }
 .order-card:hover { border-color: var(--border-strong); }
 .order-card.active {
@@ -341,22 +342,22 @@ html, body {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  gap: 12px;
+  gap: 6px;
 }
 .oc-customer-code {
-  font-size: 20px;
+  font-size: 13px;
   font-weight: 800;
   color: #E8F0FF;
-  padding: 5px 14px;
+  padding: 3px 8px;
   border-radius: 4px;
   background: rgba(14,165,201,.12);
   border: 1px solid rgba(14,165,201,.3);
 }
-.oc-id { font-size: 32px; font-weight: 900; color: var(--text-heading); }
+.oc-id { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 21px; font-weight: 900; color: var(--text-heading); }
 .oc-status {
-  padding: 5px 16px;
-  border-radius: 14px;
-  font-size: 18px;
+  padding: 3px 7px;
+  border-radius: 10px;
+  font-size: 12px;
   font-weight: 800;
   flex-shrink: 0;
 }
@@ -366,18 +367,18 @@ html, body {
   display: flex;
   justify-content: space-between;
   align-items: flex-end;
-  gap: 18px;
-  padding: 10px 0;
+  gap: 8px;
+  padding: 6px 0;
   border-bottom: 1px dashed var(--border);
 }
 .oc-prod-main {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 2px;
   min-width: 0;
 }
-.oc-prod-main strong { font-size: 30px; font-weight: 900; color: var(--cyan); }
-.oc-prod-main small { font-size: 22px; color: var(--muted-light); font-weight: 700; }
+.oc-prod-main strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 18px; font-weight: 900; color: var(--cyan); }
+.oc-prod-main small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; color: var(--muted-light); font-weight: 700; }
 .oc-prod-extra {
   display: flex;
   flex-direction: column;
@@ -388,25 +389,28 @@ html, body {
 }
 .oc-prod-extra small { font-size: 16px; color: var(--muted); font-weight: 700; }
 .oc-spec {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 8px;
-  font-size: 22px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 4px;
+  min-width: 0;
+  font-size: 13px;
 }
-.oc-spec span { color: var(--text); font-weight: 800; }
-.oc-spec small { color: var(--muted); font-size: 16px; font-weight: 700; }
+.oc-spec span { min-width: 0; overflow: visible; overflow-wrap: anywhere; white-space: normal; color: var(--text); font-weight: 800; line-height: 1.25; }
+.oc-spec small { color: var(--muted); font-size: 11px; font-weight: 700; white-space: nowrap; }
 .oc-qty-row {
   display: flex;
   justify-content: space-between;
   align-items: baseline;
-  font-size: 28px;
+  gap: 6px;
+  font-size: 20px;
   font-weight: 900;
   color: var(--text-heading);
 }
 .oc-qty-row small {
+  white-space: nowrap;
   color: var(--orange);
-  font-size: 20px;
+  font-size: 12px;
   font-weight: 800;
 }
 .oc-meta-row {
@@ -414,9 +418,9 @@ html, body {
   justify-content: space-between;
   align-items: center;
   gap: 10px;
-  padding-top: 10px;
+  padding-top: 6px;
   border-top: 1px solid var(--border);
-  font-size: 18px;
+  font-size: 12px;
 }
 .oc-remark {
   color: var(--muted-light);
@@ -535,17 +539,18 @@ html, body {
 .submit-icon { font-size: 28px; color: #fff; }
 .submit-text { font-size: 16px; font-weight: 800; color: #fff; letter-spacing: 1px; }
 
-/* ===================== KPI（远距大屏版） ===================== */
+/* ===================== KPI（近距离紧凑版） ===================== */
 .kpi-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
 }
 .kpi-card {
   position: relative;
-  padding: 18px 20px;
+  min-width: 0;
+  padding: 12px 10px;
   border: 1px solid var(--border);
-  border-top: 4px solid var(--accent, var(--cyan));
+  border-top: 3px solid var(--accent, var(--cyan));
   border-radius: var(--radius);
   background: var(--surface);
   overflow: hidden;
@@ -553,21 +558,21 @@ html, body {
 .kpi-card::after {
   content: "";
   position: absolute;
-  right: -20px; bottom: -28px;
-  width: 90px; height: 90px;
-  border: 16px solid rgba(14,165,201,.06);
+  right: -14px; bottom: -20px;
+  width: 58px; height: 58px;
+  border: 10px solid rgba(14,165,201,.06);
   border-radius: 50%;
 }
-.kpi-label { display: block; color: var(--muted); font-size: 16px; font-weight: 800; }
+.kpi-label { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font-size: 13px; font-weight: 800; }
 .kpi-value {
   display: flex; align-items: baseline; gap: 6px;
-  margin: 8px 0 6px;
-  font-size: 56px; font-weight: 900; line-height: 1;
+  margin: 6px 0 4px;
+  font-size: 42px; font-weight: 900; line-height: 1;
   color: var(--text-heading);
   font-variant-numeric: tabular-nums;
 }
-.kpi-value small { color: var(--muted-light); font-size: 22px; font-weight: 800; }
-.kpi-trend { color: var(--muted-light); font-size: 13px; font-weight: 700; }
+.kpi-value small { color: var(--muted-light); font-size: 18px; font-weight: 800; }
+.kpi-trend { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted-light); font-size: 11px; font-weight: 700; }
 .kpi-trend strong { color: var(--accent, var(--cyan)); }
 
 /* ===================== 今日报工（远距大屏版） ===================== */
@@ -1172,8 +1177,9 @@ html, body {
 /* SOP 入口按钮（工单卡片中） */
 .oc-sop-btn {
   display: inline-flex; align-items: center; gap: 4px;
-  padding: 4px 12px; border-radius: 5px; border: 1px solid var(--cyan);
+  justify-content: center; width: 100%;
+  padding: 3px 6px; border-radius: 5px; border: 1px solid var(--cyan);
   background: rgba(14,165,201,.08); color: var(--cyan);
-  font-size: 14px; font-weight: 700; cursor: pointer; margin-top: 6px;
+  font-size: 12px; font-weight: 700; cursor: pointer; margin-top: 2px;
 }
 .oc-sop-btn:hover { background: rgba(14,165,201,.2); }

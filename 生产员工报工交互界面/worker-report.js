@@ -60,6 +60,13 @@ const OP = {
   pc_assembly_splitter: "电脑装机（分光主机）",
 };
 
+Object.assign(OP, {
+  test_tape_operation: "\u6d4b\u8bd5\u5de5\u5e8f\uff08\u7f16\u5e26\uff09",
+  test_splitter_operation: "\u6d4b\u8bd5\u5de5\u5e8f\uff08\u5206\u5149\uff09",
+  test_assembly_operation: "\u6d4b\u8bd5\u5de5\u5e8f\uff08\u7ec4\u88c5\uff09",
+  test_packing_operation: "\u6d4b\u8bd5\u5de5\u5e8f\uff08\u6253\u5305\uff09",
+});
+
 function esc(v) {
   return String(v ?? "").replace(/[&<>"']/g, (c) => ({
     "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
@@ -166,7 +173,10 @@ async function loadAll() {
   else S.dashboard = null;
 
   if (workersResp) {
-    S.workers = workersResp.data || [];
+    S.workers = (workersResp.data || []).map((worker) => ({
+      ...worker,
+      operationCodes: Array.isArray(worker.operationCodes) ? worker.operationCodes : [],
+    }));
     if (workersResp.meta && workersResp.meta.mode) S.runtimeMode = workersResp.meta.mode;
   } else {
     S.workers = defaultWorkers();
@@ -395,7 +405,7 @@ function renderActiveWorkers() {
 }
 
 // ====== 工人渲染 ======
-function renderWorkers() {
+function renderWorkersLegacy() {
   const el = $("#workerChips");
   const cnt = $("#workerCount");
   if (!el) return;
@@ -418,11 +428,30 @@ function renderWorkers() {
 }
 
 // ====== 工序渲染（动态） ======
+function renderWorkers() {
+  const el = $("#workerChips");
+  const cnt = $("#workerCount");
+  if (!el) return;
+  const visibleWorkers = S.workers || [];
+  if (cnt) cnt.textContent = visibleWorkers.length + " 人";
+  if (!visibleWorkers.length) {
+    el.innerHTML = '<div style="color:var(--muted);font-size:13px;padding:8px">暂无工人</div>';
+    return;
+  }
+  el.innerHTML = visibleWorkers.map((worker, index) => {
+    const active = S.selWorker && String(S.selWorker.id) === String(worker.id) ? " active" : "";
+    const odoo = worker.source === "odoo" ? " (Odoo)" : "";
+    const label = (worker.name || worker.id) + (worker.team ? " \u00b7 " + worker.team : "") + odoo;
+    return '<button class="chip worker-chip' + active + '" data-wi="' + index + '" data-wid="' +
+      esc(worker.id) + '">' + esc(label) + '</button>';
+  }).join("");
+}
+
 function isLuoweihua() {
   return S.selWorker && S.selWorker.name === "罗伟华";
 }
 
-function renderOperations() {
+function renderOperationsLegacy() {
   const el = $("#operationChips");
   if (!el) return;
 
@@ -446,18 +475,50 @@ function renderOperations() {
 }
 
 // ====== 工单渲染（合并原订单 + 新工单） ======
+function renderOperations() {
+  const el = $("#operationChips");
+  if (!el) return;
+  const worker = S.selWorker;
+  const allowed = new Set((worker && worker.operationCodes) || []);
+  if (!worker) {
+    el.innerHTML = '<div class="overview-empty">请先选择工人</div>';
+    return;
+  }
+  const ops = (S.operations || []).filter((op) => allowed.has(op.code));
+  if (!ops.length) {
+    el.innerHTML = '<div class="overview-empty">该工人暂未绑定工序</div>';
+    return;
+  }
+  el.innerHTML = ops.map((op) => {
+    const active = S.selOperation === op.code ? " active" : "";
+    return '<button class="chip op-chip' + active + '" data-op="' + esc(op.code) + '">' +
+      esc(op.name || OP[op.code] || op.code) + '</button>';
+  }).join("");
+}
+
+function workorderMatchesSelectedOperation(workorder) {
+  if (!S.selOperation) return false;
+  const operation = (S.operations || []).find((op) => op.code === S.selOperation);
+  if (!operation) return false;
+  if (operation.hostType && workorder.hostType !== operation.hostType) return false;
+  const names = operation.workorderNames || [];
+  return !names.length || names.includes(workorder.workorderName);
+}
+
 function renderOrders() {
   const el = $("#orderCards");
   const cnt = $("#orderCount");
   if (!el) return;
 
   // 只显示工单（不合并订单）
-  const workorderActive = (S.workorders || []).filter((w) => w.remainingQty > 0);
+  const workorderActive = (S.workorders || []).filter(
+    (w) => w.remainingQty > 0 && workorderMatchesSelectedOperation(w)
+  );
   const totalCount = workorderActive.length;
   if (cnt) cnt.textContent = totalCount + " 个";
 
   if (totalCount === 0) {
-    const tip = selOp === "pc_tape" || selOp === "pc_splitter"
+    const tip = S.selOperation && (S.selOperation.includes("tape") || S.selOperation.includes("splitter"))
       ? '当前工序已限定机型，没有匹配的工单（可点工序切换其他机型）'
       : '暂无待处理工单';
     el.innerHTML = '<div class="overview-empty">' + esc(tip) + '</div>';
@@ -475,7 +536,7 @@ function renderOrders() {
     const stCls = w.state === "progress" ? "running" : w.state === "ready" ? "progress" : "";
     const stLabel = w.stateLabel || w.state || "";
     // 工序×工单匹配检查（仅对 pc_assembly 工序生效）
-    const mismatch = currentHostType && w.hostType && w.hostType !== currentHostType;
+    const mismatch = !workorderMatchesSelectedOperation(w);
 
     return '<div class="order-card ' + stateClsFromState(w.state) + act + (mismatch ? " mismatch" : "") + '" data-woid="' + esc(w.workorderId) + '" data-pid="' + esc(w.productionId || "") + '" data-mismatch="' + (mismatch ? "1" : "0") + '">' +
       '<div class="oc-header">' +
@@ -556,17 +617,18 @@ function updateSubmit() {
   if (!btn) return;
   // 工序×工单匹配检查
   const opInfo = S.operations.find((o) => o.code === S.selOperation);
-  const opHostType = opInfo ? opInfo.hostType : null;
-  const woHostType = S.selectedWorkorder ? S.selectedWorkorder.hostType : null;
-  const mismatch = opHostType && woHostType && opHostType !== woHostType;
   const hasWorkorder = !!(S.selectedWorkorder && S.selectedWorkorder.workorderId);
+  const mismatch = hasWorkorder && !!opInfo && !workorderMatchesSelectedOperation(S.selectedWorkorder);
+  const workerAllows = !!(S.selWorker &&
+    (S.selWorker.operationCodes || []).includes(S.selOperation));
   // Odoo sync requires a concrete work order and production order.
   const can = S.selWorkerIdx >= 0 && S.selOperation && S.qty > 0
-    && hasWorkorder && !S.submitting && !mismatch;
+    && workerAllows && hasWorkorder && !S.submitting && !mismatch;
   btn.disabled = !can;
   // 不匹配时更新 title 提示
   if (mismatch) {
-    const want = opHostType === "tape" ? "编带机箱" : opHostType === "splitter" ? "分光机箱" : "对应";
+    const want = opInfo && opInfo.hostType === "tape" ? "编带机箱" :
+      opInfo && opInfo.hostType === "splitter" ? "分光机箱" : "对应";
     btn.title = `当前工序只能选择${want}工单，请重新选择`;
   } else if (!hasWorkorder) {
     btn.title = "请先选择工单";
@@ -809,15 +871,20 @@ function setupBomEvents() {
 function setupEvents() {
   $("#workerChips")?.addEventListener("click", (e) => {
     const chip = e.target.closest(".chip");
-    if (!chip || chip.dataset.wname === undefined) return;
-    const name = chip.dataset.wname;
-    // 用名字在 S.workers 中查找对应的原始索引（保持 S.selWorker 引用真实数据）
-    const idx = S.workers.findIndex((w) => w.name === name);
+    if (!chip || chip.dataset.wi === undefined) return;
+    const idx = Number.parseInt(chip.dataset.wi, 10);
     if (idx < 0) return;
     S.selWorkerIdx = idx;
     S.selWorker = S.workers[idx];
+    S.selOperation = "";
+    S.selectedOperation = null;
+    S.selectedWorkorder = null;
+    S.selectedProduction = null;
+    S.bomItems = [];
+    S.bomConfirmed = false;
     renderWorkers();
     renderOperations();
+    renderOrders();
     updateSubmit();
   });
 
@@ -825,6 +892,7 @@ function setupEvents() {
     const chip = e.target.closest(".op-chip");
     if (!chip || !chip.dataset.op) return;
     const opCode = chip.dataset.op;
+    if (!S.selWorker || !(S.selWorker.operationCodes || []).includes(opCode)) return;
     S.selOperation = opCode;
 
     // 查找对应工序的完整信息
@@ -832,8 +900,7 @@ function setupEvents() {
     S.selectedOperation = opInfo || { code: opCode, name: OP[opCode] || opCode };
 
     // 切换工序：若已选工单与新工序不匹配，自动清掉
-    if (S.selectedWorkorder && opInfo && opInfo.hostType &&
-        S.selectedWorkorder.hostType && S.selectedWorkorder.hostType !== opInfo.hostType) {
+    if (S.selectedWorkorder && !workorderMatchesSelectedOperation(S.selectedWorkorder)) {
       S.selectedWorkorder = null;
       S.selectedProduction = null;
       toast(`已清掉不匹配的工单（${opInfo.hostType === "tape" ? "编带" : "分光"}工序）`, "info");
