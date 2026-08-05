@@ -116,23 +116,23 @@
         <div class="table-responsive">
             <table class="table table-hover align-middle mb-0">
                 <thead class="table-light">
-                    <tr>
-                        <th>BOM 编号</th>
-                        <th>名称</th>
-                        <th>类型</th>
-                        <th>源 BOM</th>
-                        <th>关联产品</th>
-                        <th>版本</th>
-                        <th>状态</th>
-                        <th>Odoo 同步</th>
-                        <th>创建人</th>
-                        <th>时间</th>
-                        <th style="width:130px;">操作</th>
+                    <tr class="text-nowrap">
+                        <th style="width:170px;">BOM 编号</th>
+                        <th style="width:200px;">名称</th>
+                        <th style="width:70px;">类型</th>
+                        <th style="width:150px;">源 BOM</th>
+                        <th style="width:160px;">关联产品</th>
+                        <th style="width:60px;">版本</th>
+                        <th style="width:80px;">状态</th>
+                        <th style="width:100px;">Odoo 同步</th>
+                        <th style="width:80px;">创建人</th>
+                        <th style="width:100px;">时间</th>
+                        <th style="width:120px;">操作</th>
                     </tr>
                 </thead>
                 <tbody>
                     {% for bom in boms %}
-                    <tr {% if bom.id in pending_by_bom %}class="table-warning"{% endif %}>
+                    <tr {% if bom.id in pending_by_bom %}class="table-warning"{% endif %} class="text-nowrap">
                         <td>
                             <a href="{{ url_for('boms.view_bom', id=bom.id) }}" class="text-decoration-none fw-semibold">
                                 {{ bom.bom_no }}
@@ -143,7 +143,7 @@
                             </a>
                             {% endif %}
                         </td>
-                        <td>
+                        <td class="text-truncate" style="max-width:200px;" title="{{ bom.name }}">
                             <a href="{{ url_for('boms.view_bom', id=bom.id) }}" class="text-decoration-none">
                                 {{ bom.name }}
                             </a>
@@ -168,7 +168,15 @@
                             <span class="text-muted small">—</span>
                             {% endif %}
                         </td>
-                        <td>{{ bom.product.code if bom.product else '-' }}</td>
+                        <td class="text-truncate" style="max-width:160px;" title="{{ bom.product.code if bom.product else '-' }}">
+                            {% if bom.product %}
+                                {% if bom.product.code and bom.product.code[:3] != 'ITM' %}
+                                    <code class="small">{{ bom.product.code }}</code>
+                                {% else %}
+                                    <code class="small" title="{{ bom.product.system_id }}">{{ bom.product.name or bom.product.system_id[:18] + '...' }}</code>
+                                {% endif %}
+                            {% else %}-{% endif %}
+                        </td>
                         <td>{{ bom.version }}</td>
                         <td>
                             {% if bom.status == 'draft' %}

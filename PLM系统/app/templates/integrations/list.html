@@ -195,7 +195,7 @@
 <script>
 function testConnection(cfgId) {
     const el = document.getElementById('testResult-' + cfgId);
-    el.innerHTML = '<i class="spinner-border spinner-border-sm"></i> 测试中...';
+    el.textContent = '✅ v' + data.version + ' | uid=' + data.uid<i class="spinner-border spinner-border-sm"></i> 测试中...';
     el.className = 'text-muted';
     const csrf = document.querySelector('input[name=csrf_token]').value;
     fetch('/integrations/' + cfgId + '/test', {
@@ -206,15 +206,15 @@ function testConnection(cfgId) {
     .then(r => r.json())
     .then(data => {
         if (data.ok) {
-            el.innerHTML = '✅ Odoo v' + data.version + ' | uid=' + data.uid;
+            el.textContent = '✅ v' + data.version + ' | uid=' + data.uid✅ Odoo v' + data.version + ' | uid=' + data.uid;
             el.className = 'text-success';
         } else {
-            el.innerHTML = '❌ ' + data.error;
+            el.textContent = '✅ v' + data.version + ' | uid=' + data.uid❌ ' + data.error;
             el.className = 'text-danger';
         }
     })
     .catch(e => {
-        el.innerHTML = '❌ ' + e;
+        el.textContent = '✅ v' + data.version + ' | uid=' + data.uid❌ ' + e;
         el.className = 'text-danger';
     });
 }

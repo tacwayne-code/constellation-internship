@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}新建文档 - PLM 系统{% endblock %}
+{% block title %}新建文档 - PLM系统2{% endblock %}
 
 {% block page_header %}
 <h5 class="mb-0"><i class="bi bi-plus-circle me-2"></i>新建文档</h5>
@@ -13,19 +13,31 @@
             <div class="card-body p-4">
                 <form method="POST" action="{{ url_for('documents.create_doc') }}" enctype="multipart/form-data">
 
-                    <!-- 图号 8位规范 -->
+                    <!-- 图号 8位规范 (自动格式化) -->
                     <div class="mb-3">
-                        <label for="title" class="form-label fw-medium">
+                        <label class="form-label fw-medium">
                             图号 <span class="text-danger">*</span>
                         </label>
-                        <input type="text" class="form-control" id="title" name="title"
-                               placeholder="例：71-14-02-01"
-                               pattern="^\d{2}-\d{2}-\d{2}-\d{2}$"
-                               maxlength="11" required>
+                        <div class="drawing-no-input d-flex align-items-center gap-1">
+                            <input type="text" class="form-control text-center" id="seg1" maxlength="2" placeholder="XX"
+                                   inputmode="numeric" pattern="\d{2}" required style="width:70px; font-weight:600;">
+                            <span class="text-muted fw-bold">-</span>
+                            <input type="text" class="form-control text-center" id="seg2" maxlength="2" placeholder="XX"
+                                   inputmode="numeric" pattern="\d{2}" required style="width:70px; font-weight:600;">
+                            <span class="text-muted fw-bold">-</span>
+                            <input type="text" class="form-control text-center" id="seg3" maxlength="2" placeholder="XX"
+                                   inputmode="numeric" pattern="\d{2}" required style="width:70px; font-weight:600;">
+                            <span class="text-muted fw-bold">-</span>
+                            <input type="text" class="form-control text-center" id="seg4" maxlength="2" placeholder="XX"
+                                   inputmode="numeric" pattern="\d{2}" required style="width:70px; font-weight:600;">
+                        </div>
+                        <!-- 实际提交到后端的字段 -->
+                        <input type="hidden" id="title" name="title" pattern="^\d{2}-\d{2}-\d{2}-\d{2}$" required>
                         <div class="form-text">
                             <i class="bi bi-info-circle me-1 text-primary"></i>
                             <strong>8 位编码规则</strong> ——
                             <code>机型-唯一编码-模块-顺序</code>：每段 2 位数字
+                            <span class="text-muted">（仅需填数字，<code>-</code> 自动呈现）</span>
                             <br>
                             <span class="ms-4 small">
                                 ①<strong>机型</strong> 2位 ·
@@ -98,24 +110,58 @@
 {% block scripts %}
 {{ super() }}
 <script>
-// 实时校验图号格式 + 防止把图号写进名称
+// 4段图号输入：自动跳转 + 同步到 hidden title 字段
 document.addEventListener('DOMContentLoaded', function() {
-    const titleInput = document.getElementById('title');
+    const segs = ['seg1', 'seg2', 'seg3', 'seg4'].map(id => document.getElementById(id));
+    const hidden = document.getElementById('title');
     const nameInput = document.getElementById('name');
-    const pattern = /^\d{2}-\d{2}-\d{2}-\d{2}$/;
 
-    // 图号格式提示
-    titleInput.addEventListener('input', function() {
-        if (this.value && !pattern.test(this.value)) {
-            this.setCustomValidity('图号必须是 8 位数字，格式：XX-XX-XX-XX');
-        } else {
-            this.setCustomValidity('');
-        }
+    // 同步到隐藏字段
+    function sync() {
+        const v = segs.map(s => s.value).join('-');
+        hidden.value = v;
+        // 把绘图号传递给名称校验
+        nameInput.dispatchEvent(new Event('input'));
+    }
+
+    segs.forEach((seg, idx) => {
+        // 仅允许数字
+        seg.addEventListener('input', function(e) {
+            this.value = this.value.replace(/[^0-9]/g, '');
+            if (this.value.length === 2 && idx < 3) {
+                segs[idx + 1].focus();
+            }
+            sync();
+        });
+
+        // Backspace 到空时光标回到上一段
+        seg.addEventListener('keydown', function(e) {
+            if (e.key === 'Backspace' && this.value === '' && idx > 0) {
+                segs[idx - 1].focus();
+                segs[idx - 1].value = '';
+                e.preventDefault();
+                sync();
+            }
+        });
+
+        // 粘贴支持
+        seg.addEventListener('paste', function(e) {
+            e.preventDefault();
+            const pasted = (e.clipboardData.getData('text') || '').replace(/[^0-9]/g, '');
+            const all = segs.map(s => s.value).join('') + pasted;
+            all.split('').slice(0, 8).forEach((d, i) => {
+                segs[Math.floor(i / 2)].value = (segs[Math.floor(i / 2)].value + d).slice(-2);
+            });
+            sync();
+            const nextEmpty = segs.findIndex(s => s.value === '');
+            if (nextEmpty >= 0) segs[nextEmpty].focus();
+            else segs[3].focus();
+        });
     });
 
-    // 名称中不能包含图号
+    // 名称不能包含图号
     function checkName() {
-        const title = titleInput.value.trim();
+        const title = hidden.value.trim();
         const name = nameInput.value.trim();
         if (title && name && name.includes(title)) {
             nameInput.setCustomValidity('名称中不能包含图号「' + title + '」');
@@ -126,7 +172,6 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
     nameInput.addEventListener('input', checkName);
-    titleInput.addEventListener('change', checkName);
 });
 </script>
 {% endblock %}

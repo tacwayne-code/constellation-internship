@@ -39,6 +39,14 @@
             </button>
         </form>
         {% endif %}
+        <a href="{{ url_for('boms.export_bom_excel', id=bom.id) }}" class="btn btn-outline-secondary btn-sm" title="导出 CSV">
+            <i class="bi bi-download me-1"></i>导出
+        </a>
+        <form method="post" action="{{ url_for('boms.copy_bom', id=bom.id) }}" style="display:inline;">
+            <button type="submit" class="btn btn-outline-secondary btn-sm" title="复制 BOM">
+                <i class="bi bi-copy me-1"></i>复制
+            </button>
+        </form>
     </div>
 </div>
 

@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}{{ doc.title }} - PLM 系统{% endblock %}
+{% block title %}{{ doc.title }} - PLM系统2{% endblock %}
 
 {% block page_header %}
 <div class="d-flex align-items-center">
@@ -253,6 +253,32 @@
                 <h6 class="mb-0"><i class="bi bi-gear me-1"></i>操作</h6>
             </div>
             <div class="card-body">
+                <!-- 审批通过/驳回（当前用户是审批人且状态 pending） -->
+                {% set my_pending = doc.approvals|selectattr('approver_id', 'equalto', current_user.id)|selectattr('status', 'equalto', 'pending')|list if doc.approvals else [] %}
+                {% if my_pending %}
+                <form method="POST" action="{{ url_for('documents.approve_doc', id=doc.id) }}" class="mb-2">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                    <div class="input-group input-group-sm mb-2">
+                        <input type="text" name="comment" class="form-control" placeholder="审批意见（可选）">
+                    </div>
+                    <div class="d-flex gap-1">
+                        <button type="submit" name="action" value="approved" class="btn btn-success flex-fill"
+                                onclick="return confirm('确认通过审批「{{ doc.title }}」？')">
+                            <i class="bi bi-check-lg me-1"></i>通过
+                        </button>
+                        <button type="submit" name="action" value="rejected" class="btn btn-danger flex-fill"
+                                onclick="return confirm('确认驳回审批「{{ doc.title}}」？')">
+                            <i class="bi bi-x-lg me-1"></i>驳回
+                        </button>
+                    </div>
+                </form>
+                {% endif %}
+
+                <!-- 创建关联产品 -->
+                <a href="{{ url_for('structures.create_product', from_doc=doc.id) }}" class="btn btn-outline-primary w-100 mb-2">
+                    <i class="bi bi-box-seam me-1"></i>创建关联产品
+                </a>
+
                 <!-- 提交审批 -->
                 {% if doc.status in ['draft', 'rejected'] %}
                 <form method="POST" action="{{ url_for('documents.submit_approval', id=doc.id) }}" class="mb-2">
@@ -304,9 +330,9 @@
                 </form>
                 {% endif %}
 
-                <!-- 返回列表（保留筛选状态） -->
-                <a href="{{ back_url }}" class="btn btn-outline-secondary w-100">
-                    <i class="bi bi-arrow-left me-1"></i>返回列表
+                <!-- 返回：优先用 JS history.back() 回上一步，没有历史时回列表 -->
+                <a href="{{ back_url }}" class="btn btn-outline-secondary w-100" onclick="if (document.referrer && document.referrer.includes(window.location.host)) { history.back(); return false; }">
+                    <i class="bi bi-arrow-left me-1"></i>返回上一步
                 </a>
             </div>
         </div>

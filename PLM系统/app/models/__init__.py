@@ -1,3 +1,4 @@
+import os
 import uuid
 from datetime import datetime, date, timezone
 from flask_login import UserMixin
@@ -39,6 +40,24 @@ def gen_system_id():
 
 
 # ── API Key 加密工具 ──
+def _get_key():
+    """获取确定性的加密密钥"""
+    from flask import current_app
+    try:
+        k = current_app.config.get('SECRET_KEY', '')[:32]
+        if k:
+            return k
+    except Exception:
+        pass
+    sk_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), '.secret_key')
+    sk = os.environ.get('SECRET_KEY', '')
+    if not sk and os.path.exists(sk_path):
+        with open(sk_path, 'r') as f:
+            sk = f.read().strip()[:32]
+    return sk if sk else 'plm-v2-fallback-key-2026'
+
+
+
 def _encrypt(plain_text):
     """用 SECRET_KEY 对敏感字段做可逆混淆（非密码级加密，防明文泄露）
     注意：此为 XOR 混淆，非密码学安全加密。生产环境建议使用 Fernet 或 AES-GCM。"""
@@ -49,7 +68,7 @@ def _encrypt(plain_text):
     except Exception:
         key = ''
     if not key:
-        key = os.environ.get('SECRET_KEY', uuid.uuid4().hex)[:32]
+        key = _get_key()
     key_bytes = key.encode('utf-8').ljust(32, b'\0')
     plain_bytes = plain_text.encode('utf-8')
     result = bytes(p ^ key_bytes[i % 32] for i, p in enumerate(plain_bytes))
@@ -65,14 +84,14 @@ def _decrypt(cipher_text):
     except Exception:
         key = ''
     if not key:
-        key = os.environ.get('SECRET_KEY', uuid.uuid4().hex)[:32]
+        key = _get_key()
     key_bytes = key.encode('utf-8').ljust(32, b'\0')
     try:
         data = base64.urlsafe_b64decode(cipher_text)
         result = bytes(d ^ key_bytes[i % 32] for i, d in enumerate(data))
         return result.decode('utf-8')
     except Exception:
-        return cipher_text  # 旧数据未加密，原样返回
+        raise ValueError(f'decrypt failed for cipher text length={len(cipher_text)}')
 
 
 # ──────────────── 1. 用户与权限 ────────────────
@@ -472,3 +491,43 @@ class SyncLog(db.Model):
     records_count = db.Column(db.Integer, default=0)
     message = db.Column(db.Text)
     created_at = db.Column(db.DateTime, default=_now)
+
+
+class AuditLog(db.Model):
+    """审计日志：记录所有关键操作"""
+    __tablename__ = 'plm_audit_log'
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('plm_user.id'), nullable=True)
+    username = db.Column(db.String(100))
+    action = db.Column(db.String(50), nullable=False)   # create/update/delete/publish/approve/reject/push/convert/lock/unlock
+    target_type = db.Column(db.String(50))               # document/product/bom/bom_item/integration
+    target_id = db.Column(db.Integer)
+    target_label = db.Column(db.String(500))             # 可读描述
+    detail = db.Column(db.Text)                          # JSON 格式细节
+    ip_address = db.Column(db.String(50))
+    created_at = db.Column(db.DateTime, default=_now)
+
+    user = db.relationship('User', foreign_keys=[user_id])
+
+
+def audit_log(action, target_type=None, target_id=None, target_label=None, detail=None):
+    """便捷写审计日志（需在 app context 中调用）"""
+    from flask import request
+    from flask_login import current_user
+    try:
+        uid = current_user.id if current_user.is_authenticated else None
+        uname = current_user.username if current_user.is_authenticated else 'guest'
+    except Exception:
+        uid, uname = None, 'system'
+    log = AuditLog(
+        user_id=uid, username=uname, action=action,
+        target_type=target_type, target_id=target_id,
+        target_label=target_label or '', detail=detail or '',
+        ip_address=request.remote_addr if request else ''
+    )
+    db.session.add(log)
+    try:
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+

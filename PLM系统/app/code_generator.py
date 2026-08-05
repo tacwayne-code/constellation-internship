@@ -6,7 +6,7 @@
   BB  = 产品族码（01=分光机, 02=编带机, 03=点胶机, 04=固晶机, 05=搅拌机, 06=贴片机, 99=通用件）
   CC  = 部件分类码（01=机架底座, 02=传动机构, 03=送料机构, 04=光学组件, 05=电气安装, 06=气动组件,
                     07=管路接头, 08=防护罩壳, 09=工装治具, 10=焊接结构）
-  DDD = 流水号 001~999
+  DD = 流水号 01~99
 
 标准件编码格式： ST-XX-XXX-XXXX
   ST  = 固定前缀
@@ -101,10 +101,10 @@ def generate_part_code(model, family_code: str, component_code: str, category_co
     else:
         seq = 1
 
-    if seq > 999:
-        raise ValueError(f'流水号已满（>999），前缀 {prefix}')
+    if seq > 99:
+        raise ValueError(f'流水号已满（>99），前缀 {prefix}')
 
-    return f'{prefix}{seq:03d}'
+    return f'{prefix}{seq:02d}'
 
 
 def generate_std_code(model, std_category: str, sub_category: str, spec: str) -> str:

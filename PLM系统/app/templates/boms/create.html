@@ -76,10 +76,11 @@
                 <div class="row mb-3">
                     <label class="col-sm-2 col-form-label">BOM 类型</label>
                     <div class="col-sm-10">
-                        <select class="form-select" name="bom_type">
-                            <option value="EBOM" selected>eBOM（工程 BOM）</option>
-                            <option value="MBOM">mBOM（制造 BOM）</option>
+                        <select class="form-select" disabled>
+                            <option value="EBOM" selected>eBOM（工程 BOM）— 唯一入口</option>
                         </select>
+                        <input type="hidden" name="bom_type" value="EBOM">
+                        <small class="text-muted">系统只允许创建 eBOM，发布后转为 mBOM</small>
                     </div>
                 </div>
                 <div class="row mb-3">
@@ -154,17 +155,13 @@
                     </select>
                     <small class="text-muted">mBOM 类型由转换流程确定，不能手动修改</small>
                     {% else %}
-                    <select class="form-select" id="bom_type" name="bom_type" required>
-                        <option value="">-- 请选择 --</option>
-                        <option value="EBOM" {% if edit_mode and bom.bom_type == 'EBOM' %}selected{% elif not edit_mode %}selected{% endif %}>
-                            eBOM — 工程 BOM（设计数据源，发布后可转为 mBOM）
-                        </option>
-                        <option value="MBOM" {% if edit_mode and bom.bom_type == 'MBOM' and not bom.source_ebom_id %}selected{% endif %}>
-                            mBOM — 制造 BOM
-                        </option>
+                    {# 新版：只能创建 eBOM，mBOM 由 eBOM 转换而来 #}
+                    <input type="hidden" name="bom_type" value="EBOM">
+                    <select class="form-select" disabled>
+                        <option value="EBOM" selected>eBOM — 工程 BOM（唯一入口，发布后转为 mBOM）</option>
                     </select>
                     <small class="text-muted">
-                        <i class="bi bi-info-circle me-1"></i>建议从 eBOM 开始，发布后通过「转为 mBOM」功能自动转换
+                        <i class="bi bi-info-circle me-1"></i>系统只允许创建 eBOM。发布后可通过「转为 mBOM」转换为制造 BOM。
                     </small>
                     {% endif %}
                 </div>
@@ -191,12 +188,16 @@
                 <table class="table table-bordered bom-items-table">
                     <thead class="table-light">
                         <tr>
-                            <th style="width:40px;">#</th>
-                            <th>物料 <span class="text-danger">*</span></th>
-                            <th style="width:100px;">数量 <span class="text-danger">*</span></th>
-                            <th style="width:120px;">单位</th>
-                            <th style="width:140px;">备注</th>
-                            <th style="width:60px;">操作</th>
+                            <th style="width:32px;">#</th>
+                            <th style="width:160px;">物料 <span class="text-danger">*</span></th>
+                            <th style="width:80px;">大类</th>
+                            <th style="width:80px;">产品族</th>
+                            <th style="width:80px;">部件</th>
+                            <th style="width:110px;">生成编码</th>
+                            <th style="width:60px;">数量 <span class="text-danger">*</span></th>
+                            <th style="width:80px;">单位</th>
+                            <th style="width:90px;">备注</th>
+                            <th style="width:40px;">操作</th>
                         </tr>
                     </thead>
                     <tbody id="bomItemsBody">
@@ -205,7 +206,7 @@
                             <tr class="item-row" data-index="{{ loop.index0 }}">
                                 <td class="item-seq text-center">{{ loop.index }}</td>
                                 <td>
-                                    <select class="form-select form-select-sm" name="product_id[]" required>
+                                    <select class="form-select form-select-sm item-product" name="product_id[]" required>
                                         <option value="">-- 请选择 --</option>
                                         {% for product in products %}
                                         <option value="{{ product.id }}" {% if item.product_id == product.id %}selected{% endif %}>
@@ -213,6 +214,34 @@
                                         </option>
                                         {% endfor %}
                                     </select>
+                                </td>
+                                <td>
+                                    <select class="form-select form-select-sm code-selector" data-part="category">
+                                        <option value="">-</option>
+                                        {% for k, v in mappings.part_category.items() %}
+                                        <option value="{{ k }}">{{ k }}{{ v }}</option>
+                                        {% endfor %}
+                                    </select>
+                                </td>
+                                <td>
+                                    <select class="form-select form-select-sm code-selector" data-part="family">
+                                        <option value="">-</option>
+                                        {% for k, v in mappings.product_family.items() %}
+                                        <option value="{{ k }}">{{ k }}{{ v }}</option>
+                                        {% endfor %}
+                                    </select>
+                                </td>
+                                <td>
+                                    <select class="form-select form-select-sm code-selector" data-part="component">
+                                        <option value="">-</option>
+                                        {% for k, v in mappings.component_category.items() %}
+                                        <option value="{{ k }}">{{ k }}{{ v }}</option>
+                                        {% endfor %}
+                                    </select>
+                                </td>
+                                <td>
+                                    <input type="text" class="form-control form-control-sm item-code-preview" name="code[]" readonly
+                                           placeholder="选三级分类后自动生成" value="{% if edit_mode %}{{ item.code or '' }}{% endif %}">
                                 </td>
                                 <td>
                                     <input type="number" class="form-control form-control-sm" name="qty[]"
@@ -259,6 +288,34 @@
                                     {% endfor %}
                                 </select>
                             </td>
+                                <td>
+                                    <select class="form-select form-select-sm code-selector" data-part="category">
+                                        <option value="">-</option>
+                                        {% for k, v in mappings.part_category.items() %}
+                                        <option value="{{ k }}">{{ k }}{{ v }}</option>
+                                        {% endfor %}
+                                    </select>
+                                </td>
+                                <td>
+                                    <select class="form-select form-select-sm code-selector" data-part="family">
+                                        <option value="">-</option>
+                                        {% for k, v in mappings.product_family.items() %}
+                                        <option value="{{ k }}">{{ k }}{{ v }}</option>
+                                        {% endfor %}
+                                    </select>
+                                </td>
+                                <td>
+                                    <select class="form-select form-select-sm code-selector" data-part="component">
+                                        <option value="">-</option>
+                                        {% for k, v in mappings.component_category.items() %}
+                                        <option value="{{ k }}">{{ k }}{{ v }}</option>
+                                        {% endfor %}
+                                    </select>
+                                </td>
+                                <td>
+                                    <input type="text" class="form-control form-control-sm item-code-preview" name="code[]" readonly
+                                           placeholder="选三级分类后自动生成" value="{% if edit_mode %}{{ item.code or '' }}{% endif %}">
+                                </td>
                             <td>
                                 <input type="number" class="form-control form-control-sm" name="qty[]"
                                        min="0" step="any" required placeholder="数量">
@@ -325,6 +382,63 @@
 <script>
 var itemIndex = 1;
 
+// -- BOM 名称自动建议 --
+var nameInput = document.getElementById('name');
+var productSelect = document.getElementById('product_id');
+productSelect.addEventListener('change', function() {
+    var opt = this.options[this.selectedIndex];
+    if (opt.value && (!nameInput.value || nameInput.dataset.auto === '1')) {
+        var pname = opt.textContent.split(' - ')[1] || opt.textContent;
+        nameInput.value = pname + ' - eBOM';
+        nameInput.dataset.auto = '1';
+    }
+});
+nameInput.addEventListener('input', function() {
+    nameInput.dataset.auto = '0';
+});
+
+// -- 产品下拉短格式显示 --
+function shortCode(text) {
+    var parts = text.split(' - ');
+    if (parts.length >= 2 && parts[0].length > 20) {
+        return parts[0].substring(0, 20) + '... ' + parts.slice(1).join(' - ');
+    }
+    return text;
+}
+
+// -- 获取当前关联产品 ID --
+function parentProductId() {
+    return productSelect.value;
+}
+
+// -- 过滤物料下拉：排除关联产品 --
+function filterMaterialSelects() {
+    var pid = parentProductId();
+    document.querySelectorAll('#bomItemsBody select[name="product_id[]"]').forEach(function(sel) {
+        var currentVal = sel.value;
+        for (var i = sel.options.length - 1; i >= 0; i--) {
+            var opt = sel.options[i];
+            if (opt.value === pid) {
+                opt.disabled = true;
+                opt.textContent = opt.textContent.replace(/^/, '[BOM产品] ');
+            }
+        }
+    });
+}
+
+// -- addItemRow 重写：复制模板行时也做过滤 --
+var origAddItemRow = addItemRow;
+addItemRow = function() {
+    origAddItemRow();
+    filterMaterialSelects();
+};
+
+// 初始化
+document.addEventListener('DOMContentLoaded', function() {
+    filterMaterialSelects();
+    productSelect.addEventListener('change', filterMaterialSelects);
+});
+
 function addItemRow() {
     var tbody = document.getElementById('bomItemsBody');
     var template = tbody.querySelector('.item-row').cloneNode(true);
@@ -365,6 +479,72 @@ function reindexRows() {
     var rows = tbody.querySelectorAll('.item-row:not(.item-row-deleted)');
     rows.forEach(function(row, idx) {
         row.querySelector('.item-seq').textContent = idx + 1;
+    });
+}
+
+// -- 配件码三级下拉 实时预览 --
+function getRowSelects(row) {
+    var sels = row.querySelectorAll('.code-selector');
+    var cat = '', fam = '', comp = '';
+    sels.forEach(function(s) {
+        var part = s.dataset.part;
+        var v = s.value;
+        if (part === 'category') cat = v;
+        if (part === 'family') fam = v;
+        if (part === 'component') comp = v;
+    });
+    return {cat: cat, fam: fam, comp: comp};
+}
+
+function previewCode(row) {
+    var sel = getRowSelects(row);
+    var input = row.querySelector('.item-code-preview');
+    if (!sel.cat || !sel.fam || !sel.comp) {
+        input.value = '';
+        input.placeholder = '需选 3 项 (大类/产品族/部件)';
+        return;
+    }
+    // 调用后端 API 生成（流水号）
+    var formData = new FormData();
+    formData.append('category', sel.cat);
+    formData.append('family', sel.fam);
+    formData.append('component', sel.comp);
+    var bomName = document.getElementById('name') ? document.getElementById('name').value : '';
+    formData.append('bom_name', bomName);
+    var csrfMeta = document.querySelector('meta[name="csrf-token"]');
+    var csrfToken = csrfMeta ? csrfMeta.getAttribute('content') : '';
+    fetch('/boms/api/generate-code', {
+        method: 'POST',
+        body: formData,
+        headers: csrfToken ? {'X-CSRFToken': csrfToken} : {}
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.code) {
+            input.value = data.code;
+        }
+    })
+    .catch(e => {
+        input.value = '??-' + sel.fam + '-' + sel.comp + '-XX';
+    });
+}
+
+// 监听所有 .code-selector 的 change 事件（初始 + 新增行）
+document.addEventListener('change', function(e) {
+    if (e.target.classList && e.target.classList.contains('code-selector')) {
+        var row = e.target.closest('.item-row');
+        if (row) previewCode(row);
+    }
+});
+
+// 监听 bom name 变化，重新生成预览
+var bomNameInput = document.getElementById('name');
+if (bomNameInput) {
+    bomNameInput.addEventListener('change', function() {
+        document.querySelectorAll('.item-row:not(.item-row-deleted)').forEach(function(row) {
+            var input = row.querySelector('.item-code-preview');
+            if (input && input.value) previewCode(row);
+        });
     });
 }
 </script>

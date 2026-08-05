@@ -1,0 +1,35 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+
+# Database
+*.db
+*.sqlite3
+
+# Secrets
+.secret_key
+*.pem
+
+# Logs
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Environment
+.env
+.env.local
+
+# Uploads (production data)
+app/static/uploads/*
+!app/static/uploads/.gitkeep
+
+*.db-shm
+*.db-wal

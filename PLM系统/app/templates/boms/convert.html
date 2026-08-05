@@ -106,9 +106,11 @@
                     </div>
                     <div class="mb-3">
                         <label class="form-label">转换备注</label>
-                        <textarea class="form-control" name="conversion_note" rows="2"
-                                  placeholder="说明本结构变换做了哪些调整（如：虚拟件展开、补充中间半成品等）"></textarea>
-                        <small class="text-muted">此备注将记录在转换历史中，帮助后续追溯</small>
+                        <textarea class="form-control" name="conversion_note" rows="4"
+                                  placeholder="说明本结构变换做了哪些调整（如：虚拟件展开、补充中间半成品等）">{{ auto_note or '' }}</textarea>
+                        <small class="text-muted">
+                            <i class="bi bi-magic me-1"></i>已根据上次转换自动识别差异，您可修改后提交
+                        </small>
                     </div>
 
                     <hr>

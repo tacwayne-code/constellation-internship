@@ -46,6 +46,30 @@
                     </div>
 
                     <div class="row mb-3">
+                        <label for="code" class="col-sm-2 col-form-label">产品编码/图号</label>
+                        <div class="col-sm-10">
+                            <input type="text" class="form-control" id="code" name="code"
+                                   placeholder="如 01-02-03-04 或留空自动使用主物料号" maxlength="80">
+                            <div class="form-text">可输入对应图纸的图号，留空则自动使用系统生成的主物料号</div>
+                        </div>
+                    </div>
+
+                    <div class="row mb-3">
+                        <label for="document_id" class="col-sm-2 col-form-label">关联图纸</label>
+                        <div class="col-sm-10">
+                            <select class="form-select" id="document_id" name="document_id">
+                                <option value="">-- 暂不关联 --</option>
+                                {% for doc in available_docs %}
+                                <option value="{{ doc.id }}" {% if pre_select_doc and pre_select_doc == doc.id %}selected{% endif %}>
+                                    [{{ doc.title }}] {{ doc.name or doc.title }}
+                                </option>
+                                {% endfor %}
+                            </select>
+                            <div class="form-text">选择关联的图纸文档（新建文档后可在此选择绑定）</div>
+                        </div>
+                    </div>
+
+                    <div class="row mb-3">
                         <label for="item_type" class="col-sm-2 col-form-label">物料类型</label>
                         <div class="col-sm-10">
                             <select class="form-select" id="item_type" name="item_type">

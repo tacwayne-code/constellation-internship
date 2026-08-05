@@ -20,7 +20,7 @@ def _get_or_create_secret():
 
 class Config:
     SECRET_KEY = _get_or_create_secret()
-    SQLALCHEMY_DATABASE_URI = 'sqlite:///' + os.path.join(basedir, 'plm.db')
+    SQLALCHEMY_DATABASE_URI = 'sqlite:///' + os.path.join(basedir, 'plm_v2.db')
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     UPLOAD_FOLDER = os.path.join(basedir, 'app', 'static', 'uploads')
     MAX_CONTENT_LENGTH = 50 * 1024 * 1024  # 50MB

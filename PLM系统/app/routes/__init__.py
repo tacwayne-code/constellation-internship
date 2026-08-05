@@ -50,6 +50,21 @@ def require_bom_write(bom=None):
     _abort(403)
 
 
+def check_ownership(doc=None, product=None):
+    """检查文档/产品所有权（作者/管理员/经理可操作）"""
+    if not current_user.is_authenticated:
+        from flask import abort as _abort
+        _abort(401)
+    if current_user.role in ('admin', 'manager'):
+        return
+    if doc is not None and doc.author_id != current_user.id:
+        from flask import abort as _abort
+        _abort(403)
+    if product is not None and getattr(product, 'created_by', None) != current_user.id:
+        from flask import abort as _abort
+        _abort(403)
+
+
 def save_file(file):
     if file and allowed_file(file.filename):
         ext = file.filename.rsplit('.', 1)[1].lower()
@@ -78,9 +93,11 @@ def _get_db_path():
 
 @auth_bp.route('/login', methods=['GET', 'POST'])
 def login():
+    from flask import current_app
+    current_app._login_guard()
     if request.method == 'POST':
-        user = User.query.filter_by(username=request.form['username']).first()
-        if user and user.check_password(request.form['password']) and user.is_active:
+        user = User.query.filter_by(username=request.form.get('username', '')).first()
+        if user and user.check_password(request.form.get('password', '')) and user.is_active:
             login_user(user)
             return redirect(url_for('main.dashboard'))
         flash('用户名或密码错误', 'danger')
@@ -283,16 +300,11 @@ def create_doc():
     if request.method == 'POST':
         drawing_no = request.form.get('title', '').strip()
         name = request.form.get('name', '').strip()
-
-        # 校验图号格式（8 位 XX-XX-XX-XX 或 9 位 XXX-XXX-XXX）
         import re
-        if not (re.match(r'^\d{2}-\d{2}-\d{2}-\d{2}$', drawing_no) or
-                re.match(r'^\d{3}-\d{3}-\d{3}$', drawing_no)):
-            flash('图号格式错误：8 位 XX-XX-XX-XX 或 9 位 XXX-XXX-XXX', 'danger')
+        if not re.match(r'^\d{2}-\d{2}-\d{2}-\d{2}$', drawing_no):
+            flash('图号格式错误：必须为四段八位 XX-XX-XX-XX（机型-识别号-模块-顺序）', 'danger')
             categories = DocumentCategory.query.all()
             return render_template('documents/create.html', categories=categories)
-
-        # 校验名称：必填，不允许包含图号
         if not name:
             flash('请填写图纸名称', 'danger')
             categories = DocumentCategory.query.all()
@@ -301,10 +313,9 @@ def create_doc():
             flash(f'名称中不允许包含图号「{drawing_no}」', 'danger')
             categories = DocumentCategory.query.all()
             return render_template('documents/create.html', categories=categories)
-
         doc = Document(
-            title=drawing_no,           # title 存图号
-            name=name,                  # name 存中文名称
+            title=drawing_no,
+            name=name,
             description=request.form.get('description', ''),
             category_id=request.form.get('category_id', type=int),
             tags=request.form.get('tags', ''),
@@ -337,24 +348,11 @@ def tree_view():
     category_id = request.args.get('category_id', type=int)
 
     # 1) 收集所有路径 → 文档
-    # 父目录映射：把已知的叶节点包装到机械图的正确层级下
-    # 让树状浏览与原始文件夹层级保持一致
-    FOLDER_PARENT = {
-        # 上下板机
-        '下板机打包2019 12 14': '上下板机',
-        # 分光 编带机 > 常规生产
-        '710分光机': '分光 编带机' + bs + '常规生产分光编带机图',
-        '910编带机': '分光 编带机' + bs + '常规生产分光编带机图',
-    }
-    SOURCE_PARENT = {
-        # 1838 条用 源: 字段的文档（来自 早期分光编带机图\2835分光机\...）
-        '2835分光机': '分光 编带机' + bs + '早期分光编带机图',
-    }
-    # 机械图8大类的所有类别
-    MACHINE_CATEGORIES = [
-        '上下板机', '分光 编带机', '固晶机', '在线式打码机',
-        '搅拌机', '支架贴胶带机', '点胶机', '贴片机',
-    ]
+    # PLM系统2: 不预设分类目录，让实际录入的文档路径自动生成
+    FOLDER_PARENT = {}
+    SOURCE_PARENT = {}
+    # 留空：系统不再预置 PROE 文件夹分类
+    MACHINE_CATEGORIES = []
 
     def wrap_folder_path(folder_path):
         """根据 FOLDER_PARENT 自动给顶层叶节点加上父目录"""
@@ -566,7 +564,7 @@ def download_version(id, version_id):
     """下载文档版本文件"""
     from flask import current_app, send_from_directory, abort
     doc = Document.query.get_or_404(id)
-    ver = DocumentVersion.query.filter_by(id=version_id, document_id=doc.id).first_or_404()
+    ver = DocVersion.query.filter_by(id=version_id, document_id=doc.id).first_or_404()
     if not ver.file_path or not ver.file_name:
         abort(404, '该版本未上传文件')
     upload_root = current_app.config.get('UPLOAD_FOLDER', '')
@@ -582,15 +580,13 @@ def download_version(id, version_id):
 @login_required
 def edit_doc(id):
     doc = Document.query.get_or_404(id)
+    check_ownership(doc=doc)
     if request.method == 'POST':
         drawing_no = request.form.get('title', '').strip()
         name = request.form.get('name', '').strip()
-        # 校验图号：8 位新格式 或 9 位旧格式（兼容老数据）
         import re
-        if not (re.match(r'^\d{2}-\d{2}-\d{2}-\d{2}$', drawing_no) or
-                re.match(r'^\d{3}-\d{3}-\d{3}$', drawing_no) or
-                not drawing_no):
-            flash('图号格式错误：8 位 XX-XX-XX-XX 或 9 位 XXX-XXX-XXX', 'danger')
+        if not re.match(r'^\d{2}-\d{2}-\d{2}-\d{2}$', drawing_no):
+            flash('图号格式错误：必须为四段八位 XX-XX-XX-XX', 'danger')
         elif drawing_no and drawing_no in name:
             flash(f'名称中不允许包含图号「{drawing_no}」', 'danger')
         else:
@@ -607,7 +603,6 @@ def edit_doc(id):
                     doc.file_path = fname
                     doc.file_size = fsize
             db.session.commit()
-            # 注：不再自动同步 Product.code（避免覆盖原图号），仅做外键绑定
             flash('文档更新成功', 'success')
             return redirect(url_for('documents.view_doc', id=id))
     categories = DocumentCategory.query.all()
@@ -618,18 +613,14 @@ def edit_doc(id):
 @login_required
 def submit_approval(id):
     doc = Document.query.get_or_404(id)
-    # viewer 不可提交审批
     if current_user.role == 'viewer':
         flash('查看者无权提交审批', 'danger')
         return redirect(url_for('documents.view_doc', id=id))
-    # 防止重复提交审批
     if doc.status in ('review', 'approved', 'published'):
         flash('该文档已在审批流程中或已审批完成', 'warning')
         return redirect(url_for('documents.view_doc', id=id))
-    # 关键修复：先清掉该文档的所有历史审批记录（防止驳回重提时出现重复记录）
     DocApproval.query.filter_by(document_id=id).delete()
     doc.status = 'review'
-    # 创建审批步骤：每个经理审批一次，没有经理时指定管理员
     managers = User.query.filter_by(role='manager').all()
     if not managers:
         managers = User.query.filter_by(role='admin').all()
@@ -648,15 +639,13 @@ def submit_approval(id):
 @login_required
 def delete_doc(id):
     doc = Document.query.get_or_404(id)
-    # 只有作者本人或管理员可删除
+    check_ownership(doc=doc)
     if doc.author_id != current_user.id and current_user.role != 'admin':
         flash('只有创建者或管理员才能删除文档', 'danger')
         return redirect(url_for('documents.view_doc', id=id))
-    # 已发布文档需特殊处理
     if doc.status == 'published':
         flash('已发布的文档不能直接删除，请先作废', 'warning')
         return redirect(url_for('documents.view_doc', id=id))
-    # 删除关联文件
     if doc.file_path:
         try:
             import os as _os
@@ -665,7 +654,6 @@ def delete_doc(id):
                 _os.remove(fpath)
         except Exception:
             pass
-    # 删除关联的版本和审批记录
     DocVersion.query.filter_by(document_id=id).delete()
     DocApproval.query.filter_by(document_id=id).delete()
     db.session.delete(doc)
@@ -677,7 +665,11 @@ def delete_doc(id):
 @document_bp.route('/<int:id>/approve', methods=['POST'])
 @login_required
 def approve_doc(id):
-    approval = DocApproval.query.filter_by(document_id=id, approver_id=current_user.id, status='pending').first()
+    # CAS: 原子条件更新防止竞态并发
+    affected = DocApproval.query.filter_by(document_id=id, approver_id=current_user.id, status='pending').update(
+        {'status': 'processing'}, synchronize_session='fetch')
+    db.session.commit()
+    approval = DocApproval.query.filter_by(document_id=id, approver_id=current_user.id, status='processing').first() if affected else None
     if approval:
         action = request.form.get('action', '')
         if action not in ('approved', 'rejected'):
@@ -714,9 +706,9 @@ def publish_doc(id):
 @login_required
 def new_version(id):
     doc = Document.query.get_or_404(id)
+    check_ownership(doc=doc)
     if request.method == 'POST':
         old_version = doc.version
-        # Save current as version history
         dv = DocVersion(
             document_id=id, version=old_version,
             file_name=doc.file_name, file_path=doc.file_path,
@@ -725,7 +717,6 @@ def new_version(id):
             created_by=current_user.id
         )
         db.session.add(dv)
-        # Create new version
         doc.new_version()
         file = request.files.get('file')
         if file and file.filename:
@@ -744,6 +735,7 @@ def new_version(id):
 @login_required
 def lock_doc(id):
     doc = Document.query.get_or_404(id)
+    check_ownership(doc=doc)
     if doc.is_locked and doc.locked_by != current_user.id:
         flash('文档已被其他人锁定', 'warning')
     else:
@@ -781,7 +773,7 @@ def list_categories():
 def create_category():
     require_role('admin', 'manager')
     cat = DocumentCategory(
-        name=request.form['name'],
+        name=request.form.get('name', ''),
         parent_id=request.form.get('parent_id', type=int),
         description=request.form.get('description', '')
     )
@@ -814,7 +806,7 @@ def edit_workflow(id):
     require_role('admin', 'manager')
     wf = Workflow.query.get_or_404(id)
     if request.method == 'POST':
-        wf.name = request.form['name']
+        wf.name = request.form.get('name', '')
         wf.description = request.form.get('description', '')
         wf.model_type = request.form.get('model_type', 'document')
         wf.is_active = request.form.get('is_active') == 'on'
@@ -861,7 +853,7 @@ def create_workflow():
     require_role('admin', 'manager')
     if request.method == 'POST':
         wf = Workflow(
-            name=request.form['name'],
+            name=request.form.get('name', '').strip(),
             description=request.form.get('description', ''),
             model_type=request.form.get('model_type', 'document')
         )
@@ -920,23 +912,34 @@ def create_product():
         new_sid = gen_system_id()
         while Product.query.filter_by(system_id=new_sid).first():
             new_sid = gen_system_id()
+        doc_id = request.form.get('document_id', type=int)
+        code = request.form.get('code', '').strip()
+        pre_doc = None
+        if not code and doc_id:
+            pre_doc = Document.query.get(doc_id)
+            if pre_doc:
+                code = pre_doc.title  # 自动取文档图号作为产品编码
         p = Product(
             system_id=new_sid,
-            code=new_sid,  # code 跟随 system_id，不再单独维护原图号
-            name=request.form['name'],
+            code=code,
+            name=request.form.get('name', '').strip() or (pre_doc.name if pre_doc and doc_id and not request.form.get('name', '').strip() else request.form.get('name', '')),
             description=request.form.get('description', ''),
             item_type=request.form.get('item_type', 'PART'),
             revision=request.form.get('revision', 'R00'),
             parent_id=request.form.get('parent_id', type=int),
             level=int(request.form.get('level', 0)),
-            applicable_models=request.form.get('applicable_models', '')
+            applicable_models=request.form.get('applicable_models', ''),
+            document_id=doc_id if doc_id else None
         )
         db.session.add(p)
         db.session.commit()
         flash(f'产品创建成功！主物料号：{p.system_id}', 'success')
         return redirect(url_for('structures.product_detail', id=p.id))
     parents = Product.query.all()
-    return render_template('structures/create.html', parents=parents)
+    available_docs = Document.query.order_by(Document.title).limit(200).all()
+    pre_select_doc = request.args.get('from_doc', type=int)
+    return render_template('structures/create.html', parents=parents,
+                           available_docs=available_docs, pre_select_doc=pre_select_doc)
 
 
 @structure_bp.route('/<int:id>/detail')
@@ -1074,7 +1077,7 @@ def create_bom():
     if request.method == 'POST':
         bom_type = request.form.get('bom_type', 'EBOM')
         bom = Bom(
-            name=request.form['name'],
+            name=request.form.get('name', '').strip(),
             description=request.form.get('description', ''),
             bom_type=bom_type,
             product_id=request.form.get('product_id', type=int),
@@ -1102,7 +1105,8 @@ def create_bom():
         flash(f'{type_label} 创建成功', 'success')
         return redirect(url_for('boms.list_boms'))
     products = Product.query.all()
-    return render_template('boms/create.html', products=products)
+    from app.code_generator import get_all_mappings
+    return render_template('boms/create.html', products=products, mappings=get_all_mappings())
 
 
 # ── Excel 导入 eBOM ──
@@ -1188,7 +1192,7 @@ def import_excel_bom():
     except Exception as e:
         import logging
         logging.getLogger(__name__).error(f'Excel import failed: {e}', exc_info=True)
-        flash(f'导入失败：{str(e)[:100]}', 'danger')
+        flash('导入失败，请检查 Excel 格式', 'danger')
         return redirect(url_for('boms.create_bom'))
     finally:
         try:
@@ -1378,7 +1382,7 @@ def edit_bom(id):
         flash('已发布的 BOM 不能编辑，请先作废或创建新版本', 'warning')
         return redirect(url_for('boms.view_bom', id=id))
     if request.method == 'POST':
-        bom.name = request.form['name']
+        bom.name = request.form.get('name', '')
         bom.description = request.form.get('description', '')
         bom.bom_type = request.form.get('bom_type', 'EBOM')
         bom.product_id = request.form.get('product_id', type=int)
@@ -1403,7 +1407,8 @@ def edit_bom(id):
         flash('BOM 已更新', 'success')
         return redirect(url_for('boms.view_bom', id=id))
     products = Product.query.all()
-    return render_template('boms/create.html', bom=bom, products=products, edit_mode=True)
+    from app.code_generator import get_all_mappings
+    return render_template('boms/create.html', bom=bom, products=products, edit_mode=True, mappings=get_all_mappings())
 
 
 @bom_bp.route('/<int:id>/submit-approval', methods=['POST'])
@@ -1495,8 +1500,8 @@ def delete_bom(id):
 @login_required
 def convert_to_mbom(id):
     """将 eBOM 结构变换为 mBOM（仅做结构变换，不含工序/工时/损耗率）"""
-    require_role('admin', 'manager', 'user')  # viewer 不可转换
     ebom = Bom.query.get_or_404(id)
+    require_bom_write(ebom)
     if ebom.bom_type != 'EBOM':
         flash('只有 eBOM 才能转换为 mBOM', 'warning')
         return redirect(url_for('boms.view_bom', id=id))
@@ -1549,8 +1554,116 @@ def convert_to_mbom(id):
         flash(f'mBOM「{mbom.name}」已从 eBOM 创建成功，共 {item_count} 项物料。请进入详情页调整结构后发布。', 'success')
         return redirect(url_for('boms.view_bom', id=mbom.id))
 
-    # GET: 展示转换预览页
-    return render_template('boms/convert.html', ebom=ebom)
+    # GET: 展示转换预览页 + 智能建议转换备注
+    # 1) 如果该 eBOM 有上一次的派生 mBOM，对比差异
+    auto_note = None
+    prev_mbom = Bom.query.filter_by(source_ebom_id=ebom.id, bom_type='MBOM') \
+        .order_by(Bom.created_at.desc()).first()
+    if prev_mbom:
+        diff_lines = _diff_ebom_vs_mbom(ebom, prev_mbom)
+        if diff_lines:
+            auto_note = '与上次 mBOM（{}）对比：\n'.format(prev_mbom.bom_no) + '\n'.join(diff_lines)
+        else:
+            auto_note = '与上次 mBOM（{}）对比：无结构变化'.format(prev_mbom.bom_no)
+    else:
+        # 首次转换：根据物料数量生成默认说明
+        item_n = ebom.items.count()
+        auto_note = '初始结构转换（{} 项物料）— 与 eBOM 一致，请进入详情页调整制造结构'.format(item_n)
+    return render_template('boms/convert.html', ebom=ebom, auto_note=auto_note)
+
+
+def _diff_ebom_vs_mbom(ebom, prev_mbom):
+    """对比 eBOM 与上次 mBOM 的差异，返回多行描述。
+    检测项：新增、删除、数量调整、替代料变化、备注变化。
+    """
+    e_items = {i.product_id: i for i in ebom.items}
+    p_items = {i.product_id: i for i in prev_mbom.items}
+    diffs = []
+    # 新增
+    added = [pid for pid in e_items if pid not in p_items]
+    if added:
+        diffs.append('• 新增 {} 项物料'.format(len(added)))
+    # 删除
+    removed = [pid for pid in p_items if pid not in e_items]
+    if removed:
+        diffs.append('• 移除 {} 项物料'.format(len(removed)))
+    # 数量/单位/备注变化
+    qty_changes = []
+    unit_changes = []
+    note_changes = []
+    for pid, e in e_items.items():
+        if pid not in p_items:
+            continue
+        p = p_items[pid]
+        if float(e.quantity) != float(p.quantity):
+            qty_changes.append('{} {}→{}'.format(e.product.code if e.product else pid, p.quantity, e.quantity))
+        if (e.unit or '') != (p.unit or ''):
+            unit_changes.append('{} {}→{}'.format(e.product.code if e.product else pid, p.unit, e.unit))
+        if (e.note or '') != (p.note or ''):
+            note_changes.append('{}'.format(e.product.code if e.product else pid))
+    if qty_changes:
+        diffs.append('• 数量调整 {} 项：{}'.format(len(qty_changes), ', '.join(qty_changes[:5]) + ('...' if len(qty_changes) > 5 else '')))
+    if unit_changes:
+        diffs.append('• 单位变更 {} 项'.format(len(unit_changes)))
+    if note_changes:
+        diffs.append('• 备注变更 {} 项'.format(len(note_changes)))
+    return diffs
+
+
+# -- 复制 BOM --
+@bom_bp.route('/<int:id>/copy', methods=['POST'])
+@login_required
+def copy_bom(id):
+    src = Bom.query.get_or_404(id)
+    require_bom_write(src)
+    new_bom = Bom(
+        name=request.form.get('name', src.name + ' - copy'),
+        description=src.description,
+        bom_type=src.bom_type,
+        product_id=src.product_id,
+        source_ebom_id=src.source_ebom_id,
+        created_by=current_user.id
+    )
+    db.session.add(new_bom)
+    db.session.flush()
+    for item in src.items:
+        bi = BomItem(
+            bom_id=new_bom.id,
+            product_id=item.product_id,
+            quantity=item.quantity,
+            unit=item.unit,
+            reference=item.reference,
+            seq=item.seq,
+            note=item.note,
+            code=item.code,
+            part_type=item.part_type
+        )
+        db.session.add(bi)
+    db.session.commit()
+    flash(f'BOM copied: {src.bom_no} -> {new_bom.bom_no}', 'success')
+    return redirect(url_for('boms.edit_bom', id=new_bom.id))
+
+
+# -- BOM export CSV --
+@bom_bp.route('/<int:id>/export-excel')
+@login_required
+def export_bom_excel(id):
+    import csv, io
+    bom = Bom.query.get_or_404(id)
+    si = io.StringIO()
+    w = csv.writer(si)
+    w.writerow(['No', 'Product Code', 'Name', 'Qty', 'Unit', 'Note'])
+    for i, item in enumerate(bom.items):
+        p = Product.query.get(item.product_id) if item.product_id else None
+        w.writerow([i+1, p.code if p else '', p.name if p else '', item.quantity, item.unit, item.note or ''])
+    si.seek(0)
+    from flask import Response
+    return Response(
+        si.getvalue().encode('utf-8-sig'),
+        mimetype='text/csv',
+        headers={'Content-Disposition': f'attachment;filename={bom.bom_no}.csv'}
+    )
+
 
 @bom_bp.route('/<int:id>/sync-status', methods=['GET'])
 @login_required
@@ -1569,7 +1682,13 @@ def bom_sync_status(id):
 @bom_bp.route('/<int:id>/approve-step/<int:step>', methods=['POST'])
 @login_required
 def bom_approve_step(id, step):
-    appr = BomApproval.query.filter_by(bom_id=id, step=step, status='pending').first_or_404()
+    affected = BomApproval.query.filter_by(bom_id=id, step=step, status='pending').update(
+        {'status': 'processing'}, synchronize_session='fetch')
+    db.session.commit()
+    if not affected:
+        flash('该步骤已被其他会话处理', 'warning')
+        return redirect(url_for('boms.view_bom', id=id))
+    appr = BomApproval.query.filter_by(bom_id=id, step=step, status='processing').first_or_404()
     if appr.approver_id != current_user.id:
         flash('非当前审批人，无法审批', 'danger')
         return redirect(url_for('boms.view_bom', id=id))
@@ -1586,7 +1705,13 @@ def bom_approve_step(id, step):
 @bom_bp.route('/<int:id>/reject-step/<int:step>', methods=['POST'])
 @login_required
 def bom_reject_step(id, step):
-    appr = BomApproval.query.filter_by(bom_id=id, step=step, status='pending').first_or_404()
+    affected2 = BomApproval.query.filter_by(bom_id=id, step=step, status='pending').update(
+        {'status': 'processing'}, synchronize_session='fetch')
+    db.session.commit()
+    if not affected2:
+        flash('该步骤已被其他会话处理', 'warning')
+        return redirect(url_for('boms.view_bom', id=id))
+    appr = BomApproval.query.filter_by(bom_id=id, step=step, status='processing').first_or_404()
     if appr.approver_id != current_user.id:
         flash('非当前审批人，无法审批', 'danger')
         return redirect(url_for('boms.view_bom', id=id))
@@ -1628,7 +1753,7 @@ def push_to_odoo(id):
     _bom_id = bom.id
     _cfg_id = odoo_config.id
     _base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    _db_path = os.path.join(_base_dir, 'plm.db')
+    _db_path = os.path.join(_base_dir, 'plm_v2.db')
     if bom.sync_status == 'synced' and bom.sync_time and \
        (datetime.now() - bom.sync_time).total_seconds() < 300:
         flash('该 BOM 在 5 分钟内已同步成功，无需重复推送', 'info')
@@ -1643,12 +1768,13 @@ def push_to_odoo(id):
         flash('该 BOM 正在推送中或已被其他请求抢占，请稍后查看', 'warning')
         return redirect(url_for('boms.view_bom', id=id))
     runner = os.path.join(_base_dir, "push_to_odoo_runner.py")
-    log_file = os.path.join(_base_dir, "plm_push.log")
+    log_file = os.path.join(_base_dir, "plm_v2_push.log")
     proc = subprocess.Popen([sys.executable, runner, str(_bom_id), str(_cfg_id), log_file, _db_path],
                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     bom.sync_message = str(proc.pid)
     db.session.commit()
     _lg.getLogger().info(f"Push dispatched: bom={_bom_id} pid={proc.pid}")
+    audit_log('push', 'bom', bom.id, bom.bom_no)
     flash(f'<i class="bi bi-hourglass-split me-1"></i>推送任务已派发(PID={proc.pid})，1-2 分钟后刷新本页查看结果。', 'info')
     return redirect(url_for('boms.view_bom', id=id))
 
@@ -1687,6 +1813,7 @@ def api_mappings():
 def set_item_code(id):
     """为 BOM 中的物料行设置编码"""
     bom = Bom.query.get_or_404(id)
+    require_bom_write(bom)
     item_id = request.form.get('item_id', type=int)
     code = request.form.get('code', '').strip()
     part_type = request.form.get('part_type', '').strip()
@@ -1791,8 +1918,8 @@ def push_all_mbom(id):
     import subprocess, sys
     _base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     runner = os.path.join(_base_dir, "push_to_odoo_runner.py")
-    log_file = os.path.join(_base_dir, "plm_push.log")
-    db_path = os.path.join(_base_dir, 'plm.db')
+    log_file = os.path.join(_base_dir, "plm_v2_push.log")
+    db_path = os.path.join(_base_dir, 'plm_v2.db')
     pushed = 0
     for bom in pending:
         # 原子 CAS 抢占推送权

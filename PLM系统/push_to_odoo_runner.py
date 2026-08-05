@@ -5,8 +5,8 @@ from datetime import datetime
 BOM_ID = int(sys.argv[1])
 CFG_ID = int(sys.argv[2])
 _BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-LOG_PATH = sys.argv[3] if len(sys.argv) > 3 else os.path.join(_BASE_DIR, 'plm_push.log')
-DB_PATH = sys.argv[4] if len(sys.argv) > 4 else os.path.join(_BASE_DIR, 'plm.db')
+LOG_PATH = sys.argv[3] if len(sys.argv) > 3 else os.path.join(_BASE_DIR, 'plm_v2_push.log')
+DB_PATH = sys.argv[4] if len(sys.argv) > 4 else os.path.join(_BASE_DIR, 'plm_v2.db')
 
 logging.basicConfig(filename=LOG_PATH, level=logging.INFO,
                     format='%(asctime)s %(levelname)s %(message)s')
@@ -24,6 +24,15 @@ def fail(msg):
 
 try:
     time.sleep(2)
+    # 清理超过 10 分钟卡死在「pushing」状态的 BOM（推服务挂了的情况）
+    try:
+        import sqlite3 as sq, datetime as _dt
+        con = sq.connect(DB_PATH, timeout=30)
+        cutoff = (_dt.datetime.now() - _dt.timedelta(minutes=10)).isoformat()
+        con.execute("UPDATE plm_bom SET sync_status='sync_failed', sync_message='timeout recovery' WHERE sync_status='pushing' AND sync_time<?", (cutoff,))
+        con.commit(); con.close()
+    except Exception:
+        pass
     log.info(f'Sub-process start bom={BOM_ID} cfg={CFG_ID}')
 
     import xmlrpc.client, ssl
@@ -42,7 +51,24 @@ try:
         con.close()
         fail('integration config not found or inactive')
         sys.exit(1)
-    log.info(f'cfg loaded: {cfg[0]}')
+    # 解密 api_key：runner 读的是 SQL 原值（已加密），需要走模型层 _decrypt
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    try:
+        from app.models import _decrypt as _dec
+        # 关键：runner 是独立子进程，没有 app context，_decrypt 依赖 current_app
+        # 解决方案：在解密前手动建立 app context
+        try:
+            from app import create_app as _create_app
+            _app = _create_app()
+            with _app.app_context():
+                api_password = _dec(cfg[3]) if cfg[3] else ''
+        except Exception as e:
+            log.warning(f'app-context decrypt failed: {e}, fallback without context')
+            api_password = _dec(cfg[3]) if cfg[3] else ''
+    except Exception as e:
+        log.warning(f'decrypt import failed: {e}, fallback to plain text')
+        api_password = cfg[3] or ''
+    log.info(f'cfg loaded: {cfg[0]}, password length={len(api_password)}')
 
     cur.execute('SELECT p.code, p.name FROM plm_bom b LEFT JOIN plm_product p ON b.product_id=p.id WHERE b.id=?', (BOM_ID,))
     bom_row = cur.fetchone()
@@ -55,7 +81,7 @@ try:
     base = cfg[0].rstrip('/')
     common = xmlrpc.client.ServerProxy(f'{base}/xmlrpc/2/common', context=ctx)
     log.info(f'Calling authenticate to {base}')
-    uid = common.authenticate(cfg[1], cfg[2], cfg[3], {})
+    uid = common.authenticate(cfg[1], cfg[2], api_password, {})
     log.info(f'auth uid={uid}')
     if not uid:
         con.close()
@@ -69,7 +95,7 @@ try:
         global uid
         for attempt in range(retries):
             try:
-                return models.execute_kw(cfg[1], uid, cfg[3], model, method, list(args))
+                return models.execute_kw(cfg[1], uid, api_password, model, method, list(args))
             except xmlrpc.client.Fault as f:
                 err = str(f)
                 if 'SerializationFailure' in err or 'concurrent update' in err or 'reload' in err.lower():
@@ -77,7 +103,7 @@ try:
                     log.warning(f'{model}.{method}: retry {attempt+1}/{retries} after {wait}s (SerializationFailure)')
                     time.sleep(wait)
                     try:
-                        new_uid = common.authenticate(cfg[1], cfg[2], cfg[3], {})
+                        new_uid = common.authenticate(cfg[1], cfg[2], api_password, {})
                         if new_uid:
                             uid = new_uid
                     except Exception:
@@ -89,7 +115,7 @@ try:
                 log.warning(f'{model}.{method}: retry {attempt+1}/{retries} after {wait}s (Network: {e})')
                 time.sleep(wait)
                 try:
-                    new_uid = common.authenticate(cfg[1], cfg[2], cfg[3], {})
+                    new_uid = common.authenticate(cfg[1], cfg[2], api_password, {})
                     if new_uid:
                         uid = new_uid
                 except Exception:
@@ -99,7 +125,7 @@ try:
 
     # 直接调用 helper：不经过 call() 包装，避免 args 多层嵌套
     def rpc(model, method, *args):
-        return models.execute_kw(cfg[1], uid, cfg[3], model, method, list(args))
+        return models.execute_kw(cfg[1], uid, api_password, model, method, list(args))
 
     pid = 0
     if bom_row and bom_row[0]:

@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}编辑文档 - PLM 系统{% endblock %}
+{% block title %}编辑文档 - PLM系统2{% endblock %}
 
 {% block page_header %}
 <h5 class="mb-0"><i class="bi bi-pencil-square me-2"></i>编辑文档：{{ doc.name or doc.title }}</h5>
@@ -13,19 +13,31 @@
             <div class="card-body p-4">
                 <form method="POST" action="{{ url_for('documents.edit_doc', id=doc.id) }}" enctype="multipart/form-data">
 
-                    <!-- 图号 -->
+                    <!-- 图号 8位规范 (自动格式化) -->
                     <div class="mb-3">
-                        <label for="title" class="form-label fw-medium">
+                        <label class="form-label fw-medium">
                             图号 <span class="text-danger">*</span>
                         </label>
-                        <input type="text" class="form-control" id="title" name="title"
-                               value="{{ doc.title }}"
-                               placeholder="8 位新格式 XX-XX-XX-XX 或 9 位旧格式 XXX-XXX-XXX"
-                               maxlength="11" required>
+                        {% set segs = doc.title.split('-') if '-' in doc.title else [doc.title[:2] or '', doc.title[2:4] or '', doc.title[4:6] or '', doc.title[6:8] or ''] %}
+                        <div class="drawing-no-input d-flex align-items-center gap-1">
+                            <input type="text" class="form-control text-center" id="seg1" maxlength="2" placeholder="XX"
+                                   inputmode="numeric" pattern="\d{2}" required style="width:70px; font-weight:600;" value="{{ segs[0] }}">
+                            <span class="text-muted fw-bold">-</span>
+                            <input type="text" class="form-control text-center" id="seg2" maxlength="2" placeholder="XX"
+                                   inputmode="numeric" pattern="\d{2}" required style="width:70px; font-weight:600;" value="{{ segs[1] }}">
+                            <span class="text-muted fw-bold">-</span>
+                            <input type="text" class="form-control text-center" id="seg3" maxlength="2" placeholder="XX"
+                                   inputmode="numeric" pattern="\d{2}" required style="width:70px; font-weight:600;" value="{{ segs[2] }}">
+                            <span class="text-muted fw-bold">-</span>
+                            <input type="text" class="form-control text-center" id="seg4" maxlength="2" placeholder="XX"
+                                   inputmode="numeric" pattern="\d{2}" required style="width:70px; font-weight:600;" value="{{ segs[3] }}">
+                        </div>
+                        <input type="hidden" id="title" name="title" pattern="^\d{2}-\d{2}-\d{2}-\d{2}$" required value="{{ doc.title }}">
                         <div class="form-text">
                             <i class="bi bi-info-circle me-1 text-primary"></i>
                             <strong>8 位编码规则</strong> ——
                             <code>机型-唯一编码-模块-顺序</code>：每段 2 位数字
+                            <span class="text-muted">（仅需填数字，<code>-</code> 自动呈现）</span>
                             <br>
                             <span class="ms-4 small">
                                 ①<strong>机型</strong> 2位 ·
@@ -99,12 +111,51 @@
 {% block scripts %}
 {{ super() }}
 <script>
+// 4段图号输入：自动跳转 + 同步到 hidden title 字段
 document.addEventListener('DOMContentLoaded', function() {
-    const titleInput = document.getElementById('title');
+    const segs = ['seg1', 'seg2', 'seg3', 'seg4'].map(id => document.getElementById(id));
+    const hidden = document.getElementById('title');
     const nameInput = document.getElementById('name');
 
+    function sync() {
+        hidden.value = segs.map(s => s.value).join('-');
+    }
+
+    segs.forEach((seg, idx) => {
+        seg.addEventListener('input', function() {
+            this.value = this.value.replace(/[^0-9]/g, '');
+            if (this.value.length === 2 && idx < 3) {
+                segs[idx + 1].focus();
+            }
+            sync();
+            nameInput.dispatchEvent(new Event('input'));
+        });
+
+        seg.addEventListener('keydown', function(e) {
+            if (e.key === 'Backspace' && this.value === '' && idx > 0) {
+                segs[idx - 1].focus();
+                segs[idx - 1].value = '';
+                e.preventDefault();
+                sync();
+            }
+        });
+
+        seg.addEventListener('paste', function(e) {
+            e.preventDefault();
+            const pasted = (e.clipboardData.getData('text') || '').replace(/[^0-9]/g, '');
+            const all = segs.map(s => s.value).join('') + pasted;
+            all.split('').slice(0, 8).forEach((d, i) => {
+                segs[Math.floor(i / 2)].value = (segs[Math.floor(i / 2)].value + d).slice(-2);
+            });
+            sync();
+            const nextEmpty = segs.findIndex(s => s.value === '');
+            if (nextEmpty >= 0) segs[nextEmpty].focus();
+            else segs[3].focus();
+        });
+    });
+
     function checkName() {
-        const title = titleInput.value.trim();
+        const title = hidden.value.trim();
         const name = nameInput.value.trim();
         if (title && name && name.includes(title)) {
             nameInput.setCustomValidity('名称中不能包含图号「' + title + '」');
@@ -115,7 +166,6 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
     nameInput.addEventListener('input', checkName);
-    titleInput.addEventListener('change', checkName);
 });
 </script>
 {% endblock %}

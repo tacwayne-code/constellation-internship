@@ -2,7 +2,7 @@ from flask import Flask, request, session, abort
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager
 from config import Config
-import os, uuid, hmac
+import os, uuid, hmac, time, logging, hashlib
 
 db = SQLAlchemy()
 login_manager = LoginManager()
@@ -26,6 +26,15 @@ def create_app(config_class=Config):
 
     db.init_app(app)
     login_manager.init_app(app)
+
+    # 启用 SQLite 外键约束
+    with app.app_context():
+        from sqlalchemy import event
+        @event.listens_for(db.engine, 'connect')
+        def _set_sqlite_pragma(dbapi_conn, _):
+            if hasattr(dbapi_conn, 'execute'):
+                dbapi_conn.execute('PRAGMA journal_mode=WAL')
+                dbapi_conn.execute('PRAGMA foreign_keys=ON')
 
     from app.models import User
     @login_manager.user_loader
@@ -54,20 +63,57 @@ def create_app(config_class=Config):
             session['csrf_token'] = uuid.uuid4().hex
         return session['csrf_token']
 
+
+    # ── 登录暴力破解防护 ──
+    _login_attempts = {}  # {ip_hash: (count, first_time)}
+
+    def _login_guard():
+        return _check_brute_force()
+    # 将守卫函数挂到 app 上，供 login 路由调用
+    app._login_guard = _login_guard
+
+    def _check_brute_force():
+        ip = request.remote_addr or 'unknown'
+        h = hashlib.sha256(f'{ip}:plm_login_salt'.encode()).hexdigest()
+        now = time.time()
+        if h in _login_attempts:
+            count, first = _login_attempts[h]
+            if now - first > 300:  # 5 分钟窗口过期，重置
+                _login_attempts[h] = (1, now)
+                return True
+            # 每 60 秒清理过期条目
+            if not hasattr(_check_brute_force, '_gc') or now - _check_brute_force._gc > 60:
+                _check_brute_force._gc = now
+                expired = [k for k, (c, t) in list(_login_attempts.items()) if now - t > 300]
+                for k in expired:
+                    del _login_attempts[k]
+            if count >= 10:
+                abort(429, '登录失败次数过多，请等待 5 分钟后再试')
+            _login_attempts[h] = (count + 1, first)
+        else:
+            _login_attempts[h] = (1, now)
+        return True
     @app.before_request
     def csrf_protect():
-        """对 POST/PUT/DELETE 请求做简易 CSRF token 校验"""
+        """对 POST/PUT/DELETE 请求做 CSRF token 校验"""
         if request.method in ('GET', 'HEAD', 'OPTIONS'):
             return
-        if request.path.startswith('/api/') or request.path.startswith('/boms/api/') or request.path.startswith('/integrations/') or '/push-to-odoo' in request.path:
+        # 只豁免 boms/api (编码生成器无表单提交) 和 auth/login
+        if request.path.startswith('/boms/api/'):
             return
         token = _ensure_csrf_token()
-        if request.form:
-            sent = request.form.get('csrf_token', '')
-            if not sent and request.path in ('/auth/login',):
-                return
+        # JSON 请求：从 Header 取 token
+        if request.is_json:
+            sent = request.headers.get('X-CSRFToken', '')
             if not hmac.compare_digest(sent, token):
                 abort(400, 'CSRF validation failed')
+            return
+        # 表单请求
+        sent = request.form.get('csrf_token', '')
+        if not sent and request.path in ('/auth/login',):
+            return
+        if not hmac.compare_digest(sent, token):
+            abort(400, 'CSRF validation failed')
 
     @app.context_processor
     def inject_csrf():
@@ -93,8 +139,8 @@ def create_app(config_class=Config):
             ext = base[dot:]
             base = base[:dot]
 
-        # 匹配 3位机型号-3位模块号-3位流水号 开头的图号
-        m = re.match(r'^([\d]{3}[-][\d]{3}[-][\d]{3})(.*)', base)
+        # 匹配 4段8位新格式 XX-XX-XX-XX
+        m = re.match(r'^([\d]{2}[-][\d]{2}[-][\d]{2}[-][\d]{2})(.*)', base)
         if m:
             dwg_no = m.group(1)
             name = m.group(2).strip() if m.group(2).strip() else ''
@@ -161,236 +207,17 @@ def create_app(config_class=Config):
         return stripped
 
     with app.app_context():
-        # 仅在数据库文件不存在或环境变量 PLM_AUTO_INIT=1 时执行 create_all
-        # 生产环境应使用 Alembic 迁移，避免自动建表
-        db_path = app.config.get('SQLALCHEMY_DATABASE_URI', '').replace('sqlite:///', '')
-        db_exists = db_path and os.path.exists(db_path)
-        if not db_exists or os.environ.get('PLM_AUTO_INIT') == '1':
-            db.create_all()
-        _migrate_bom_schema()
-        _migrate_product_schema()
-        _migrate_bom_v2()
-        _migrate_document_name()
+        db.create_all()
+
+    @app.errorhandler(400)
+    def handle_csrf(e):
+        if 'CSRF' in str(e):
+            flash('Session expired, page is refreshing... Please try again.', 'warning')
+            from flask import make_response
+            html = "<html><head><meta http-equiv=\"refresh\" content=\"0;url=\"></head><body>Refreshing...</body></html>"
+            resp = make_response(html)
+            resp.status_code = 200
+            return resp
+        return abort(400, str(e))
 
     return app
-
-
-def _migrate_document_name():
-    """为 plm_document 添加 name 字段（汉字名称），并从现有 title 回填（2026-07-30）"""
-    import sqlite3, re
-    from flask import current_app
-    try:
-        db_path = current_app.config.get('SQLALCHEMY_DATABASE_URI', '').replace('sqlite:///', '')
-        if not db_path:
-            return
-        conn = sqlite3.connect(db_path)
-        cursor = conn.cursor()
-        cursor.execute("PRAGMA table_info('plm_document')")
-        cols = [row[1] for row in cursor.fetchall()]
-        # 添加 name 字段
-        if 'name' not in cols:
-            cursor.execute("ALTER TABLE plm_document ADD COLUMN name VARCHAR(255) DEFAULT ''")
-            print("[Migration] Added plm_document.name column")
-        # 回填现有 title 的名称部分到 name 字段（仅 name 为空的才回填，避免重复工作）
-        cursor.execute("SELECT id, title, name FROM plm_document WHERE name IS NULL OR name = ''")
-        rows = cursor.fetchall()
-        updated = 0
-        for doc_id, title, _ in rows:
-            # 复用与模板一致的拆分逻辑
-            base = title or ''
-            dot = base.rfind('.')
-            if dot > 0 and dot > len(base) - 8:
-                base = base[:dot]
-            m = re.match(r'^([\d]{3}[-][\d]{3}[-][\d]{3})(.*)', base)
-            if m:
-                name = m.group(2).strip()
-                name = re.sub(r'\s*\d{4}$', '', name).strip()
-            else:
-                m = re.match(r'^(\d{4})(.*)', base)
-                if m:
-                    name = m.group(2).strip()
-                else:
-                    # 如果标题不含汉字（即纯图号如 HFS6-3030-50、MBF-DQ04-V2）
-                    # 则 name 留空（不需要把图号复制到名称字段）
-                    if not re.search(r'[\u4e00-\u9fff]', base):
-                        name = ''
-                    else:
-                        name = base
-            if name:
-                cursor.execute("UPDATE plm_document SET name=? WHERE id=?", (name, doc_id))
-                updated += 1
-        conn.commit()
-        conn.close()
-        if updated:
-            print(f"[Migration] Backfilled {updated} document names")
-    except Exception as e:
-        print(f"[Migration] Document name migration failed: {e}")
-
-
-def _migrate_bom_v2():
-    """BOM v2 迁移：BomDocument 关联表、BomApproval 审批表、BomItem 替代料"""
-    import sqlite3
-    from flask import current_app
-    try:
-        db_path = current_app.config.get('SQLALCHEMY_DATABASE_URI', '').replace('sqlite:///', '')
-        if not db_path:
-            return
-        conn = sqlite3.connect(db_path)
-        cursor = conn.cursor()
-
-        # plm_bom_item 加 substitute_product_id
-        cursor.execute("PRAGMA table_info('plm_bom_item')")
-        cols = [r[1] for r in cursor.fetchall()]
-        if 'substitute_product_id' not in cols:
-            cursor.execute("ALTER TABLE plm_bom_item ADD COLUMN substitute_product_id INTEGER")
-            print("[Migration] BomItem: added substitute_product_id")
-
-        # plm_bom_document 表
-        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='plm_bom_document'")
-        if not cursor.fetchone():
-            cursor.execute("""
-                CREATE TABLE plm_bom_document (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    bom_id INTEGER NOT NULL,
-                    document_id INTEGER NOT NULL,
-                    created_at TIMESTAMP,
-                    FOREIGN KEY(bom_id) REFERENCES plm_bom(id),
-                    FOREIGN KEY(document_id) REFERENCES plm_document(id)
-                )
-            """)
-            print("[Migration] Created plm_bom_document table")
-
-        # plm_bom_approval 表
-        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='plm_bom_approval'")
-        if not cursor.fetchone():
-            cursor.execute("""
-                CREATE TABLE plm_bom_approval (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    bom_id INTEGER NOT NULL,
-                    step INTEGER NOT NULL,
-                    approver_id INTEGER NOT NULL,
-                    status VARCHAR(20) DEFAULT 'pending',
-                    comment TEXT,
-                    decided_at TIMESTAMP,
-                    created_at TIMESTAMP,
-                    FOREIGN KEY(bom_id) REFERENCES plm_bom(id),
-                    FOREIGN KEY(approver_id) REFERENCES plm_user(id)
-                )
-            """)
-            print("[Migration] Created plm_bom_approval table")
-
-        conn.commit()
-        conn.close()
-    except Exception as e:
-        print(f"[Migration] BOM v2 skipped: {e}")
-
-
-def _migrate_product_schema():
-    """为 plm_product 表补充编码体系字段（系统主物料号/类型/修订/适用范围）"""
-    import sqlite3, uuid
-    from datetime import datetime
-    from flask import current_app
-    try:
-        db_path = current_app.config.get('SQLALCHEMY_DATABASE_URI', '').replace('sqlite:///', '')
-        if not db_path:
-            return
-        conn = sqlite3.connect(db_path)
-        cursor = conn.cursor()
-        cursor.execute("PRAGMA table_info('plm_product')")
-        existing = [row[1] for row in cursor.fetchall()]
-        alter_sqls = []
-        if 'system_id' not in existing:
-            alter_sqls.append("ALTER TABLE plm_product ADD COLUMN system_id VARCHAR(40)")
-        if 'item_type' not in existing:
-            alter_sqls.append("ALTER TABLE plm_product ADD COLUMN item_type VARCHAR(20) DEFAULT 'PART'")
-        if 'revision' not in existing:
-            alter_sqls.append("ALTER TABLE plm_product ADD COLUMN revision VARCHAR(10) DEFAULT 'R00'")
-        if 'applicable_models' not in existing:
-            alter_sqls.append("ALTER TABLE plm_product ADD COLUMN applicable_models VARCHAR(500) DEFAULT ''")
-
-        for sql in alter_sqls:
-            cursor.execute(sql)
-
-        # Backfill system_id for existing products
-        cursor.execute("SELECT id FROM plm_product WHERE system_id IS NULL OR system_id = ''")
-        rows = cursor.fetchall()
-        for (pid,) in rows:
-            new_sid = f"ITM-{datetime.now().strftime('%Y%m%d%H%M%S')}-{str(uuid.uuid4())[:8]}"
-            try:
-                cursor.execute("UPDATE plm_product SET system_id = ? WHERE id = ?", (new_sid, pid))
-            except Exception:
-                pass
-
-        # ── document_id 回填：匹配 Product.code ↔ Document.title ──
-        if 'document_id' not in existing:
-            cursor.execute("ALTER TABLE plm_product ADD COLUMN document_id INTEGER REFERENCES plm_document(id)")
-        # 回填：通过图号匹配
-        cursor.execute("""
-            UPDATE plm_product SET document_id = (
-                SELECT d.id FROM plm_document d
-                WHERE d.title = plm_product.code
-                LIMIT 1
-            )
-            WHERE plm_product.document_id IS NULL
-        """)
-        matched = cursor.rowcount if cursor.rowcount else 0
-
-        # ── 已绑定的产品：不再自动覆盖 Product.code（保持原值，避免破坏历史编码） ──
-
-        try:
-            cursor.execute("CREATE UNIQUE INDEX IF NOT EXISTS ix_plm_product_system_id ON plm_product(system_id)")
-        except Exception:
-            pass
-
-        conn.commit()
-        conn.close()
-        if alter_sqls or rows:
-            print(f"[Migration] Product: {len(alter_sqls)} schema + {len(rows)} system_ids + {matched} document_ids backfilled")
-    except Exception as e:
-        print(f"[Migration] Product migration skipped: {e}")
-
-
-def _migrate_bom_schema():
-    """兼容旧数据库：为 plm_bom 表补充新增字段"""
-    import sqlite3
-    from flask import current_app
-    try:
-        db_path = current_app.config.get('SQLALCHEMY_DATABASE_URI', '').replace('sqlite:///', '')
-        if not db_path:
-            return
-        conn = sqlite3.connect(db_path)
-        cursor = conn.cursor()
-        # 检查已有字段
-        cursor.execute("PRAGMA table_info('plm_bom')")
-        existing = [row[1] for row in cursor.fetchall()]
-        alter_sqls = []
-        if 'source_ebom_id' not in existing:
-            alter_sqls.append("ALTER TABLE plm_bom ADD COLUMN source_ebom_id INTEGER")
-        if 'sync_status' not in existing:
-            alter_sqls.append("ALTER TABLE plm_bom ADD COLUMN sync_status VARCHAR(20) DEFAULT 'not_synced'")
-        if 'sync_time' not in existing:
-            alter_sqls.append("ALTER TABLE plm_bom ADD COLUMN sync_time DATETIME")
-        if 'sync_message' not in existing:
-            alter_sqls.append("ALTER TABLE plm_bom ADD COLUMN sync_message TEXT")
-        if 'note' not in existing:
-            cursor.execute("PRAGMA table_info('plm_bom_item')")
-            item_existing = [row[1] for row in cursor.fetchall()]
-            if 'note' not in item_existing:
-                alter_sqls.append("ALTER TABLE plm_bom_item ADD COLUMN note VARCHAR(200)")
-
-        # 编码体系迁移（2026-07-29）
-        cursor.execute("PRAGMA table_info('plm_bom_item')")
-        item_cols = [row[1] for row in cursor.fetchall()]
-        if 'code' not in item_cols:
-            alter_sqls.append("ALTER TABLE plm_bom_item ADD COLUMN code VARCHAR(64) DEFAULT ''")
-        if 'part_type' not in item_cols:
-            alter_sqls.append("ALTER TABLE plm_bom_item ADD COLUMN part_type VARCHAR(16) DEFAULT ''")
-
-        for sql in alter_sqls:
-            cursor.execute(sql)
-        conn.commit()
-        conn.close()
-        if alter_sqls:
-            print(f"[Migration] Applied {len(alter_sqls)} schema changes for BOM module")
-    except Exception as e:
-        print(f"[Migration] Schema migration skipped or failed: {e}")
