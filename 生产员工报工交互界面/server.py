@@ -1458,6 +1458,25 @@ def models_query_tmpl_by_code(client, default_code):
 _WO_CACHE = {"data": None, "ts": 0, "marker": 0}
 _WO_CACHE_LOCK = threading.Lock()
 _WO_CACHE_TTL = 60  # 60秒缓存，准实时
+_WORKORDER_MIN_PRODUCTION_NAME = os.getenv("WORKORDER_MIN_PRODUCTION_NAME", "").strip()
+
+
+def _active_production_domain(client, lookback_start_text):
+    """Build the MO domain, optionally excluding records older than a named MO."""
+    active_domain = [("state", "not in", ["done", "cancel"])]
+    if not _WORKORDER_MIN_PRODUCTION_NAME:
+        return [("write_date", ">=", lookback_start_text)] + active_domain
+
+    cutoff_rows = client.search_read(
+        "mrp.production",
+        [("name", "=", _WORKORDER_MIN_PRODUCTION_NAME)],
+        ["id"], limit=1, order="id asc"
+    )
+    if not cutoff_rows:
+        raise RuntimeError(
+            f"Configured manufacturing order not found: {_WORKORDER_MIN_PRODUCTION_NAME}"
+        )
+    return [("id", ">=", cutoff_rows[0]["id"])] + active_domain
 
 
 def get_workorders_data():
@@ -1488,9 +1507,8 @@ def get_workorders_data():
         mo_fields = ["id", "name", "bom_id", "product_id", "product_qty", "origin", "state", "write_date"]
         mo_rows = client.search_read(
             "mrp.production",
-            [("write_date", ">=", lookback_start_text),
-             ("state", "not in", ["done", "cancel"])],
-            mo_fields, limit=200, order="write_date desc"
+            _active_production_domain(client, lookback_start_text),
+            mo_fields, limit=200, order="id desc"
         )
         # 过滤：只保留 bom 有 routing 的 MO
         bom_ids = set()
