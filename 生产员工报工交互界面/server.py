@@ -1,4 +1,5 @@
 import json
+import hashlib
 import logging
 import math
 import os
@@ -343,18 +344,12 @@ def _init_db():
 
 
 def _seed_workers():
-    """首次启动时写入默认工人（含罗伟华）"""
+    """Ensure the one locally managed host-computer worker exists."""
     with DB_LOCK:
         conn = sqlite3.connect(str(DB_FILE))
         count = conn.execute("SELECT COUNT(*) FROM workers").fetchone()[0]
         if count == 0:
             default = [
-                ("WK001", "张建国", "A班", "local", 0, '["assembly"]'),
-                ("WK002", "周明辉", "A班", "local", 0, '["packing"]'),
-                ("WK003", "王志强", "B班", "local", 0, '["test_tape_operation"]'),
-                ("WK004", "陈晓峰", "B班", "local", 0, '["test_splitter_operation"]'),
-                ("WK005", "刘大伟", "C班", "local", 0, '["test_assembly_operation"]'),
-                ("WK006", "赵永刚", "夜班", "local", 0, '["test_packing_operation"]'),
                 ("LOCAL_LWH", "罗伟华", "组装班", "local", 0,
                  '["pc_assembly_tape", "pc_assembly_splitter"]'),
             ]
@@ -365,7 +360,7 @@ def _seed_workers():
                 default
             )
             conn.commit()
-            logger.info("已写入 7 个默认工人（含罗伟华）")
+            logger.info("已写入本地工人罗伟华")
         else:
             # 确保罗伟华存在（如果没有的话）
             existing = conn.execute("SELECT id FROM workers WHERE name = '罗伟华'").fetchone()
@@ -385,12 +380,6 @@ def _seed_workers():
 
 WORKER_OPERATION_BINDINGS = {
     "LOCAL_LWH": ["pc_assembly_tape", "pc_assembly_splitter"],
-    "WK001": ["assembly"],
-    "WK002": ["packing"],
-    "WK003": ["test_tape_operation"],
-    "WK004": ["test_splitter_operation"],
-    "WK005": ["test_assembly_operation"],
-    "WK006": ["test_packing_operation"],
 }
 
 def _ensure_worker_operation_bindings():
@@ -623,8 +612,87 @@ def db_get_report_materials(report_id):
 # 数据查询函数
 # ============================================================
 
-def load_workers():
-    return db_workers()
+PRODUCTION_DEPARTMENT_NAME = os.getenv("ODOO_PRODUCTION_DEPARTMENT", "生产车间").strip()
+_WORKER_CACHE_TTL = 10
+_WORKER_CACHE_LOCK = threading.Lock()
+_WORKER_CACHE = {"data": None, "ts": 0}
+
+
+def _job_operation_code(name):
+    """Return a stable API code for an Odoo job-position operation name."""
+    digest = hashlib.sha1(str(name).strip().encode("utf-8")).hexdigest()[:12]
+    return f"odoo_job_{digest}"
+
+
+def _split_job_operations(job_name):
+    return [
+        part.strip()
+        for part in re.split(r"[、,，/;；]+", str(job_name or ""))
+        if part.strip()
+    ]
+
+
+def _load_odoo_production_workers():
+    """Read active workers and their job positions from the configured department."""
+    client = get_odoo()
+    departments = client.search_read(
+        "hr.department", [("active", "=", True)],
+        ["id", "name"], limit=100, order="id asc",
+    )
+    department_ids = [
+        row["id"] for row in departments
+        if str(row.get("name") or "").strip() == PRODUCTION_DEPARTMENT_NAME
+    ]
+    if not department_ids:
+        raise OdooError(f"未找到 Odoo 部门: {PRODUCTION_DEPARTMENT_NAME}")
+
+    rows = client.search_read(
+        "hr.employee",
+        [("department_id", "in", department_ids), ("active", "=", True)],
+        ["id", "name", "department_id", "job_id", "job_title"],
+        limit=500, order="id asc",
+    )
+    workers = []
+    for row in rows:
+        name = str(row.get("name") or "").strip()
+        if not name or name == "罗伟华":
+            continue
+        job_name = rel_name(row.get("job_id"), str(row.get("job_title") or "")).strip()
+        job_operations = _split_job_operations(job_name)
+        workers.append({
+            "id": f"ODOO_EMP_{row['id']}",
+            "name": name,
+            "team": rel_name(row.get("department_id"), PRODUCTION_DEPARTMENT_NAME),
+            "source": "odoo",
+            "odooEmployeeId": row["id"],
+            "jobTitle": job_name,
+            "jobOperationNames": job_operations,
+            "operationCodes": [_job_operation_code(item) for item in job_operations],
+        })
+    return workers
+
+
+def load_workers(force_refresh=False):
+    local_workers = db_workers()
+    if get_odoo_mode() != "real":
+        return local_workers
+
+    now = time.time()
+    with _WORKER_CACHE_LOCK:
+        if (not force_refresh and _WORKER_CACHE["data"] is not None
+                and now - _WORKER_CACHE["ts"] < _WORKER_CACHE_TTL):
+            return local_workers + list(_WORKER_CACHE["data"])
+    try:
+        odoo_workers = _load_odoo_production_workers()
+        with _WORKER_CACHE_LOCK:
+            _WORKER_CACHE["data"] = list(odoo_workers)
+            _WORKER_CACHE["ts"] = time.time()
+        return local_workers + odoo_workers
+    except Exception as exc:
+        logger.warning(f"生产车间员工同步失败: {exc}")
+        with _WORKER_CACHE_LOCK:
+            cached = list(_WORKER_CACHE["data"] or [])
+        return local_workers + cached
 
 
 def load_reports():
@@ -644,9 +712,9 @@ OPERATIONS = [
      "workorderNames": ["打包"]},
     {"id": "debug", "code": "debug", "name": "调试", "hostType": None},
     {"id": "pc_assembly_tape", "code": "pc_assembly_tape", "name": "电脑装机（编带主机）", "hostType": "tape",
-     "odooWorkcenterId": 101, "odooWorkcenterCode": "pc_assembly_tape"},
+     "productClass": "host", "odooWorkcenterId": 101, "odooWorkcenterCode": "pc_assembly_tape"},
     {"id": "pc_assembly_splitter", "code": "pc_assembly_splitter", "name": "电脑装机（分光主机）", "hostType": "splitter",
-     "odooWorkcenterId": 102, "odooWorkcenterCode": "pc_assembly_splitter"},
+     "productClass": "host", "odooWorkcenterId": 102, "odooWorkcenterCode": "pc_assembly_splitter"},
     {"id": "test_tape_operation", "code": "test_tape_operation", "name": "测试工序（编带）",
      "hostType": "tape", "odooWorkcenterId": 101,
      "odooWorkcenterCode": "pc_assembly_tape", "mockOnly": True},
@@ -690,7 +758,26 @@ def get_operations():
         o = dict(op)
         o["meta"] = {"mode": mode, "source": "odoo" if mode == "real" else "mock"}
         ops.append(o)
+    if mode == "real":
+        dynamic = {}
+        for worker in load_workers():
+            for name in worker.get("jobOperationNames", []):
+                code = _job_operation_code(name)
+                dynamic[code] = {
+                    "id": code,
+                    "code": code,
+                    "name": name,
+                    "hostType": None,
+                    "productClass": "machine",
+                    "workorderNames": [name],
+                    "meta": {"mode": mode, "source": "odoo_job"},
+                }
+        ops.extend(dynamic.values())
     return ops
+
+
+def get_operation_map():
+    return {op["code"]: op for op in get_operations()}
 
 
 # ============================================================
@@ -721,13 +808,13 @@ _worker_ids_lock = threading.Lock()
 
 def get_valid_worker_ids():
     with _worker_ids_lock:
-        workers = db_workers()
+        workers = load_workers()
         return {w["id"] for w in workers}
 
 
 def get_worker_by_id(worker_id):
     worker_id = str(worker_id or "")
-    return next((w for w in db_workers() if str(w.get("id")) == worker_id), None)
+    return next((w for w in load_workers() if str(w.get("id")) == worker_id), None)
 
 
 def worker_allows_operation(worker_id, operation_code):
@@ -807,12 +894,25 @@ def workorder_host_type(product, workcenter=None):
     return None
 
 
+def workorder_product_class(product):
+    """Classify finished products for worker access control."""
+    name = clean_name(product).casefold()
+    if any(token in name for token in ("主机", "host computer", "controller host")):
+        return "host"
+    if any(token in name for token in ("编带机", "分光机", "机器", "machine")):
+        return "machine"
+    return None
+
+
 def operation_matches_workorder(operation, workorder):
     """Return whether an operation binding can use a specific Odoo WO."""
     if not operation or not workorder:
         return False
     expected_host = operation.get("hostType")
     if expected_host and workorder.get("hostType") != expected_host:
+        return False
+    expected_product_class = operation.get("productClass")
+    if expected_product_class and workorder.get("productClass") != expected_product_class:
         return False
     names = operation.get("workorderNames") or []
     if names and workorder.get("workorderName") not in names:
@@ -1619,6 +1719,7 @@ def get_workorders_data():
                 "qtyProduced": number(wo.get("qty_produced")),
                 "remainingQty": number(wo.get("qty_remaining")),
                 "hostType": host_type,
+                "productClass": workorder_product_class(wo.get("product_id")),
             })
         with _WO_CACHE_LOCK:
             if reset_marker_stamp() == marker:
@@ -1646,6 +1747,9 @@ def _invalidate_runtime_caches():
         _WO_CACHE["data"] = None
         _WO_CACHE["ts"] = 0
         _WO_CACHE["marker"] = 0
+    with _WORKER_CACHE_LOCK:
+        _WORKER_CACHE["data"] = None
+        _WORKER_CACHE["ts"] = 0
 
 
 # ============================================================
@@ -2541,10 +2645,16 @@ class Handler(SimpleHTTPRequestHandler):
                     return
 
             worker_id = str(report["workerId"])
-            if worker_id not in get_valid_worker_ids():
+            worker = get_worker_by_id(worker_id)
+            if not worker:
                 self.write_json({"ok": False, "error": f"工人 {worker_id} 不存在"},
                                 status=HTTPStatus.BAD_REQUEST)
                 return
+            # Worker identity and Odoo relation always come from the server-side
+            # department snapshot, never from user-controlled request fields.
+            report["workerName"] = worker["name"]
+            report["workerTeam"] = worker.get("team", "")
+            report["odooEmployeeId"] = worker.get("odooEmployeeId", 0)
 
             # 新字段: 工单ID
             workorder_id = str(report.get("workorderId", report.get("orderId", "")))
@@ -2579,7 +2689,7 @@ class Handler(SimpleHTTPRequestHandler):
                     return
 
             operation = str(report["operation"])
-            op_info = OPERATION_MAP.get(operation)
+            op_info = get_operation_map().get(operation)
             if not op_info:
                 self.write_json({"ok": False, "error": f"无效工序: {operation}"},
                                 status=HTTPStatus.BAD_REQUEST)
@@ -2588,7 +2698,7 @@ class Handler(SimpleHTTPRequestHandler):
                 self.write_json({"ok": False, "error": "测试工序仅可在 Mock 模式使用"},
                                 status=HTTPStatus.BAD_REQUEST)
                 return
-            if not worker_allows_operation(worker_id, operation):
+            if operation not in set(worker.get("operationCodes") or []):
                 self.write_json({
                     "ok": False,
                     "error": "当前工人未绑定该工序，不能提交报工",
@@ -2601,7 +2711,20 @@ class Handler(SimpleHTTPRequestHandler):
                         check_rows[0].get("product_id"),
                         check_rows[0].get("workcenter_id"),
                     ),
+                    "productClass": workorder_product_class(check_rows[0].get("product_id")),
                 }
+                if worker.get("source") == "odoo" and workorder_view["productClass"] != "machine":
+                    self.write_json({
+                        "ok": False,
+                        "error": "生产车间员工只能选择机器类工单",
+                    }, status=HTTPStatus.FORBIDDEN)
+                    return
+                if worker_id == "LOCAL_LWH" and workorder_view["productClass"] != "host":
+                    self.write_json({
+                        "ok": False,
+                        "error": "罗伟华只能选择主机类工单",
+                    }, status=HTTPStatus.FORBIDDEN)
+                    return
                 if not operation_matches_workorder(op_info, workorder_view):
                     self.write_json({
                         "ok": False,

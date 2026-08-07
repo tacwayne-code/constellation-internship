@@ -189,9 +189,23 @@ async function loadAll() {
     if (workerIdx >= 0) {
       S.selWorkerIdx = workerIdx;
       S.selWorker = S.workers[workerIdx];
+      if (S.selOperation && !S.selWorker.operationCodes.includes(S.selOperation)) {
+        S.selOperation = "";
+        S.selectedOperation = null;
+        S.selectedWorkorder = null;
+        S.selectedProduction = null;
+        S.bomItems = [];
+        S.bomConfirmed = false;
+      }
     } else {
       S.selWorkerIdx = -1;
       S.selWorker = null;
+      S.selOperation = "";
+      S.selectedOperation = null;
+      S.selectedWorkorder = null;
+      S.selectedProduction = null;
+      S.bomItems = [];
+      S.bomConfirmed = false;
     }
   }
 
@@ -249,12 +263,8 @@ async function loadAll() {
 
 function defaultWorkers() {
   return [
-    { name: "张建国", id: "WK001", team: "A班" },
-    { name: "李明辉", id: "WK002", team: "A班" },
-    { name: "王志强", id: "WK003", team: "B班" },
-    { name: "陈晓峰", id: "WK004", team: "B班" },
-    { name: "刘大伟", id: "WK005", team: "C班" },
-    { name: "赵永刚", id: "WK006", team: "夜班" },
+    { name: "罗伟华", id: "LOCAL_LWH", team: "组装班", source: "local",
+      operationCodes: ["pc_assembly_tape", "pc_assembly_splitter"] },
   ];
 }
 
@@ -294,9 +304,7 @@ function renderKpis() {
     ["今日报工", String(todayR.length), "条", `已提交 ${todayQty}台`, "#10b981"],
     ["今日产量", String(todayQty), "台", `在岗 ${todayPeople}人`, "#0ea5c9"],
     ["待处理工单", String(workorderCount), "个", "今日新增", "#f59e0b"],
-    // 可报工人：与"选择工人"面板同步，只统计实际显示的工人（罗伟华）
-    ["可报工人", String(S.workers.filter((w) => w.name === "罗伟华").length), "人",
-     `共 ${S.workers.filter((w) => w.name === "罗伟华").length}人`, "#4f8cf7"],
+    ["可报工人", String(S.workers.length), "人", `共 ${S.workers.length}人`, "#4f8cf7"],
   ];
 
   grid.innerHTML = kpis.map((k) => `
@@ -417,8 +425,7 @@ function renderWorkers() {
   }
   el.innerHTML = visibleWorkers.map((worker, index) => {
     const active = S.selWorker && String(S.selWorker.id) === String(worker.id) ? " active" : "";
-    const odoo = worker.source === "odoo" ? " (Odoo)" : "";
-    const label = (worker.name || worker.id) + (worker.team ? " \u00b7 " + worker.team : "") + odoo;
+    const label = (worker.name || worker.id) + (worker.team ? " \u00b7 " + worker.team : "");
     return '<button class="chip worker-chip' + active + '" data-wi="' + index + '" data-wid="' +
       esc(worker.id) + '">' + esc(label) + '</button>';
   }).join("");
@@ -451,6 +458,7 @@ function workorderMatchesSelectedOperation(workorder) {
   const operation = (S.operations || []).find((op) => op.code === S.selOperation);
   if (!operation) return false;
   if (operation.hostType && workorder.hostType !== operation.hostType) return false;
+  if (operation.productClass && workorder.productClass !== operation.productClass) return false;
   const names = operation.workorderNames || [];
   return !names.length || names.includes(workorder.workorderName);
 }
@@ -505,7 +513,7 @@ function renderOrders() {
         '<small>已产 ' + esc(w.qtyProduced) + ' / 剩余 ' + esc(w.remainingQty) + '</small>' +
       '</div>' +
       '<div class="oc-meta-row">' +
-        '<span class="oc-remark">' + (w.hostType === "tape" ? "编带主机" : w.hostType === "splitter" ? "分光主机" : "") + '</span>' +
+        '<span class="oc-remark">' + (w.productClass === "host" ? (w.hostType === "tape" ? "编带主机" : w.hostType === "splitter" ? "分光主机" : "主机") : "") + '</span>' +
         '<span class="oc-delivery">' + esc(w.workcenterName || "") + '</span>' +
       '</div>' +
       '<button class="oc-sop-btn" data-woid="' + esc(w.workorderId) + '" title="查看作业指导书">📖 查看SOP</button>' +
