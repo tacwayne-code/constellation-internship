@@ -289,20 +289,57 @@ async function refreshWorkordersAndProgress() {
 }
 
 // ====== KPI ======
+const MACHINE_ROUTE_STEPS = ["组装", "电控", "调试", "打包"];
+
+function completedMachineQtyForDay(reports, workorders, date) {
+  const workorderById = new Map((workorders || []).map((workorder) => [
+    String(workorder.workorderId), workorder,
+  ]));
+  const qtyByProduction = new Map();
+
+  (reports || []).forEach((report) => {
+    if (report.date !== date) return;
+
+    const workorder = workorderById.get(String(report.workorderId || ""));
+    if (workorder && workorder.productClass !== "machine") return;
+
+    // Completed work orders leave the active-workorder API, so the persisted
+    // report label is the durable source for today's completed production.
+    const step = String(report.operationLabel || workorder?.workorderName || "").trim();
+    if (!MACHINE_ROUTE_STEPS.includes(step)) return;
+
+    const productionId = String(report.productionId || workorder?.productionId || "");
+    const qty = Number(report.qty);
+    if (!productionId || !Number.isFinite(qty) || qty <= 0) return;
+
+    if (!qtyByProduction.has(productionId)) qtyByProduction.set(productionId, new Map());
+    const routeQty = qtyByProduction.get(productionId);
+    routeQty.set(step, (routeQty.get(step) || 0) + qty);
+  });
+
+  let completedQty = 0;
+  qtyByProduction.forEach((routeQty) => {
+    if (!MACHINE_ROUTE_STEPS.every((step) => routeQty.has(step))) return;
+    completedQty += Math.min(...MACHINE_ROUTE_STEPS.map((step) => routeQty.get(step)));
+  });
+  return completedQty;
+}
+
 function renderKpis() {
   const grid = $("#kpiGrid");
   if (!grid) return;
 
   const today = localDateKey();
   const todayR = S.reports.filter((r) => r.date === today);
-  const todayQty = todayR.reduce((s, r) => s + (parseInt(r.qty) || 0), 0);
+  const todayReportedQty = todayR.reduce((s, r) => s + (parseInt(r.qty) || 0), 0);
+  const todayCompletedQty = completedMachineQtyForDay(S.reports, S.workorders, today);
   const todayPeople = new Set(todayR.map((r) => r.workerName)).size;
   const activeOrders = S.orders.filter((o) => parseFloat(o.remaining) > 0).length;
   const workorderCount = S.workorders.filter((w) => w.remainingQty > 0).length;
 
   const kpis = [
-    ["今日报工", String(todayR.length), "条", `已提交 ${todayQty}台`, "#10b981"],
-    ["今日产量", String(todayQty), "台", `在岗 ${todayPeople}人`, "#0ea5c9"],
+    ["今日报工", String(todayR.length), "条", `已提交 ${todayReportedQty}台`, "#10b981"],
+    ["今日产量", String(todayCompletedQty), "台", `在岗 ${todayPeople}人`, "#0ea5c9"],
     ["待处理工单", String(workorderCount), "个", "今日新增", "#f59e0b"],
     ["可报工人", String(S.workers.length), "人", `共 ${S.workers.length}人`, "#4f8cf7"],
   ];
