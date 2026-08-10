@@ -929,6 +929,45 @@ def number(value):
     return float(value or 0)
 
 
+def normalize_machine_bom_materials(submitted_items, expected_items):
+    """Validate component identity while preserving confirmed actual usage."""
+    if not isinstance(submitted_items, list) or not submitted_items:
+        raise ValueError("机器组装工序必须确认物料清单")
+
+    unmatched = list(submitted_items)
+    normalized = []
+    for expected in expected_items:
+        expected_product_id = int(expected.get("productId") or 0)
+        expected_bom_line_id = int(expected.get("bomLineId") or 0)
+        match_index = next((
+            index for index, submitted in enumerate(unmatched)
+            if int(submitted.get("productId") or 0) == expected_product_id
+            and int(submitted.get("bomLineId") or 0) == expected_bom_line_id
+        ), None)
+        if match_index is None:
+            raise ValueError("提交的物料与该制造订单的 Odoo BOM 不一致")
+
+        submitted = unmatched.pop(match_index)
+        actual_qty = submitted.get("actualQty")
+        if isinstance(actual_qty, bool) or not isinstance(actual_qty, (int, float)):
+            raise ValueError(f"物料 {expected.get('defaultCode', '')} 实际使用数量必须为正数")
+        actual_qty = float(actual_qty)
+        if not math.isfinite(actual_qty) or actual_qty <= 0:
+            raise ValueError(f"物料 {expected.get('defaultCode', '')} 实际使用数量必须为正数")
+
+        normalized.append({
+            "productId": expected_product_id,
+            "bomLineId": expected_bom_line_id,
+            "defaultCode": expected.get("defaultCode", ""),
+            "actualQty": actual_qty,
+            "uomId": expected.get("uomId", 1),
+        })
+
+    if unmatched:
+        raise ValueError("提交的物料与该制造订单的 Odoo BOM 不一致")
+    return normalized
+
+
 def qty_text(value):
     value = number(value)
     return str(int(value)) if value.is_integer() else f"{value:g}"
@@ -2978,19 +3017,9 @@ class Handler(SimpleHTTPRequestHandler):
                 try:
                     bom_context = get_workorder_bom_data(workorder_id)
                     expected_items = bom_context.get("items", [])
-                    expected_ids = [int(item["productId"]) for item in expected_items]
-                    submitted_ids = [int(item.get("productId") or 0) for item in materials]
-                    if sorted(submitted_ids) != sorted(expected_ids):
-                        raise ValueError("提交的物料与该制造订单的 Odoo BOM 不一致")
-                    # Quantities are authoritative from Odoo BOM. The modal is
-                    # a confirmation step, not a way to alter the production recipe.
-                    materials = [{
-                        "productId": item["productId"],
-                        "bomLineId": item["bomLineId"],
-                        "defaultCode": item["defaultCode"],
-                        "actualQty": number(item["bomQty"]) * qty,
-                        "uomId": item["uomId"],
-                    } for item in expected_items]
+                    # Component identities remain authoritative from Odoo, while
+                    # the operator-confirmed actual usage may exceed the default.
+                    materials = normalize_machine_bom_materials(materials, expected_items)
                     report["materials"] = materials
                 except Exception as bom_err:
                     self.write_json({

@@ -663,7 +663,7 @@ async function openBomModal(nocache = false) {
       ...item,
       selected: true,
       actualQty: item.actualQty || item.bomQty || 1,
-      lockedQty: resp.meta && resp.meta.productClass === "machine",
+      lockedQty: false,
       validationError: "",
     }));
     S.bomLoading = false;
@@ -732,7 +732,7 @@ function renderBomList() {
       '<span class="bom-col-uom">' + esc(item.uomName || "pcs") + '</span>' +
       '<span class="bom-col-actual">' +
         '<button class="bom-qty-btn" data-bi="' + i + '" data-act="minus"' + (item.lockedQty ? ' disabled' : '') + '>−</button>' +
-        '<input class="bom-qty-input" type="number" min="0" value="' + item.actualQty + '" data-bi="' + i + '"' + (item.lockedQty ? ' readonly' : '') + ' />' +
+        '<input class="bom-qty-input" type="number" min="1" step="1" value="' + item.actualQty + '" data-bi="' + i + '"' + (item.lockedQty ? ' readonly' : '') + ' />' +
         '<button class="bom-qty-btn" data-bi="' + i + '" data-act="plus"' + (item.lockedQty ? ' disabled' : '') + '>+</button>' +
       '</span>' +
       '<span class="bom-col-category">' + esc(item.categoryName || "") + '</span>' +
@@ -792,7 +792,8 @@ function setupBomEvents() {
       const i = parseInt(e.target.dataset.bi);
       if (i >= 0 && i < S.bomItems.length) {
         let val = parseInt(e.target.value);
-        if (isNaN(val) || val < 0) val = 0;
+        if (isNaN(val) || val < 1) val = 1;
+        e.target.value = val;
         S.bomItems[i].actualQty = val;
         updateBomConfirmBtn();
       }
@@ -808,7 +809,7 @@ function setupBomEvents() {
     if (i >= 0 && i < S.bomItems.length) {
       let val = S.bomItems[i].actualQty || 0;
       if (act === "plus") val++;
-      else if (act === "minus") val = Math.max(0, val - 1);
+      else if (act === "minus") val = Math.max(1, val - 1);
       S.bomItems[i].actualQty = val;
       renderBomList();
     }
