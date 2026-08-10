@@ -1,9 +1,10 @@
-"""Install or verify the MO remaining-quantity display fix in Odoo.
+"""Install or verify remaining-quantity display fixes in Odoo.
 
 The manufacturing form normally shows ``qty_producing / product_qty``.
 ``qty_producing`` drives Odoo's component inverse calculation, so changing it
 only to improve the label also changes component consumption.  This fix keeps
-that technical field intact and displays a separate computed value instead.
+that technical field intact and displays separate computed values for the MO
+header and its component lines instead.
 """
 
 from __future__ import annotations
@@ -14,11 +15,20 @@ import sys
 
 
 FIELD_NAME = "x_worker_report_qty_remaining"
+COMPONENT_FIELD_NAME = "x_worker_report_remaining_consumption"
 VIEW_NAME = "worker.report.mrp.production.remaining.quantity.form"
 VIEW_KEY = "worker_report.mrp_production_remaining_quantity_form"
 FIELD_COMPUTE = """for record in self:
     record['x_worker_report_qty_remaining'] = max(
         (record.product_qty or 0.0) - (record.qty_produced or 0.0),
+        0.0,
+    )
+"""
+COMPONENT_FIELD_COMPUTE = """for record in self:
+    planned = record.product_uom_qty or 0.0
+    consumed = (record.quantity or 0.0) if record.picked else 0.0
+    record['x_worker_report_remaining_consumption'] = max(
+        planned - consumed,
         0.0,
     )
 """
@@ -30,6 +40,14 @@ VIEW_ARCH = """
     <xpath expr="//field[@name='qty_producing' and contains(@class, 'text-start')]" position="after">
         <field name="x_worker_report_qty_remaining"
                class="text-start text-truncate"
+               readonly="1"/>
+    </xpath>
+    <xpath expr="//field[@name='move_raw_ids']/list/field[@name='product_uom_qty']" position="attributes">
+        <attribute name="column_invisible">True</attribute>
+    </xpath>
+    <xpath expr="//field[@name='move_raw_ids']/list/field[@name='product_uom_qty' and @widget='mrp_should_consume']" position="after">
+        <field name="x_worker_report_remaining_consumption"
+               string="待消耗"
                readonly="1"/>
     </xpath>
 </data>
@@ -71,11 +89,11 @@ class OdooRemainingQuantityFix:
 
     @classmethod
     def remaining_consumption_qty(cls, move):
-        """Return a bounded remaining component quantity.
+        """Return Odoo's technical remaining-consumption quantity.
 
-        Prefer Odoo's ``should_consume_qty`` when it is a valid value.  If a
-        custom view or older Odoo version returns a missing/out-of-range value,
-        derive the remaining amount from the planned and consumed quantities.
+        This helper is used by the report synchronization path when it derives
+        the cumulative consumed amount.  Keep Odoo's value when valid and only
+        fall back to a calculation for older or incomplete responses.
         """
         if not isinstance(move, dict):
             return 0.0
@@ -89,6 +107,24 @@ class OdooRemainingQuantityFix:
         consumed = cls._number(move.get("quantity")) or 0.0
         return max(planned - max(consumed, 0.0), 0.0)
 
+    @classmethod
+    def display_remaining_consumption_qty(cls, move):
+        """Return planned quantity minus confirmed component consumption.
+
+        Odoo can put reserved quantities in ``quantity`` before consumption.
+        The integration marks a move as ``picked`` when that quantity becomes
+        actual consumption, so unpicked reservations must not reduce the
+        displayed remaining amount.
+        """
+        if not isinstance(move, dict):
+            return 0.0
+        planned = cls._number(move.get("product_uom_qty"))
+        if planned is None:
+            return 0.0
+        planned = max(planned, 0.0)
+        consumed = (cls._number(move.get("quantity")) or 0.0) if move.get("picked") else 0.0
+        return max(planned - max(consumed, 0.0), 0.0)
+
 
 def _client():
     # Import lazily so server.py can reuse the pure helpers without a circular
@@ -97,12 +133,12 @@ def _client():
     return server.get_odoo()
 
 
-def _model_id(client) -> int:
+def _model_id(client, model: str) -> int:
     rows = client.search_read(
-        "ir.model", [["model", "=", "mrp.production"]], ["id"], limit=1
+        "ir.model", [["model", "=", model]], ["id"], limit=1
     )
     if not rows:
-        raise RuntimeError("Odoo model mrp.production was not found")
+        raise RuntimeError(f"Odoo model {model} was not found")
     return int(rows[0]["id"])
 
 
@@ -120,7 +156,7 @@ def _base_view_id(client) -> int:
 
 def install() -> None:
     client = _client()
-    model_id = _model_id(client)
+    model_id = _model_id(client, "mrp.production")
     field_rows = client.search_read(
         "ir.model.fields",
         [["model_id", "=", model_id], ["name", "=", FIELD_NAME]],
@@ -143,6 +179,33 @@ def install() -> None:
         client.call("ir.model.fields", "write", [[field_rows[0]["id"]], field_values])
     else:
         client.call("ir.model.fields", "create", [field_values])
+
+    component_model_id = _model_id(client, "stock.move")
+    component_field_rows = client.search_read(
+        "ir.model.fields",
+        [["model_id", "=", component_model_id], ["name", "=", COMPONENT_FIELD_NAME]],
+        ["id"],
+        limit=1,
+    )
+    component_field_values = {
+        "name": COMPONENT_FIELD_NAME,
+        "field_description": "Remaining Consumption",
+        "model_id": component_model_id,
+        "model": "stock.move",
+        "ttype": "float",
+        "state": "manual",
+        "readonly": True,
+        "store": False,
+        "depends": "product_uom_qty,quantity,picked",
+        "compute": COMPONENT_FIELD_COMPUTE,
+    }
+    if component_field_rows:
+        client.call(
+            "ir.model.fields", "write",
+            [[component_field_rows[0]["id"]], component_field_values],
+        )
+    else:
+        client.call("ir.model.fields", "create", [component_field_values])
 
     base_view_id = _base_view_id(client)
     view_rows = client.search_read(
@@ -173,22 +236,38 @@ def verify() -> None:
     client = _client()
     rows = client.search_read(
         "mrp.production",
-        [["name", "=", "WH/MO-OUT/00042"]],
-        ["name", "product_qty", "qty_produced", "qty_producing", FIELD_NAME],
+        [["id", "=", 49]],
+        ["name", "product_qty", "qty_produced", "qty_producing", FIELD_NAME, "move_raw_ids"],
         limit=1,
     )
     if not rows:
-        raise RuntimeError("Manufacturing order WH/MO-OUT/00042 was not found")
+        raise RuntimeError("Manufacturing order #49 was not found")
     row = rows[0]
     expected = max(float(row["product_qty"] or 0) - float(row["qty_produced"] or 0), 0.0)
     actual = float(row[FIELD_NAME] or 0)
     if abs(actual - expected) > 1e-6:
         raise RuntimeError(f"Remaining quantity is {actual}, expected {expected}")
-    if abs(float(row["qty_producing"] or 0) - 42.0) > 1e-6:
-        raise RuntimeError("qty_producing changed; component calculations may be affected")
+    moves = client.call(
+        "stock.move", "read",
+        [row["move_raw_ids"], [
+            "product_uom_qty", "quantity", "picked", "should_consume_qty",
+            COMPONENT_FIELD_NAME,
+        ]],
+    )
+    if not moves:
+        raise RuntimeError(f"{row['name']} has no component moves")
+    for move in moves:
+        expected_move = OdooRemainingQuantityFix.display_remaining_consumption_qty(move)
+        actual_move = float(move[COMPONENT_FIELD_NAME] or 0)
+        if abs(actual_move - expected_move) > 1e-6:
+            raise RuntimeError(
+                f"Move #{move['id']} remaining consumption is {actual_move}, "
+                f"expected {expected_move}"
+            )
     print(
         f"{row['name']}: display={actual:g}/{float(row['product_qty']):g}, "
-        f"qty_producing={float(row['qty_producing']):g} (preserved)"
+        f"qty_producing={float(row['qty_producing']):g} (preserved), "
+        f"components={len(moves)}, remaining={float(moves[0][COMPONENT_FIELD_NAME]):g}"
     )
 
 

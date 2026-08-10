@@ -1542,6 +1542,110 @@ def get_bom_data(host_type):
     return items
 
 
+def get_workorder_bom_data(workorder_id):
+    """Read the selected work order's own Odoo BOM and source stock."""
+    if not workorder_id:
+        raise ValueError("缺少工单 ID")
+    client = get_odoo()
+    wo_rows = client.read(
+        "mrp.workorder", [int(workorder_id)],
+        ["id", "production_id", "product_id", "name"],
+    )
+    if not wo_rows:
+        raise ValueError(f"工单 #{workorder_id} 不存在")
+    wo = wo_rows[0]
+    production_id = rel_id(wo.get("production_id"))
+    if not production_id:
+        raise ValueError("工单没有关联制造订单")
+    mo_rows = client.read(
+        "mrp.production", [production_id],
+        ["id", "name", "product_id", "product_qty", "bom_id", "location_src_id"],
+    )
+    if not mo_rows:
+        raise ValueError(f"制造订单 #{production_id} 不存在")
+    mo = mo_rows[0]
+    bom_id = rel_id(mo.get("bom_id"))
+    if not bom_id:
+        raise ValueError(f"制造订单 {mo.get('name', production_id)} 没有关联 BOM")
+    source_location_id = rel_id(mo.get("location_src_id"))
+    if source_location_id != SRC_LOCATION_ID:
+        raise ValueError(
+            f"制造订单原料库位不是 WH/生产前（实际库位 ID: {source_location_id}）"
+        )
+
+    lines = client.search_read(
+        "mrp.bom.line", [("bom_id", "=", bom_id)],
+        ["id", "product_id", "product_qty", "product_uom_id", "sequence"],
+        limit=500, order="sequence asc, id asc",
+    )
+    product_ids = sorted({rel_id(line.get("product_id")) for line in lines if rel_id(line.get("product_id"))})
+    products = {}
+    if product_ids:
+        for product in client.read(
+            "product.product", product_ids,
+            ["id", "default_code", "name", "product_tmpl_id", "categ_id", "uom_id"],
+        ):
+            products[product["id"]] = product
+
+    template_ids = sorted({rel_id(p.get("product_tmpl_id")) for p in products.values() if rel_id(p.get("product_tmpl_id"))})
+    specifications = {}
+    if template_ids:
+        try:
+            for template in client.read("product.template", template_ids, ["id", "spec_info"]):
+                specifications[template["id"]] = str(template.get("spec_info") or "")
+        except Exception as exc:
+            logger.debug(f"读取机器 BOM 规格跳过: {exc}")
+
+    stock_by_product = {}
+    if product_ids:
+        quants = client.search_read(
+            "stock.quant",
+            [("product_id", "in", product_ids), ("location_id", "=", SRC_LOCATION_ID)],
+            ["product_id", "quantity"], limit=1000,
+        )
+        for quant in quants:
+            product_id = rel_id(quant.get("product_id"))
+            stock_by_product[product_id] = (
+                stock_by_product.get(product_id, 0.0)
+                + number(quant.get("quantity"))
+            )
+
+    items = []
+    for line in lines:
+        product_id = rel_id(line.get("product_id"))
+        product = products.get(product_id, {})
+        template_id = rel_id(product.get("product_tmpl_id"))
+        uom = line.get("product_uom_id") or product.get("uom_id")
+        bom_qty = number(line.get("product_qty"))
+        items.append({
+            "bomLineId": line["id"],
+            "productId": product_id,
+            "productTemplateId": template_id or 0,
+            "defaultCode": str(product.get("default_code") or product_code(line.get("product_id"))),
+            "name": clean_name(product.get("name") or rel_name(line.get("product_id"))),
+            "specification": specifications.get(template_id, ""),
+            "uomId": rel_id(uom) or 0,
+            "uomName": rel_name(uom, ""),
+            "bomQty": bom_qty,
+            "categoryName": rel_name(product.get("categ_id"), ""),
+            "brandSupplierName": "",
+            "availableQty": stock_by_product.get(product_id, 0.0),
+            "selected": True,
+            "actualQty": bom_qty,
+            "meta": {"mode": get_odoo_mode(), "source": "odoo_workorder_bom"},
+        })
+    return {
+        "items": items,
+        "productionId": production_id,
+        "productionName": str(mo.get("name") or ""),
+        "productName": clean_name(mo.get("product_id")),
+        "productClass": workorder_product_class(mo.get("product_id")),
+        "bomId": bom_id,
+        "sourceLocationId": source_location_id,
+        "sourceLocationName": rel_name(mo.get("location_src_id"), ""),
+    }
+
+
 def models_query_tmpl_by_code(client, default_code):
     """通过 default_code 查 product.template 的 id"""
     try:
@@ -1826,16 +1930,35 @@ def log_sop_view(attachment_id, worker_id, worker_name, workorder_id):
         logger.warning(f"SOP view log error: {e}")
 
 
+def _ensure_location_stock(client, product_id, location_id, required_qty):
+    """Ensure a virtual production location can supply a finished move."""
+    quant_ids = odoo_call(client, "stock.quant", "search", [[
+        ("product_id", "=", product_id), ("location_id", "=", location_id),
+    ]])
+    quants = (odoo_call(client, "stock.quant", "read", [quant_ids],
+                        {"fields": ["id", "quantity"]}) if quant_ids else [])
+    current = sum(number(quant.get("quantity")) for quant in quants)
+    deficit = max(number(required_qty) - current, 0.0)
+    if deficit <= 1e-6:
+        return
+    if quants:
+        quant = quants[0]
+        new_qty = number(quant.get("quantity")) + deficit
+        odoo_call(client, "stock.quant", "write", [[quant["id"]], {
+            "quantity": new_qty, "inventory_quantity": new_qty,
+        }])
+    else:
+        odoo_call(client, "stock.quant", "create", [{
+            "product_id": product_id,
+            "location_id": location_id,
+            "quantity": deficit,
+            "inventory_quantity": deficit,
+        }])
+
+
 def odoo_update_workorder_progress(client, workorder_id: int, qty: float, production_id: int,
                                    target_qty=None):
-    """
-    报工成功后，同步更新 Odoo 中工单/MO 的已完成数量 + 工单状态。
-    - mrp.workorder.qty_produced 累加本次 qty
-    - mrp.production.qty_produced = sum of all WO.qty_produced（覆盖同步，不累加）
-      Odoo 的 MO.qty_produced 是计算字段（依赖 move_finished_ids.quantity）
-      直接覆盖 finished move.quantity 让 MO.qty_produced 始终等于实际报工数
-    - 如果 qty_produced >= qty_production，自动标记工单 done
-    """
+    """Update one WO and synchronize the MO's truly completed product count."""
     if not workorder_id or qty <= 0:
         return {"ok": False, "error": "缺少参数"}
     new_wo_qty = None
@@ -1871,74 +1994,88 @@ def odoo_update_workorder_progress(client, workorder_id: int, qty: float, produc
             return {"ok": False, "error": "工单已写入但回读数量不一致",
                     "new_qty": new_wo_qty}
 
-        # 2) 同步 finished move：quantity = sum of all WO.qty_produced，state='done'
-        #    Odoo 的 MO.qty_produced 是 computed field，依赖 move_finished_ids
-        #    但只有 state='done' 的 finished move 才会被计入，所以必须设 state=done
-        #    （实测 state='done' 不会让 MO 自动 done，MO state 由 qty_produced vs product_qty 决定）
+        # 2) A machine is complete only when every active routing step reaches
+        # the same cumulative quantity. Host-computer orders keep their legacy
+        # single-operation behavior and use the highest WO quantity.
         if production_id:
             all_wos = client.call("mrp.workorder", "search_read",
                 [[("production_id", "=", production_id)]],
-                {"fields": ["id", "qty_produced"]})
-            total_produced = sum(float(w.get("qty_produced", 0)) for w in all_wos)
+                {"fields": ["id", "qty_produced", "state"]})
 
             mo_rows = client.read("mrp.production", [production_id],
-                                  ["id", "move_finished_ids", "state",
-                                   "product_qty", "qty_producing"])
+                                  ["id", "product_id", "move_finished_ids", "state",
+                                   "product_qty", "qty_produced"])
             if not mo_rows:
                 return {"ok": False, "error": f"生产订单 #{production_id} 不存在",
                         "new_qty": new_wo_qty}
             mo = mo_rows[0]
-            fm_ids_list = mo.get("move_finished_ids") or []
-            move_errors = []
-            finished_uom_qty = 0.0
-            if fm_ids_list:
-                fm_data = client.read("stock.move", fm_ids_list,
-                                      ["id", "product_uom_qty", "quantity", "state"])
-                if fm_data:
-                    finished_uom_qty = float(fm_data[0].get("product_uom_qty", 0) or 0)
-            for fm_id in fm_ids_list:
-                try:
-                    client.call("stock.move", "write", [[fm_id], {
-                        "quantity": total_produced,
-                        "state": "done",
+            active_wos = [w for w in all_wos if w.get("state") != "cancel"]
+            quantities = [number(w.get("qty_produced")) for w in active_wos]
+            product_class = workorder_product_class(mo.get("product_id"))
+            route_completed = (min(quantities) if product_class == "machine" else max(quantities)) if quantities else 0.0
+            current_mo_qty = number(mo.get("qty_produced"))
+            completed_qty = max(current_mo_qty, route_completed)
+            product_qty = number(mo.get("product_qty"))
+            if product_qty > 0:
+                completed_qty = min(completed_qty, product_qty)
+
+            if completed_qty > current_mo_qty + 1e-6:
+                finished_product_id = rel_id(mo.get("product_id"))
+                finished_moves = client.read(
+                    "stock.move", mo.get("move_finished_ids") or [],
+                    ["id", "product_id", "quantity", "state", "location_id"],
+                )
+                primary_moves = [
+                    move for move in finished_moves
+                    if rel_id(move.get("product_id")) == finished_product_id
+                ]
+                if not primary_moves:
+                    return {"ok": False, "error": "制造订单没有成品移动", "new_qty": new_wo_qty}
+                move = primary_moves[0]
+                move_id = move["id"]
+                if move.get("state") != "done":
+                    # Writing quantity and state together made Odoo validate the
+                    # original reserved demand (20) instead of the actual output.
+                    client.call("stock.move", "write", [[move_id], {
+                        "quantity": completed_qty, "picked": True,
                     }])
-                except Exception as e:
-                    move_errors.append(f"成品移动 {fm_id}: {e}")
-            if move_errors:
-                return {"ok": False,
-                        "error": "; ".join(move_errors),
-                        "new_qty": new_wo_qty,
-                        "total_produced": total_produced}
-            logger.info(f"MO#{production_id} finished move 同步为 quantity={total_produced}, state=done")
+                    move_check = client.read("stock.move", [move_id], ["quantity", "state"])
+                    if (not move_check or
+                            abs(number(move_check[0].get("quantity")) - completed_qty) > 1e-6):
+                        return {"ok": False, "error": "成品移动实际数量写入后不一致",
+                                "new_qty": new_wo_qty}
+                    source_location_id = rel_id(move.get("location_id"))
+                    _ensure_location_stock(
+                        client, finished_product_id, source_location_id, completed_qty
+                    )
+                    client.call("stock.move", "write", [[move_id], {"state": "done"}])
+                else:
+                    delta = completed_qty - current_mo_qty
+                    source_location_id = rel_id(move.get("location_id"))
+                    _ensure_location_stock(client, finished_product_id, source_location_id, delta)
+                    client.call("stock.move", "write", [[move_id], {
+                        "quantity": completed_qty, "picked": True,
+                    }])
+                logger.info(
+                    f"MO#{production_id} 完整工序产量={route_completed:g}, "
+                    f"finished move#{move_id}={completed_qty:g}"
+                )
 
-            # 3) 更新 MO.qty_producing。分母使用成品移动的计划数量，
-            # 不再写死 50，避免不同生产订单出现错误的待消耗数量。
-            product_qty = float(mo.get("product_qty", 0) or 0)
-            raw_qty = float(total_produced)
-            denominator = finished_uom_qty or product_qty or 1.0
-            if product_qty > 0 and raw_qty < product_qty:
-                desired_should = product_qty - raw_qty
-                new_qty_producing = raw_qty + desired_should * max(product_qty - raw_qty, 0) / denominator
-            else:
-                new_qty_producing = max(product_qty - raw_qty, 0)
-            client.call("mrp.production", "write", [[production_id], {
-                "qty_producing": new_qty_producing,
-            }])
-            logger.info(f"MO#{production_id} qty_producing={new_qty_producing:.2f} (UI 待消耗={int(max(product_qty - raw_qty, 0))})")
-
-            # 回读关键字段，确认面板下一次查询拿到的是本次报工结果。
+            # 3) Read back the computed MO quantity. Never write qty_producing;
+            # it drives Odoo's component inverse calculation.
             mo_check = client.read("mrp.production", [production_id],
-                                  ["qty_produced", "qty_producing"])
+                                  ["qty_produced"])
             if not mo_check:
                 return {"ok": False, "error": "生产订单写入后无法回读",
                         "new_qty": new_wo_qty}
             mo_qty = float(mo_check[0].get("qty_produced", 0) or 0)
-            if abs(mo_qty - total_produced) > 1e-6:
+            if abs(mo_qty - completed_qty) > 1e-6:
                 return {"ok": False,
-                        "error": f"生产订单已写入但回读产量不一致（期望 {total_produced:g}，实际 {mo_qty:g}）",
+                        "error": f"生产订单已写入但回读产量不一致（期望 {completed_qty:g}，实际 {mo_qty:g}）",
                         "new_qty": new_wo_qty,
-                        "total_produced": total_produced}
-        return {"ok": True, "new_qty": new_wo_qty}
+                        "completed_qty": completed_qty}
+        return {"ok": True, "new_qty": new_wo_qty,
+                "completed_qty": completed_qty if production_id else None}
     except Exception as e:
         logger.warning(f"Odoo 进度更新失败: {e}")
         result = {"ok": False, "error": str(e)}
@@ -1948,7 +2085,7 @@ def odoo_update_workorder_progress(client, workorder_id: int, qty: float, produc
 
 
 def _direct_deduct_quant(client, product_id, code, actual_qty):
-    """降级方案：直接扣 stock.quant（当 stock.move 找不到时）"""
+    """Deduct physical stock only from WH/生产前 without going negative."""
     remaining = actual_qty
     quant_ids = odoo_call(client, "stock.quant", "search", [
         [("product_id", "=", product_id), ("location_id", "=", SRC_LOCATION_ID)]
@@ -1959,6 +2096,11 @@ def _direct_deduct_quant(client, product_id, code, actual_qty):
         # 负库存 quant 不应参与“可扣数量”计算；否则 min(负数, actual_qty)
         # 会让 remaining 反而增加，造成错误的库存结果。
         positive_quants = [q for q in quants if float(q.get("quantity", 0) or 0) > 0]
+        available = sum(number(q.get("quantity")) for q in positive_quants)
+        if available + 1e-6 < actual_qty:
+            raise ValueError(
+                f"WH/生产前库存不足（需要 {actual_qty:g}，现有 {available:g}）"
+            )
         for q in positive_quants:
             if remaining <= 0:
                 break
@@ -1968,28 +2110,8 @@ def _direct_deduct_quant(client, product_id, code, actual_qty):
                 "quantity": qty - take, "inventory_quantity": qty - take,
             }])
             remaining -= take
-        if remaining > 0 and positive_quants:
-            last = positive_quants[-1]
-            # 上面的循环已经写过 last quant；重新读取当前值再扣剩余量，
-            # 避免用旧值回写导致库存被“加回”。
-            latest = odoo_call(client, "stock.quant", "read", [[last["id"]]],
-                               {"fields": ["quantity"]})
-            current_last_qty = float(latest[0].get("quantity", 0)) if latest else 0.0
-            odoo_call(client, "stock.quant", "write", [[last["id"]], {
-                "quantity": current_last_qty - remaining,
-                "inventory_quantity": current_last_qty - remaining,
-            }])
-        elif remaining > 0:
-            # 没有正库存时允许落到负库存，但数量计算仍保持精确。
-            odoo_call(client, "stock.quant", "create", [{
-                "product_id": product_id, "location_id": SRC_LOCATION_ID,
-                "quantity": -remaining, "inventory_quantity": -remaining,
-            }])
     else:
-        odoo_call(client, "stock.quant", "create", [{
-            "product_id": product_id, "location_id": SRC_LOCATION_ID,
-            "quantity": -actual_qty, "inventory_quantity": -actual_qty,
-        }])
+        raise ValueError(f"物料 {code} 在 WH/生产前没有库存")
 
 
 def odoo_deduct_materials(materials, production_id=None, qty=0, idempotency_key=""):
@@ -2031,17 +2153,58 @@ def odoo_deduct_materials(materials, production_id=None, qty=0, idempotency_key=
     raw_move_ids_by_pid = {}
     if production_id:
         try:
-            mo = client.read("mrp.production", [production_id], ["move_raw_ids"])
+            mo = client.read(
+                "mrp.production", [production_id], ["move_raw_ids", "location_src_id"]
+            )
+            if mo and rel_id(mo[0].get("location_src_id")) != SRC_LOCATION_ID:
+                raise ValueError("制造订单原料库位不是 WH/生产前")
             raw_ids = mo[0].get("move_raw_ids", []) if mo else []
             if raw_ids:
-                rms = client.read("stock.move", raw_ids, ["id", "product_id", "state"])
+                rms = client.read(
+                    "stock.move", raw_ids,
+                    ["id", "product_id", "state", "location_id"],
+                )
                 for rm in rms:
+                    if rel_id(rm.get("location_id")) != SRC_LOCATION_ID:
+                        continue
                     pid = rel_id(rm.get("product_id"))
                     if pid not in raw_move_ids_by_pid:
                         raw_move_ids_by_pid[pid] = []
                     raw_move_ids_by_pid[pid].append(rm["id"])
         except Exception as e:
             logger.warning(f"读 MO raw moves 失败: {e}")
+
+    # Validate the complete material set before the first write so one missing
+    # component cannot leave an avoidable partial deduction.
+    required_by_product = {}
+    material_code_by_product = {}
+    for mat in materials:
+        product_id = int(mat.get("productId") or 0)
+        required_by_product[product_id] = (
+            required_by_product.get(product_id, 0.0) + number(mat.get("actualQty"))
+        )
+        material_code_by_product[product_id] = str(mat.get("defaultCode") or "?")
+    preflight_errors = []
+    for product_id, required_qty in required_by_product.items():
+        code = material_code_by_product[product_id]
+        if product_id not in raw_move_ids_by_pid:
+            preflight_errors.append(f"物料 {code}: 不属于生产订单 #{production_id} 的 WH/生产前原料移动")
+            continue
+        quant_ids = odoo_call(client, "stock.quant", "search", [[
+            ("product_id", "=", product_id),
+            ("location_id", "=", SRC_LOCATION_ID),
+        ]])
+        quants = (odoo_call(client, "stock.quant", "read", [quant_ids],
+                            {"fields": ["quantity"]}) if quant_ids else [])
+        source_quantity = sum(max(number(q.get("quantity")), 0.0) for q in quants)
+        if source_quantity + 1e-6 < required_qty:
+            preflight_errors.append(
+                f"物料 {code}: WH/生产前库存不足（需要 {required_qty:g}，现有 {source_quantity:g}）"
+            )
+    if preflight_errors:
+        return {"ok": False, "stock_move_ids": [], "errors": preflight_errors,
+                "message": "BOM 物料预检失败",
+                "meta": {"mode": "real", "source": "odoo"}}
 
     for mat in materials:
         product_id = mat.get("productId", 0)
@@ -2053,7 +2216,17 @@ def odoo_deduct_materials(materials, production_id=None, qty=0, idempotency_key=
             continue
 
         try:
-            _ensure_negative_stock_ok(client, product_id)
+            quant_ids = odoo_call(client, "stock.quant", "search", [[
+                ("product_id", "=", product_id),
+                ("location_id", "=", SRC_LOCATION_ID),
+            ]])
+            quants = (odoo_call(client, "stock.quant", "read", [quant_ids],
+                                {"fields": ["quantity"]}) if quant_ids else [])
+            source_quantity = sum(max(number(q.get("quantity")), 0.0) for q in quants)
+            if source_quantity + 1e-6 < number(actual_qty):
+                raise ValueError(
+                    f"WH/生产前库存不足（需要 {number(actual_qty):g}，现有 {source_quantity:g}）"
+                )
 
             # 1) 更新 MO 的 raw stock.move.quantity
             #    只改 quantity，不改 state（否则 MO 会自动 done）
@@ -2066,7 +2239,7 @@ def odoo_deduct_materials(materials, production_id=None, qty=0, idempotency_key=
                 for rm_id in rm_ids:
                     rm = odoo_call(
                         client, "stock.move", "read", [[rm_id], [
-                            "product_uom_qty", "quantity", "should_consume_qty",
+                            "product_uom_qty", "quantity", "should_consume_qty", "picked",
                         ]]
                     )
                     if not rm:
@@ -2078,7 +2251,16 @@ def odoo_deduct_materials(materials, production_id=None, qty=0, idempotency_key=
                         rm[0].get("product_uom_qty", 0) or 0
                     )
                     remaining_qty = OdooRemainingQuantityFix.remaining_consumption_qty(rm[0])
-                    consumed_before = max(planned_qty - remaining_qty, 0.0)
+                    move_quantity = number(rm[0].get("quantity"))
+                    # Before the first report Odoo reserves the full demand,
+                    # so quantity=planned does not mean it was consumed. Once
+                    # this integration writes a smaller picked quantity, that
+                    # value is the cumulative actual consumption base.
+                    if (rm[0].get("picked") and
+                            move_quantity < planned_qty - 1e-6):
+                        consumed_before = max(move_quantity, 0.0)
+                    else:
+                        consumed_before = max(planned_qty - remaining_qty, 0.0)
                     consumed_after = consumed_before + float(actual_qty)
                     odoo_call(client, "stock.move", "write", [[rm_id], {
                         "quantity": consumed_after,
@@ -2373,6 +2555,33 @@ class Handler(SimpleHTTPRequestHandler):
             host_type = params.get("hostType", params.get("host_type", ""))
             workorder_id = params.get("workorderId", params.get("workorder_id", ""))
             nocache = params.get("nocache", "0") in ("1", "true", "yes")
+            if workorder_id:
+                try:
+                    context = get_workorder_bom_data(workorder_id)
+                    if context.get("productClass") == "machine":
+                        items = context.pop("items")
+                        self.write_json({
+                            "ok": True,
+                            "data": items,
+                            "meta": {
+                                "mode": get_odoo_mode(),
+                                "count": len(items),
+                                "nocache": nocache,
+                                **context,
+                            },
+                        })
+                        return
+                except Exception as e:
+                    if host_type in ("tape", "splitter"):
+                        logger.debug(f"主机工单沿用主机 BOM 查询: {e}")
+                    else:
+                        logger.error(f"工单 BOM 查询异常: {e}")
+                        self.write_json({
+                            "ok": False,
+                            "error": f"工单 BOM 数据加载失败: {e}",
+                            "data": [],
+                        }, status=HTTPStatus.INTERNAL_SERVER_ERROR)
+                        return
             if not host_type and workorder_id:
                 # 根据工单 ID 推断主机类型
                 try:
@@ -2704,6 +2913,8 @@ class Handler(SimpleHTTPRequestHandler):
                     "error": "当前工人未绑定该工序，不能提交报工",
                 }, status=HTTPStatus.FORBIDDEN)
                 return
+            machine_operation = False
+            machine_assembly = False
             if mode == "real":
                 workorder_view = {
                     "workorderName": check_rows[0].get("name", ""),
@@ -2713,6 +2924,8 @@ class Handler(SimpleHTTPRequestHandler):
                     ),
                     "productClass": workorder_product_class(check_rows[0].get("product_id")),
                 }
+                machine_operation = workorder_view["productClass"] == "machine"
+                machine_assembly = machine_operation and op_info.get("name") == "组装"
                 if worker.get("source") == "odoo" and workorder_view["productClass"] != "machine":
                     self.write_json({
                         "ok": False,
@@ -2755,6 +2968,42 @@ class Handler(SimpleHTTPRequestHandler):
             # === 物料校验 ===
             materials = report.get("materials", [])
             host_type = op_info.get("hostType")
+            if machine_assembly:
+                if not isinstance(materials, list) or not materials:
+                    self.write_json({
+                        "ok": False,
+                        "error": "机器组装工序必须确认该制造订单的 BOM 物料清单",
+                    }, status=HTTPStatus.BAD_REQUEST)
+                    return
+                try:
+                    bom_context = get_workorder_bom_data(workorder_id)
+                    expected_items = bom_context.get("items", [])
+                    expected_ids = [int(item["productId"]) for item in expected_items]
+                    submitted_ids = [int(item.get("productId") or 0) for item in materials]
+                    if sorted(submitted_ids) != sorted(expected_ids):
+                        raise ValueError("提交的物料与该制造订单的 Odoo BOM 不一致")
+                    # Quantities are authoritative from Odoo BOM. The modal is
+                    # a confirmation step, not a way to alter the production recipe.
+                    materials = [{
+                        "productId": item["productId"],
+                        "bomLineId": item["bomLineId"],
+                        "defaultCode": item["defaultCode"],
+                        "actualQty": number(item["bomQty"]) * qty,
+                        "uomId": item["uomId"],
+                    } for item in expected_items]
+                    report["materials"] = materials
+                except Exception as bom_err:
+                    self.write_json({
+                        "ok": False,
+                        "error": f"机器组装 BOM 校验失败: {bom_err}",
+                    }, status=HTTPStatus.BAD_REQUEST)
+                    return
+            elif machine_operation and materials:
+                self.write_json({
+                    "ok": False,
+                    "error": "机器类仅组装工序允许扣减 BOM 物料",
+                }, status=HTTPStatus.BAD_REQUEST)
+                return
             if materials:
                 # 校验每种物料的 actualQty > 0
                 # 注意：物料清单由前端 BOM 弹窗从 Odoo mrp.bom 动态拉取，已保证属于当前主机类型，

@@ -463,6 +463,13 @@ function workorderMatchesSelectedOperation(workorder) {
   return !names.length || names.includes(workorder.workorderName);
 }
 
+function operationRequiresBom(operation = S.selectedOperation) {
+  return !!(operation && (
+    (operation.productClass === "machine" && operation.name === "组装") ||
+    (String(operation.code || "").includes("pc_assembly") && operation.hostType)
+  ));
+}
+
 function renderOrders() {
   const el = $("#orderCards");
   const cnt = $("#orderCount");
@@ -597,8 +604,15 @@ function updateSubmit() {
 
 // ====== BOM 弹窗逻辑 ======
 async function openBomModal(nocache = false) {
+  const machineAssembly = !!(S.selectedOperation &&
+    S.selectedOperation.productClass === "machine" &&
+    S.selectedOperation.name === "组装");
+  if (machineAssembly && !S.selectedWorkorder) {
+    toast("请先选择组装工单", "error");
+    return;
+  }
   const hostType = S.selectedOperation ? S.selectedOperation.hostType : null;
-  if (!hostType) {
+  if (!machineAssembly && !hostType) {
     // 尝试从工单推断
     if (S.selectedWorkorder && S.selectedWorkorder.hostType) {
       S.selectedOperation = { ...S.selectedOperation, hostType: S.selectedWorkorder.hostType };
@@ -630,7 +644,9 @@ async function openBomModal(nocache = false) {
   }
 
   // 设置标题
-  $("#bomHostType").textContent = ht === "tape" ? "编带主机 BOM" : "分光主机 BOM";
+  $("#bomHostType").textContent = machineAssembly
+    ? `${S.selectedWorkorder.productName || "机器"} BOM`
+    : (ht === "tape" ? "编带主机 BOM" : "分光主机 BOM");
   const woInfo = S.selectedWorkorder
     ? `WO#${S.selectedWorkorder.workorderId} | MO#${S.selectedWorkorder.productionId}`
     : "";
@@ -642,11 +658,12 @@ async function openBomModal(nocache = false) {
   try {
     const woId = S.selectedWorkorder ? S.selectedWorkorder.workorderId : "";
     const cacheParam = nocache ? "&nocache=1" : "";
-    const resp = await apiGet(`/api/bom?hostType=${encodeURIComponent(ht)}&workorderId=${encodeURIComponent(woId)}${cacheParam}`);
+    const resp = await apiGet(`/api/bom?hostType=${encodeURIComponent(ht || "")}&workorderId=${encodeURIComponent(woId)}${cacheParam}`);
     S.bomItems = (resp.data || []).map((item) => ({
       ...item,
       selected: true,
       actualQty: item.actualQty || item.bomQty || 1,
+      lockedQty: resp.meta && resp.meta.productClass === "machine",
       validationError: "",
     }));
     S.bomLoading = false;
@@ -714,9 +731,9 @@ function renderBomList() {
       '<span class="bom-col-spec">' + esc(item.specification || "") + '</span>' +
       '<span class="bom-col-uom">' + esc(item.uomName || "pcs") + '</span>' +
       '<span class="bom-col-actual">' +
-        '<button class="bom-qty-btn" data-bi="' + i + '" data-act="minus">−</button>' +
-        '<input class="bom-qty-input" type="number" min="0" value="' + item.actualQty + '" data-bi="' + i + '" />' +
-        '<button class="bom-qty-btn" data-bi="' + i + '" data-act="plus">+</button>' +
+        '<button class="bom-qty-btn" data-bi="' + i + '" data-act="minus"' + (item.lockedQty ? ' disabled' : '') + '>−</button>' +
+        '<input class="bom-qty-input" type="number" min="0" value="' + item.actualQty + '" data-bi="' + i + '"' + (item.lockedQty ? ' readonly' : '') + ' />' +
+        '<button class="bom-qty-btn" data-bi="' + i + '" data-act="plus"' + (item.lockedQty ? ' disabled' : '') + '>+</button>' +
       '</span>' +
       '<span class="bom-col-category">' + esc(item.categoryName || "") + '</span>' +
       '<span class="bom-col-brand">' + esc(item.brandSupplierName || "") + '</span>' +
@@ -900,10 +917,14 @@ function setupEvents() {
 
     if (woid) {
       // V2 工单格式
+      const previousWorkorderId = S.selectedWorkorder && S.selectedWorkorder.workorderId;
       S.selectedWorkorder = S.workorders.find((w) => String(w.workorderId) === String(woid)) || null;
       S.selectedProduction = S.selectedWorkorder ? { productionId: S.selectedWorkorder.productionId } : null;
       S.selOrder = null;
-      // 切换工单不清理 BOM 确认（只要工序和工人不变，物料确认就保留）
+      if (String(previousWorkorderId || "") !== String(woid)) {
+        S.bomItems = [];
+        S.bomConfirmed = false;
+      }
     } else if (oid) {
       // 旧格式
       S.selOrder = S.orders.find((o) => o.id === oid);
@@ -913,6 +934,9 @@ function setupEvents() {
     $$(".order-card").forEach((c) => c.classList.remove("active"));
     card.classList.add("active");
     updateSubmit();
+    if (operationRequiresBom() && S.selectedWorkorder) {
+      openBomModal();
+    }
   });
 
   $("#qtyPlus")?.addEventListener("click", () => changeQty(1));
@@ -927,9 +951,7 @@ function setupEvents() {
   }));
 
   $("#submitBtn")?.addEventListener("click", () => {
-    const hostOp = S.selOperation && S.selOperation.includes("pc_assembly");
-    if (hostOp && !S.bomConfirmed) {
-      // 电脑装机工序：先打开 BOM 弹窗
+    if (operationRequiresBom() && !S.bomConfirmed) {
       openBomModal();
       return;
     }
