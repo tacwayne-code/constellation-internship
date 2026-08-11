@@ -1,0 +1,70 @@
+:root {
+  font-family: 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', system-ui, sans-serif;
+  color-scheme: dark;
+  background: #0d1520;
+  color: #e6edf5;
+}
+
+* { box-sizing: border-box; }
+
+body { margin: 0; min-height: 100vh; background: #0d1520; }
+
+.sprint1-shell {
+  max-width: 860px;
+  margin: 0 auto;
+  padding: 48px 24px;
+}
+
+.sprint1-header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 28px;
+}
+
+.sprint1-header h1 { font-size: 22px; margin: 0; }
+
+.badge {
+  background: #1d2b3f;
+  color: #8fb7e8;
+  border-radius: 999px;
+  padding: 4px 12px;
+  font-size: 12px;
+}
+
+.status-line { color: #8ba0b8; }
+
+.checks {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+}
+
+.card {
+  background: #141f2e;
+  border: 1px solid #233349;
+  border-radius: 12px;
+  padding: 20px 24px;
+}
+
+.card h3 { margin: 0 0 14px; font-size: 15px; color: #9fb4cc; }
+.card p { margin: 8px 0; font-size: 14px; color: #c3d2e2; }
+.card p.ok { color: #4ade80; }
+.card p.error { color: #f87171; }
+.card p.highlight { font-size: 18px; font-weight: 700; }
+.card p.hint { color: #7d8fa6; font-size: 13px; }
+.card code { background: #0d1520; padding: 2px 6px; border-radius: 4px; color: #fbbf24; }
+.card button {
+  margin-top: 12px;
+  background: #2563eb;
+  border: none;
+  color: #fff;
+  padding: 8px 18px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+@media (max-width: 640px) {
+  .checks { grid-template-columns: 1fr; }
+}

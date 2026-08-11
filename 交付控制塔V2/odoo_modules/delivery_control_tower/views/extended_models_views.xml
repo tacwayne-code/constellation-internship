@@ -1,0 +1,233 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- ============ 电气施工区域 project.electrical.zone ============ -->
+    <record id="view_electrical_tree" model="ir.ui.view">
+        <field name="name">project.electrical.zone.tree</field>
+        <field name="model">project.electrical.zone</field>
+        <field name="arch" type="xml">
+            <tree string="电气施工区域" editable="bottom">
+                <field name="zone_code"/>
+                <field name="name"/>
+                <field name="project_id"/>
+                <field name="owner_id"/>
+                <field name="completion" widget="progressbar"/>
+                <field name="total_circuits"/>
+                <field name="tested_circuits"/>
+                <field name="pending_tests"/>
+                <field name="state"/>
+            </tree>
+        </field>
+    </record>
+    <record id="view_electrical_form" model="ir.ui.view">
+        <field name="name">project.electrical.zone.form</field>
+        <field name="model">project.electrical.zone</field>
+        <field name="arch" type="xml">
+            <form string="电气施工区域">
+                <sheet>
+                    <div class="oe_title">
+                        <h1><field name="name" placeholder="区域名称"/></h1>
+                        <group><field name="zone_code"/></group>
+                    </div>
+                    <group>
+                        <group>
+                            <field name="project_id"/>
+                            <field name="owner_id"/>
+                            <field name="state"/>
+                        </group>
+                        <group>
+                            <field name="completion" widget="progressbar"/>
+                            <field name="total_circuits"/>
+                            <field name="tested_circuits"/>
+                            <field name="pending_tests"/>
+                        </group>
+                    </group>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <!-- ============ MES 接口 project.mes.interface ============ -->
+    <record id="view_mes_tree" model="ir.ui.view">
+        <field name="name">project.mes.interface.tree</field>
+        <field name="model">project.mes.interface</field>
+        <field name="arch" type="xml">
+            <tree string="MES/WCS 接口" editable="bottom">
+                <field name="code"/>
+                <field name="name"/>
+                <field name="project_id"/>
+                <field name="direction"/>
+                <field name="domain"/>
+                <field name="version"/>
+                <field name="owner_id"/>
+                <field name="state"/>
+                <field name="test_pass_rate"/>
+            </tree>
+        </field>
+    </record>
+    <record id="view_mes_form" model="ir.ui.view">
+        <field name="name">project.mes.interface.form</field>
+        <field name="model">project.mes.interface</field>
+        <field name="arch" type="xml">
+            <form string="MES/WCS 接口">
+                <sheet>
+                    <div class="oe_title">
+                        <h1><field name="name" placeholder="接口名称"/></h1>
+                        <group><field name="code"/></group>
+                    </div>
+                    <group>
+                        <group>
+                            <field name="project_id"/>
+                            <field name="direction"/>
+                            <field name="domain"/>
+                            <field name="version"/>
+                        </group>
+                        <group>
+                            <field name="owner_id"/>
+                            <field name="state"/>
+                            <field name="test_pass_rate"/>
+                            <field name="next_action"/>
+                        </group>
+                    </group>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <!-- ============ 验收记录 project.commissioning.check ============ -->
+    <record id="view_commissioning_tree" model="ir.ui.view">
+        <field name="name">project.commissioning.check.tree</field>
+        <field name="model">project.commissioning.check</field>
+        <field name="arch" type="xml">
+            <tree string="验收记录" editable="bottom">
+                <field name="code"/>
+                <field name="name"/>
+                <field name="project_id"/>
+                <field name="check_type"/>
+                <field name="scope"/>
+                <field name="owner_id"/>
+                <field name="check_date"/>
+                <field name="state"/>
+                <field name="total_items"/>
+                <field name="passed_items"/>
+            </tree>
+        </field>
+    </record>
+    <record id="view_commissioning_form" model="ir.ui.view">
+        <field name="name">project.commissioning.check.form</field>
+        <field name="model">project.commissioning.check</field>
+        <field name="arch" type="xml">
+            <form string="验收记录">
+                <sheet>
+                    <div class="oe_title">
+                        <h1><field name="name" placeholder="验收名称"/></h1>
+                        <group><field name="code"/></group>
+                    </div>
+                    <group>
+                        <group>
+                            <field name="project_id"/>
+                            <field name="check_type"/>
+                            <field name="scope"/>
+                            <field name="owner_id"/>
+                        </group>
+                        <group>
+                            <field name="check_date"/>
+                            <field name="state"/>
+                            <field name="total_items"/>
+                            <field name="passed_items"/>
+                        </group>
+                    </group>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <!-- ============ 外包班组 project.crew ============ -->
+    <record id="view_crew_tree" model="ir.ui.view">
+        <field name="name">project.crew.tree</field>
+        <field name="model">project.crew</field>
+        <field name="arch" type="xml">
+            <tree string="外包班组" editable="bottom">
+                <field name="code"/>
+                <field name="name"/>
+                <field name="project_id"/>
+                <field name="partner_id"/>
+                <field name="member_count"/>
+                <field name="attendance"/>
+                <field name="manager_id"/>
+                <field name="state"/>
+                <field name="qualification_status"/>
+                <field name="safety_briefed"/>
+            </tree>
+        </field>
+    </record>
+    <record id="view_crew_form" model="ir.ui.view">
+        <field name="name">project.crew.form</field>
+        <field name="model">project.crew</field>
+        <field name="arch" type="xml">
+            <form string="外包班组">
+                <sheet>
+                    <div class="oe_title">
+                        <h1><field name="name" placeholder="班组名称"/></h1>
+                        <group><field name="code"/></group>
+                    </div>
+                    <group>
+                        <group>
+                            <field name="project_id"/>
+                            <field name="partner_id"/>
+                            <field name="manager_id"/>
+                            <field name="state"/>
+                        </group>
+                        <group>
+                            <field name="member_count"/>
+                            <field name="attendance"/>
+                            <field name="qualification_status"/>
+                            <field name="safety_briefed"/>
+                        </group>
+                    </group>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <!-- ============ 现场物料区 site.material.zone ============ -->
+    <record id="view_material_tree" model="ir.ui.view">
+        <field name="name">site.material.zone.tree</field>
+        <field name="model">site.material.zone</field>
+        <field name="arch" type="xml">
+            <tree string="现场物料区" editable="bottom">
+                <field name="zone_code"/>
+                <field name="name"/>
+                <field name="project_id"/>
+                <field name="location_id"/>
+                <field name="owner_id"/>
+                <field name="state"/>
+                <field name="verified_rate"/>
+            </tree>
+        </field>
+    </record>
+    <record id="view_material_form" model="ir.ui.view">
+        <field name="name">site.material.zone.form</field>
+        <field name="model">site.material.zone</field>
+        <field name="arch" type="xml">
+            <form string="现场物料区">
+                <sheet>
+                    <div class="oe_title">
+                        <h1><field name="name" placeholder="物料区名称"/></h1>
+                        <group><field name="zone_code"/></group>
+                    </div>
+                    <group>
+                        <group>
+                            <field name="project_id"/>
+                            <field name="location_id"/>
+                            <field name="owner_id"/>
+                        </group>
+                        <group>
+                            <field name="state"/>
+                            <field name="verified_rate"/>
+                        </group>
+                    </group>
+                </sheet>
+            </form>
+        </field>
+    </record>
+</odoo>

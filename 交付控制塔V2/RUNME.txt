@@ -1,0 +1,49 @@
+============================================
+ 交付控制塔（delivery-control-tower-v2-demo）
+ 运行说明
+============================================
+
+【快速启动】
+1) 启动后端（已含 Python 3.13 venv + 依赖）：
+     cd backend
+     .venv\Scripts\python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 8000
+
+2) 浏览器访问：  http://127.0.0.1:8000/
+   或前端开发模式： http://127.0.0.1:5173 （左侧"业务支撑 → 订单管理"）
+
+【目录说明】
+  backend/           FastAPI 后端（Odoo XML-RPC 集成 + 静态挂载 frontend/dist）
+  frontend/dist/     前端生产构建产物（打包时已生成，无需 node_modules）
+  frontend/src/      前端源码（React + TS，可修改后 npm run build）
+  odoo_modules/      自定义 Odoo 模块
+  docs/              项目文档
+
+【订单管理模块（核心）】
+  左侧导航 → 业务支撑 → 订单管理，4 个视图：
+    · 销售订单：KPI / 紧急泳道 / 四链路抽屉（采购·库存·生产·物流·BOM）
+    · 采购订单：紧急采购看板（按 priority 分组）+ 全量采购表 + 一键生成紧急 RFQ
+    · 生产进度：MO 工单 + 加工工序进度（mrp.workorder）
+    · 物流查看：采购收货(incoming) / 销售出货(outgoing) / 预计到达时间(ETA)
+  紧急标记：销售订单打 crm.tag「紧急」标签 → 自动继承到关联 PO/MO(BOM 配件级) priority=1
+
+【Odoo 连接配置】
+  backend/.env 中配置（字段名见 backend/app/config.py）：
+     ODOO_URL=http://192.168.1.100:8018
+     ODOO_DB=inspiri_erp_test
+     ODOO_USER=inspiri_admin
+     ODOO_PASSWORD=***
+  · 初始化紧急标签（首次或重置）：cd backend && python -m scripts.init_crm_tags
+  · 连通性测试：python -m scripts.test_odoo_connectivity
+  · 交付塔字段/数据探测：python -m scripts.probe_delivery_tower
+  · 紧急演示数据（造/还原）：python -m scripts.demo_emergency_data setup|cleanup S00124
+
+【开发模式（修改前端）】
+  cd frontend
+  npm install
+  npm run dev        → http://localhost:5173 （/api 已代理到 8000）
+  改完执行 npm run build 重新生成 frontend/dist
+
+【常见问题】
+  · 端口 8000 被占用：先释放占用进程再启动
+  · Odoo 不可达时：USE_MOCK=false 时接口报错，需检查 Odoo 地址/账号
+  · vite build 报 safe-delete 错误：手动删除 frontend/dist 后重试

@@ -1,0 +1,263 @@
+/* ============ 驾驶舱（Portfolio View） ============ */
+.portfolio-view {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.portfolio-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+}
+.portfolio-head h1 {
+  font-size: 26px;
+  font-weight: 700;
+}
+.subtitle {
+  color: var(--muted);
+  font-size: 13px;
+  margin-top: 4px;
+}
+.hero-actions {
+  display: flex;
+  gap: 10px;
+}
+
+/* ---- KPI 区 ---- */
+.kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 14px;
+}
+.kpi-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px 18px;
+  box-shadow: var(--shadow);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.kpi-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.kpi-icon.navy { background: var(--navy); color: #fff; }
+.kpi-icon.orange { background: var(--orange-soft); color: var(--orange); }
+.kpi-icon.green { background: var(--green-soft); color: var(--green); }
+.kpi-icon.red { background: var(--red-soft); color: var(--red); }
+.kpi-icon.blue { background: var(--blue-soft); color: var(--blue); }
+.kpi-copy .num {
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1.1;
+}
+.kpi-copy .label {
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 2px;
+}
+
+/* ---- 项目卡网格 ---- */
+.portfolio-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 16px;
+}
+.project-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 18px 20px;
+  box-shadow: var(--shadow);
+  cursor: pointer;
+  transition: transform 0.15s, box-shadow 0.15s;
+}
+.project-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 28px rgba(24, 34, 48, 0.1);
+}
+.project-card-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+.project-mark {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-weight: 700;
+  font-size: 14px;
+}
+.project-card-title {
+  font-size: 15px;
+  font-weight: 700;
+}
+.project-card-type {
+  font-size: 12px;
+  color: var(--muted);
+  margin: 2px 0 12px;
+}
+.project-card-meta {
+  display: flex;
+  gap: 16px;
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 10px;
+}
+.project-card-meta b {
+  color: var(--ink);
+  font-weight: 600;
+}
+.project-card-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+  font-size: 12px;
+}
+.phase-text { color: var(--muted); }
+.chevron { color: var(--muted); }
+
+/* ---- 底部双栏：风险 + 阻塞 ---- */
+.portfolio-summary-grid {
+  display: grid;
+  grid-template-columns: 1.2fr 1fr;
+  gap: 16px;
+}
+.risk-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 0;
+  border-bottom: 1px solid var(--border);
+}
+.risk-item:last-child { border-bottom: none; }
+.risk-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.risk-icon.red { background: var(--red-soft); color: var(--red); }
+.risk-icon.orange { background: var(--orange-soft); color: var(--orange); }
+.risk-icon.blue { background: var(--blue-soft); color: var(--blue); }
+.risk-title { font-size: 13px; font-weight: 600; }
+.risk-meta { font-size: 12px; color: var(--muted); margin-top: 2px; }
+.risk-tag {
+  margin-left: auto;
+  font-size: 11px;
+  background: var(--canvas);
+  border: 1px solid var(--border);
+  border-radius: 99px;
+  padding: 2px 8px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+/* 风险列表/阻塞表 滚动容器（数据多时限制高度） */
+.risk-list-scroll {
+  max-height: 360px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+.risk-list-scroll::-webkit-scrollbar { width: 6px; }
+.risk-list-scroll::-webkit-scrollbar-thumb { background: #c3cbd6; border-radius: 99px; }
+
+.blocker-table-scroll {
+  max-height: 360px;
+  overflow-y: auto;
+}
+.blocker-table-scroll::-webkit-scrollbar { width: 6px; }
+.blocker-table-scroll::-webkit-scrollbar-thumb { background: #c3cbd6; border-radius: 99px; }
+
+/* ---- 阻塞表 ---- */
+.blocker-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.blocker-table th {
+  text-align: left;
+  font-size: 12px;
+  color: var(--muted);
+  font-weight: 500;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border);
+}
+.blocker-table td {
+  padding: 9px 8px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+}
+.blocker-table tr:last-child td { border-bottom: none; }
+.blocker-desc { font-weight: 600; }
+.blocker-meta { font-size: 12px; color: var(--muted); margin-top: 2px; }
+.blocker-action { font-size: 12px; color: var(--blue); }
+.blocker-status {
+  font-size: 11px;
+  border-radius: 99px;
+  padding: 2px 8px;
+  white-space: nowrap;
+}
+.blocker-status.danger { background: var(--red-soft); color: var(--red); }
+.blocker-status.warning { background: var(--orange-soft); color: var(--orange); }
+.blocker-status.success { background: var(--green-soft); color: var(--green); }
+
+/* ---- 模块地图 ---- */
+.module-map {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+}
+.module-map-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 14px;
+  cursor: pointer;
+  transition: border-color 0.15s, transform 0.15s;
+}
+.module-map-card:hover {
+  border-color: var(--blue);
+  transform: translateY(-2px);
+}
+.module-map-icon {
+  width: 34px;
+  height: 34px;
+  border-radius: 9px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 10px;
+}
+.module-map-title { font-size: 13px; font-weight: 600; }
+.module-map-copy { font-size: 12px; color: var(--muted); margin: 3px 0 10px; }
+.module-map-progress { display: flex; align-items: center; gap: 8px; }
+.module-map-progress .progress-line { flex: 1; }
+.module-map-progress .pct { font-size: 11px; color: var(--muted); }
+
+@media (max-width: 1100px) {
+  .kpi-grid { grid-template-columns: repeat(3, 1fr); }
+  .portfolio-grid { grid-template-columns: 1fr; }
+  .portfolio-summary-grid { grid-template-columns: 1fr; }
+  .module-map { grid-template-columns: repeat(2, 1fr); }
+}

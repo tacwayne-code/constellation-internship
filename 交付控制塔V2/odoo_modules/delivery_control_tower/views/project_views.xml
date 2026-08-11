@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- project.project 表单扩展：驾驶舱字段 -->
+    <record id="view_project_project_form_extend" model="ir.ui.view">
+        <field name="name">project.project.form.extend.dct</field>
+        <field name="model">project.project</field>
+        <field name="inherit_id" ref="project.edit_project"/>
+        <field name="arch" type="xml">
+            <xpath expr="//field[@name='name']" position="after">
+                <field name="x_project_short" placeholder="项目简称"/>
+            </xpath>
+            <xpath expr="//sheet/group/group[1]" position="inside">
+                <field name="x_project_type"/>
+                <field name="x_status"/>
+                <field name="x_phase"/>
+                <field name="x_progress" widget="progressbar"/>
+                <field name="x_risk_count"/>
+                <field name="x_blocker_count"/>
+            </xpath>
+        </field>
+    </record>
+
+    <!-- project.project 列表扩展 -->
+    <record id="view_project_project_tree_extend" model="ir.ui.view">
+        <field name="name">project.project.tree.extend.dct</field>
+        <field name="model">project.project</field>
+        <field name="inherit_id" ref="project.view_project_project_tree"/>
+        <field name="arch" type="xml">
+            <xpath expr="//tree" position="inside">
+                <field name="x_status" string="状态"/>
+                <field name="x_progress" string="进度"/>
+            </xpath>
+        </field>
+    </record>
+</odoo>

@@ -1,0 +1,116 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- 风险/问题列表 -->
+    <record id="view_risk_tree" model="ir.ui.view">
+        <field name="name">project.risk.tree</field>
+        <field name="model">project.risk</field>
+        <field name="arch" type="xml">
+            <tree string="风险与问题">
+                <field name="code"/>
+                <field name="name"/>
+                <field name="record_type"/>
+                <field name="project_id"/>
+                <field name="category"/>
+                <field name="severity"/>
+                <field name="owner_id"/>
+                <field name="due_date"/>
+                <field name="state"/>
+                <field name="is_blocker"/>
+                <field name="progress" widget="progressbar"/>
+            </tree>
+        </field>
+    </record>
+
+    <!-- 风险/问题表单 -->
+    <record id="view_risk_form" model="ir.ui.view">
+        <field name="name">project.risk.form</field>
+        <field name="model">project.risk</field>
+        <field name="arch" type="xml">
+            <form string="风险与问题">
+                <header>
+                    <button name="action_close" string="关闭" type="object" states="open,in_progress,pending_confirm"/>
+                    <button name="action_reopen" string="重新打开" type="object" states="closed"/>
+                </header>
+                <sheet>
+                    <div class="oe_title">
+                        <h1>
+                            <field name="name" placeholder="风险/问题标题"/>
+                        </h1>
+                        <group>
+                            <field name="code"/>
+                            <field name="record_type"/>
+                        </group>
+                    </div>
+                    <group>
+                        <group>
+                            <field name="project_id"/>
+                            <field name="category"/>
+                            <field name="severity"/>
+                            <field name="is_blocker"/>
+                        </group>
+                        <group>
+                            <field name="owner_id"/>
+                            <field name="due_date"/>
+                            <field name="state"/>
+                            <field name="progress" widget="progressbar"/>
+                        </group>
+                    </group>
+                    <group string="解除计划">
+                        <field name="action" placeholder="下一步动作 / 解除计划"/>
+                    </group>
+                </sheet>
+                <div class="oe_chatter">
+                    <field name="message_follower_ids"/>
+                    <field name="activity_ids"/>
+                    <field name="message_ids"/>
+                </div>
+            </form>
+        </field>
+    </record>
+
+    <!-- 风险/问题看板（按状态分组） -->
+    <record id="view_risk_kanban" model="ir.ui.view">
+        <field name="name">project.risk.kanban</field>
+        <field name="model">project.risk</field>
+        <field name="arch" type="xml">
+            <kanban string="风险与问题" default_group_by="state">
+                <field name="severity"/>
+                <templates>
+                    <t t-name="kanban-box">
+                        <div class="oe_kanban_global_click">
+                            <div class="o_kanban_record_title">
+                                <field name="code"/> · <field name="name"/>
+                            </div>
+                            <div class="o_kanban_record_subtitle">
+                                <field name="project_id"/> · <field name="category"/>
+                            </div>
+                            <div class="o_kanban_record_bottom">
+                                <field name="owner_id"/>
+                                <field name="due_date"/>
+                            </div>
+                        </div>
+                    </t>
+                </templates>
+            </kanban>
+        </field>
+    </record>
+
+    <!-- 风险/问题搜索 -->
+    <record id="view_risk_search" model="ir.ui.view">
+        <field name="name">project.risk.search</field>
+        <field name="model">project.risk</field>
+        <field name="arch" type="xml">
+            <search string="风险与问题">
+                <field name="name"/>
+                <field name="project_id"/>
+                <filter name="open" string="未关闭" domain="[('state', '!=', 'closed')]"/>
+                <filter name="blocker" string="阻塞事项" domain="[('is_blocker', '=', True)]"/>
+                <filter name="high" string="高风险" domain="[('severity', '=', 'high')]"/>
+                <group expand="0" string="分组">
+                    <filter name="by_category" string="分类" context="{'group_by': 'category'}"/>
+                    <filter name="by_project" string="项目" context="{'group_by': 'project_id'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+</odoo>

@@ -1,0 +1,253 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- ==================== 演示项目（对齐前端驾驶舱 4 项目） ==================== -->
+    <record id="dct_project_p1" model="project.project">
+        <field name="name">华东智能工厂一期</field>
+        <field name="x_project_short">华东工厂</field>
+        <field name="x_project_type">生产线 + 立体仓储 + MES</field>
+        <field name="x_status">amber</field>
+        <field name="x_phase">现场施工 · 第 18 周</field>
+        <field name="x_progress">76</field>
+        <field name="date">2026-09-12</field>
+        <field name="user_id" ref="base.user_admin"/>
+    </record>
+    <record id="dct_project_p2" model="project.project">
+        <field name="name">华南快消立库扩建</field>
+        <field name="x_project_short">华南立库</field>
+        <field name="x_project_type">自动化立库改造</field>
+        <field name="x_status">green</field>
+        <field name="x_phase">设备安装 · 第 11 周</field>
+        <field name="x_progress">58</field>
+        <field name="date">2026-10-08</field>
+        <field name="user_id" ref="base.user_admin"/>
+    </record>
+    <record id="dct_project_p3" model="project.project">
+        <field name="name">西北新能源产线集成</field>
+        <field name="x_project_short">西北新能源</field>
+        <field name="x_project_type">产线 + 电气 + 软件</field>
+        <field name="x_status">red</field>
+        <field name="x_phase">设计冻结 · 第 7 周</field>
+        <field name="x_progress">41</field>
+        <field name="date">2026-11-22</field>
+        <field name="user_id" ref="base.user_admin"/>
+    </record>
+    <record id="dct_project_p4" model="project.project">
+        <field name="name">苏州零部件 MES 升级</field>
+        <field name="x_project_short">苏州 MES</field>
+        <field name="x_project_type">MES / WMS 软件升级</field>
+        <field name="x_status">green</field>
+        <field name="x_phase">UAT 联调 · 第 15 周</field>
+        <field name="x_progress">83</field>
+        <field name="date">2026-08-30</field>
+        <field name="user_id" ref="base.user_admin"/>
+    </record>
+
+    <!-- ==================== 交付包 ==================== -->
+    <record id="dct_pkg_001" model="project.delivery.package">
+        <field name="code">PKG-021</field>
+        <field name="name">堆垛机系统交付包</field>
+        <field name="project_id" ref="dct_project_p1"/>
+        <field name="owner_id" ref="base.user_admin"/>
+        <field name="phase">manufacturing</field>
+        <field name="due_date">2026-08-29</field>
+        <field name="status">risk</field>
+        <field name="progress">62</field>
+    </record>
+    <record id="dct_pkg_002" model="project.delivery.package">
+        <field name="code">PKG-034</field>
+        <field name="name">输送线集成交付包</field>
+        <field name="project_id" ref="dct_project_p1"/>
+        <field name="owner_id" ref="base.user_admin"/>
+        <field name="phase">design</field>
+        <field name="due_date">2026-09-05</field>
+        <field name="status">good</field>
+        <field name="progress">45</field>
+    </record>
+    <record id="dct_pkg_003" model="project.delivery.package">
+        <field name="code">PKG-012</field>
+        <field name="name">WCS 软件交付包</field>
+        <field name="project_id" ref="dct_project_p2"/>
+        <field name="owner_id" ref="base.user_admin"/>
+        <field name="phase">installation</field>
+        <field name="due_date">2026-09-20</field>
+        <field name="status">watch</field>
+        <field name="progress">70</field>
+    </record>
+    <record id="dct_pkg_004" model="project.delivery.package">
+        <field name="code">PKG-045</field>
+        <field name="name">MES 升级交付包</field>
+        <field name="project_id" ref="dct_project_p4"/>
+        <field name="owner_id" ref="base.user_admin"/>
+        <field name="phase">acceptance</field>
+        <field name="due_date">2026-08-25</field>
+        <field name="status">good</field>
+        <field name="progress">92</field>
+    </record>
+
+    <!-- ==================== 风险与问题 ==================== -->
+    <record id="dct_risk_001" model="project.risk">
+        <field name="code">R-108</field>
+        <field name="name">堆垛机立柱铸件交期延误</field>
+        <field name="record_type">risk</field>
+        <field name="project_id" ref="dct_project_p1"/>
+        <field name="category">procurement</field>
+        <field name="severity">high</field>
+        <field name="state">in_progress</field>
+        <field name="due_date">2026-08-15</field>
+        <field name="progress">40</field>
+        <field name="action">与供应商昆山精工升级商务函，协调替代铸件供应商</field>
+    </record>
+    <record id="dct_risk_002" model="project.risk">
+        <field name="code">ISS-064</field>
+        <field name="name">电气图纸版本不一致（Rev.02 vs Rev.03）</field>
+        <field name="record_type">issue</field>
+        <field name="project_id" ref="dct_project_p3"/>
+        <field name="category">design</field>
+        <field name="severity">medium</field>
+        <field name="state">open</field>
+        <field name="due_date">2026-08-20</field>
+        <field name="progress">0</field>
+        <field name="action">召开设计对齐会，冻结 Rev.03 并更新受控发放清单</field>
+    </record>
+    <record id="dct_risk_003" model="project.risk">
+        <field name="code">EA-ISS-003</field>
+        <field name="name">华东项目吊装设备跨项目占用（西北项目也需用）</field>
+        <field name="record_type">issue</field>
+        <field name="project_id" ref="dct_project_p1"/>
+        <field name="category">field</field>
+        <field name="severity">high</field>
+        <field name="state">in_progress</field>
+        <field name="due_date">2026-08-18</field>
+        <field name="progress">30</field>
+        <field name="is_blocker">True</field>
+        <field name="action">集团设备调度中心排程：华东 8/10-8/14，西北 8/16-8/20</field>
+    </record>
+    <record id="dct_risk_004" model="project.risk">
+        <field name="code">R-104</field>
+        <field name="name">WCS 与立库 PLC 通讯协议待确认</field>
+        <field name="record_type">risk</field>
+        <field name="project_id" ref="dct_project_p2"/>
+        <field name="category">software</field>
+        <field name="severity">medium</field>
+        <field name="state">pending_confirm</field>
+        <field name="due_date">2026-08-22</field>
+        <field name="progress">60</field>
+        <field name="action">推动供应商提交协议文档 V2.1，一周内确认</field>
+    </record>
+
+    <!-- ==================== 电气施工区域 ==================== -->
+    <record id="dct_el_001" model="project.electrical.zone">
+        <field name="zone_code">EL-Z03</field>
+        <field name="name">输送线3区动力回路</field>
+        <field name="project_id" ref="dct_project_p1"/>
+        <field name="owner_id" ref="base.user_admin"/>
+        <field name="state">testing</field>
+        <field name="completion">86</field>
+        <field name="total_circuits">28</field>
+        <field name="tested_circuits">24</field>
+    </record>
+    <record id="dct_el_002" model="project.electrical.zone">
+        <field name="zone_code">EL-Z07</field>
+        <field name="name">立库堆垛机供电回路</field>
+        <field name="project_id" ref="dct_project_p2"/>
+        <field name="owner_id" ref="base.user_admin"/>
+        <field name="state">in_progress</field>
+        <field name="completion">55</field>
+        <field name="total_circuits">32</field>
+        <field name="tested_circuits">12</field>
+    </record>
+
+    <!-- ==================== MES/WCS 接口 ==================== -->
+    <record id="dct_mes_001" model="project.mes.interface">
+        <field name="code">IF-021</field>
+        <field name="name">入库预约接口</field>
+        <field name="project_id" ref="dct_project_p1"/>
+        <field name="direction">mes_to_wcs</field>
+        <field name="domain">入库预约</field>
+        <field name="version">V2.1</field>
+        <field name="owner_id" ref="base.user_admin"/>
+        <field name="state">testing</field>
+        <field name="test_pass_rate">78</field>
+        <field name="next_action">联调现场 WCS 环境</field>
+    </record>
+    <record id="dct_mes_002" model="project.mes.interface">
+        <field name="code">IF-014</field>
+        <field name="name">出库任务回传接口</field>
+        <field name="project_id" ref="dct_project_p2"/>
+        <field name="direction">wcs_to_mes</field>
+        <field name="domain">出库回传</field>
+        <field name="version">V1.4</field>
+        <field name="owner_id" ref="base.user_admin"/>
+        <field name="state">developing</field>
+        <field name="test_pass_rate">0</field>
+        <field name="next_action">开发联调脚本</field>
+    </record>
+
+    <!-- ==================== 验收记录 ==================== -->
+    <record id="dct_com_001" model="project.commissioning.check">
+        <field name="code">SAT-03</field>
+        <field name="name">输送线联调验收</field>
+        <field name="project_id" ref="dct_project_p1"/>
+        <field name="check_type">sat</field>
+        <field name="scope">输送线 + 立库接驳</field>
+        <field name="owner_id" ref="base.user_admin"/>
+        <field name="check_date">2026-08-28</field>
+        <field name="state">in_progress</field>
+        <field name="total_items">86</field>
+        <field name="passed_items">71</field>
+    </record>
+    <record id="dct_com_002" model="project.commissioning.check">
+        <field name="code">UAT-02</field>
+        <field name="name">MES 系统 UAT 验收</field>
+        <field name="project_id" ref="dct_project_p4"/>
+        <field name="check_type">uat</field>
+        <field name="scope">MES 核心业务流</field>
+        <field name="owner_id" ref="base.user_admin"/>
+        <field name="check_date">2026-08-30</field>
+        <field name="state">preparing</field>
+        <field name="total_items">120</field>
+        <field name="passed_items">0</field>
+    </record>
+
+    <!-- ==================== 外包班组 ==================== -->
+    <record id="dct_crew_001" model="project.crew">
+        <field name="code">TEAM-E07</field>
+        <field name="name">电气安装班组</field>
+        <field name="project_id" ref="dct_project_p1"/>
+        <field name="partner_id" ref="base.res_partner_1"/>
+        <field name="member_count">32</field>
+        <field name="attendance">30</field>
+        <field name="state">on_site</field>
+        <field name="qualification_status">ok</field>
+        <field name="safety_briefed">True</field>
+    </record>
+    <record id="dct_crew_002" model="project.crew">
+        <field name="code">TEAM-M02</field>
+        <field name="name">立库机械安装班组</field>
+        <field name="project_id" ref="dct_project_p2"/>
+        <field name="partner_id" ref="base.res_partner_2"/>
+        <field name="member_count">48</field>
+        <field name="attendance">42</field>
+        <field name="state">on_site</field>
+        <field name="qualification_status">pending</field>
+        <field name="safety_briefed">True</field>
+    </record>
+
+    <!-- ==================== 现场物料区 ==================== -->
+    <record id="dct_mat_001" model="site.material.zone">
+        <field name="zone_code">MAT-A03</field>
+        <field name="name">A-03 物料区</field>
+        <field name="project_id" ref="dct_project_p1"/>
+        <field name="owner_id" ref="base.user_admin"/>
+        <field name="state">verified</field>
+        <field name="verified_rate">94</field>
+    </record>
+    <record id="dct_mat_002" model="site.material.zone">
+        <field name="zone_code">MAT-B01</field>
+        <field name="name">B-01 物料区</field>
+        <field name="project_id" ref="dct_project_p3"/>
+        <field name="owner_id" ref="base.user_admin"/>
+        <field name="state">discrepancy</field>
+        <field name="verified_rate">61</field>
+    </record>
+</odoo>

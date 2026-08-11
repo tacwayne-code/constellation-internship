@@ -1,0 +1,35 @@
+{
+  "extracted_at": "2026-08-10T15:44:00.000Z",
+  "projects": {
+    "count": 0,
+    "file": "projects.json"
+  },
+  "delivery_packages": {
+    "count": 0,
+    "file": "delivery_packages.json"
+  },
+  "risks": {
+    "count": 0,
+    "file": "risks.json"
+  },
+  "procurement": {
+    "count": 0,
+    "file": "procurement.json"
+  },
+  "logistics": {
+    "count": 0,
+    "file": "logistics.json"
+  },
+  "inventory": {
+    "count": 0,
+    "file": "inventory.json"
+  },
+  "people": {
+    "count": 0,
+    "file": "people.json"
+  },
+  "vendors": {
+    "count": 0,
+    "file": "vendors.json"
+  }
+}

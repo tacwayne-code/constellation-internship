@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- purchase.order 扩展视图 -->
+    <record id="view_purchase_order_form_dct" model="ir.ui.view">
+        <field name="name">purchase.order.form.dct</field>
+        <field name="model">purchase.order</field>
+        <field name="inherit_id" ref="purchase.purchase_order_form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//group/group[2]" position="inside">
+                <field name="x_plan_date"/>
+                <field name="x_promise_date"/>
+                <field name="x_actual_date"/>
+                <field name="x_owner_id"/>
+            </xpath>
+        </field>
+    </record>
+    <record id="view_purchase_order_tree_dct" model="ir.ui.view">
+        <field name="name">purchase.order.tree.dct</field>
+        <field name="model">purchase.order</field>
+        <field name="inherit_id" ref="purchase.purchase_order_tree"/>
+        <field name="arch" type="xml">
+            <xpath expr="//tree" position="inside">
+                <field name="x_plan_date" string="计划到货"/>
+                <field name="x_promise_date" string="承诺到货"/>
+            </xpath>
+        </field>
+    </record>
+
+    <!-- stock.picking 扩展视图 -->
+    <record id="view_stock_picking_form_dct" model="ir.ui.view">
+        <field name="name">stock.picking.form.dct</field>
+        <field name="model">stock.picking</field>
+        <field name="inherit_id" ref="stock.view_picking_form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//field[@name='partner_id']/../.." position="inside">
+                <group string="交付控制塔">
+                    <field name="x_origin_place"/>
+                    <field name="x_destination_place"/>
+                    <field name="x_vehicle_count"/>
+                    <field name="x_project_id"/>
+                </group>
+            </xpath>
+        </field>
+    </record>
+
+    <!-- res.partner 扩展视图 -->
+    <record id="view_partner_form_dct" model="ir.ui.view">
+        <field name="name">res.partner.form.dct</field>
+        <field name="model">res.partner</field>
+        <field name="inherit_id" ref="base.view_partner_form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//page[@name='sales_purchases']" position="inside">
+                <group string="供应商交付">
+                    <field name="x_vendor_scope"/>
+                    <field name="x_vendor_progress"/>
+                    <field name="x_vendor_status"/>
+                </group>
+            </xpath>
+        </field>
+    </record>
+</odoo>

@@ -1,0 +1,15 @@
+id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
+access_delivery_package_user,delivery.package.user,model_project_delivery_package,project.group_project_user,1,1,1,0
+access_delivery_package_manager,delivery.package.manager,model_project_delivery_package,project.group_project_manager,1,1,1,1
+access_risk_user,risk.user,model_project_risk,project.group_project_user,1,1,1,0
+access_risk_manager,risk.manager,model_project_risk,project.group_project_manager,1,1,1,1
+access_electrical_user,electrical.user,model_project_electrical_zone,project.group_project_user,1,1,1,0
+access_electrical_manager,electrical.manager,model_project_electrical_zone,project.group_project_manager,1,1,1,1
+access_mes_user,mes.interface.user,model_project_mes_interface,project.group_project_user,1,1,1,0
+access_mes_manager,mes.interface.manager,model_project_mes_interface,project.group_project_manager,1,1,1,1
+access_commissioning_user,commissioning.user,model_project_commissioning_check,project.group_project_user,1,1,1,0
+access_commissioning_manager,commissioning.manager,model_project_commissioning_check,project.group_project_manager,1,1,1,1
+access_crew_user,crew.user,model_project_crew,project.group_project_user,1,1,1,0
+access_crew_manager,crew.manager,model_project_crew,project.group_project_manager,1,1,1,1
+access_material_user,material.zone.user,model_site_material_zone,project.group_project_user,1,1,1,0
+access_material_manager,material.zone.manager,model_site_material_zone,project.group_project_manager,1,1,1,1

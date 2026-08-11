@@ -1,0 +1,370 @@
+/* ============ 设计 Tokens（对齐 dist 反推） ============ */
+:root {
+  --navy: #101927;
+  --navy-2: #172336;
+  --surface: #ffffff;
+  --canvas: #f7f8fa;
+  --ink: #182230;
+  --muted: #738092;
+  --border: #e6e9ee;
+  --orange: #ef8a3c;
+  --orange-soft: #fff1e6;
+  --red: #d65c5c;
+  --red-soft: #fff0f0;
+  --green: #2e9e75;
+  --green-soft: #e9f7f1;
+  --blue: #547bd6;
+  --blue-soft: #eef2ff;
+  --yellow: #d49a3a;
+  --yellow-soft: #fff8e7;
+  --purple: #896ec1;
+  --purple-soft: #f2edfb;
+  --radius: 12px;
+  --shadow: 0 8px 22px rgba(24, 34, 48, 0.05);
+  --sidebar-width: 278px;
+  --font: 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', system-ui, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font);
+  font-size: 14px;
+  color: var(--ink);
+  background: var(--canvas);
+  -webkit-font-smoothing: antialiased;
+}
+
+h1, h2, h3, h4 {
+  margin: 0;
+  color: var(--ink);
+}
+
+button {
+  font-family: var(--font);
+  cursor: pointer;
+}
+
+/* ============ 状态点 ============ */
+.status-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-right: 6px;
+  vertical-align: middle;
+}
+.tone-success { background: var(--green); }
+.tone-warning { background: var(--orange); }
+.tone-danger  { background: var(--red); }
+.tone-neutral { background: #c3cbd6; }
+.tone-blue    { background: var(--blue); }
+.tone-purple  { background: var(--purple); }
+.tone-green   { background: var(--green); }
+.tone-orange  { background: var(--orange); }
+.tone-red     { background: var(--red); }
+
+/* ============ 进度条 ============ */
+.progress-line {
+  height: 6px;
+  border-radius: 99px;
+  background: #edf0f4;
+  overflow: hidden;
+}
+.progress-line > span {
+  display: block;
+  height: 100%;
+  border-radius: 99px;
+  background: var(--blue);
+  transition: width 0.4s ease;
+}
+
+/* ============ 按钮 ============ */
+.primary-button {
+  background: var(--navy);
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  padding: 8px 16px;
+  font-size: 13px;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.primary-button:hover { background: var(--navy-2); }
+.ghost-button {
+  background: transparent;
+  color: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 14px;
+  font-size: 13px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.ghost-button:hover { color: var(--ink); border-color: #c9d1dc; }
+.icon-button {
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 7px 10px;
+  color: var(--muted);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.icon-button:hover { color: var(--ink); }
+
+/* ============ 卡片 ============ */
+.panel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 18px 20px;
+}
+.panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+.panel-title {
+  font-size: 15px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* ============ 加载/空态/错误 ============ */
+.state-block {
+  padding: 40px 20px;
+  text-align: center;
+  color: var(--muted);
+}
+.state-block .retry {
+  margin-top: 12px;
+}
+.skeleton {
+  background: linear-gradient(90deg, #eef0f4 25%, #f7f8fa 50%, #eef0f4 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.2s infinite;
+  border-radius: 8px;
+}
+@keyframes shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* ============ 分页控件 ============ */
+.pagination {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 12px 0 4px;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+.page-btn {
+  min-width: 32px;
+  height: 32px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  border-radius: 6px;
+  color: var(--ink);
+  font-size: 13px;
+  cursor: pointer;
+  padding: 0 10px;
+  transition: all 0.12s;
+}
+.page-btn:hover:not(:disabled) {
+  border-color: var(--blue);
+  color: var(--blue);
+}
+.page-btn.active {
+  background: var(--navy);
+  color: #fff;
+  border-color: var(--navy);
+}
+.page-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.page-ellipsis {
+  color: var(--muted);
+  font-size: 13px;
+  padding: 0 4px;
+}
+.page-total {
+  font-size: 12px;
+  color: var(--muted);
+  margin-left: 8px;
+}
+
+/* ============ 搜索输入 ============ */
+.search-input {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  border-radius: 8px;
+  padding: 6px 12px;
+  transition: border-color 0.12s;
+  color: var(--muted);
+  flex: 1;
+  max-width: 320px;
+  min-width: 180px;
+}
+.search-input.focused {
+  border-color: var(--blue);
+  color: var(--ink);
+}
+.search-input input {
+  border: none;
+  outline: none;
+  background: transparent;
+  flex: 1;
+  font-size: 13px;
+  color: var(--ink);
+  font-family: inherit;
+}
+.search-input input::placeholder {
+  color: var(--muted);
+}
+.search-clear {
+  border: none;
+  background: var(--canvas);
+  color: var(--muted);
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.search-clear:hover {
+  background: var(--muted);
+  color: var(--surface);
+}
+
+/* ============ 模块甘特占位（未选项目时） ============ */
+.module-gantt-hint {
+  display: flex;
+  flex-direction: column;
+}
+
+/* ============ 状态筛选栏（FilterBar 组件） ============ */
+.filter-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 2px 0 14px;
+}
+.filter-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  border-radius: 99px;
+  padding: 5px 12px;
+  font-size: 12px;
+  color: var(--muted);
+  cursor: pointer;
+  transition: all 0.12s;
+}
+.filter-chip:hover {
+  border-color: var(--blue);
+  color: var(--ink);
+}
+.filter-chip.active {
+  background: var(--navy);
+  border-color: var(--navy);
+  color: #fff;
+  font-weight: 600;
+}
+.chip-count {
+  font-size: 11px;
+  background: rgba(0, 0, 0, 0.06);
+  border-radius: 99px;
+  padding: 0 6px;
+  min-width: 18px;
+  text-align: center;
+}
+.filter-chip.active .chip-count {
+  background: rgba(255, 255, 255, 0.18);
+}
+
+/* ============ 空数据占位（EmptyState 组件） ============ */
+.empty-state {
+  background: var(--surface);
+  border: 1px dashed var(--border);
+  border-radius: var(--radius);
+  padding: 60px 32px;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+.empty-icon {
+  width: 60px;
+  height: 60px;
+  border-radius: 16px;
+  background: var(--canvas);
+  color: var(--muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.empty-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--ink);
+  max-width: 480px;
+}
+.empty-desc {
+  font-size: 13px;
+  color: var(--muted);
+  max-width: 560px;
+  line-height: 1.6;
+}
+.empty-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 8px;
+  text-align: left;
+  max-width: 480px;
+  width: 100%;
+}
+.empty-action {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--ink);
+  background: var(--canvas);
+  padding: 8px 12px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+}
+.empty-action svg { color: var(--green); flex-shrink: 0; margin-top: 2px; }
+.empty-hint {
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 4px;
+  font-style: italic;
+}

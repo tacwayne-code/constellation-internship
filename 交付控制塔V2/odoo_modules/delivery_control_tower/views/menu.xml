@@ -1,0 +1,95 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- 交付控制塔主菜单 -->
+    <menuitem id="menu_delivery_control_tower_root"
+              name="交付控制塔"
+              web_icon="delivery_control_tower,static/description/icon.png"
+              sequence="20"/>
+
+    <!-- 交付包 -->
+    <menuitem id="menu_dct_delivery_package"
+              name="交付包"
+              parent="menu_delivery_control_tower_root"
+              action="action_delivery_package"
+              sequence="10"/>
+    <!-- 风险与问题 -->
+    <menuitem id="menu_dct_risk"
+              name="风险与问题"
+              parent="menu_delivery_control_tower_root"
+              action="action_risk"
+              sequence="20"/>
+    <!-- 电气施工 -->
+    <menuitem id="menu_dct_electrical"
+              name="电气施工区域"
+              parent="menu_delivery_control_tower_root"
+              action="action_electrical"
+              sequence="30"/>
+    <!-- MES 接口 -->
+    <menuitem id="menu_dct_mes"
+              name="MES/WCS 接口"
+              parent="menu_delivery_control_tower_root"
+              action="action_mes"
+              sequence="40"/>
+    <!-- 验收记录 -->
+    <menuitem id="menu_dct_commissioning"
+              name="验收记录"
+              parent="menu_delivery_control_tower_root"
+              action="action_commissioning"
+              sequence="50"/>
+    <!-- 外包班组 -->
+    <menuitem id="menu_dct_crew"
+              name="外包班组"
+              parent="menu_delivery_control_tower_root"
+              action="action_crew"
+              sequence="60"/>
+    <!-- 现场物料区 -->
+    <menuitem id="menu_dct_material"
+              name="现场物料区"
+              parent="menu_delivery_control_tower_root"
+              action="action_material"
+              sequence="70"/>
+
+    <!-- 交付包 action -->
+    <record id="action_delivery_package" model="ir.actions.act_window">
+        <field name="name">交付包</field>
+        <field name="res_model">project.delivery.package</field>
+        <field name="view_mode">kanban,tree,form</field>
+        <field name="context">{'search_default_group_by_phase': 1}</field>
+    </record>
+    <!-- 风险/问题 action -->
+    <record id="action_risk" model="ir.actions.act_window">
+        <field name="name">风险与问题</field>
+        <field name="res_model">project.risk</field>
+        <field name="view_mode">kanban,tree,form</field>
+    </record>
+    <!-- 电气施工 action -->
+    <record id="action_electrical" model="ir.actions.act_window">
+        <field name="name">电气施工区域</field>
+        <field name="res_model">project.electrical.zone</field>
+        <field name="view_mode">tree,form</field>
+    </record>
+    <!-- MES 接口 action -->
+    <record id="action_mes" model="ir.actions.act_window">
+        <field name="name">MES/WCS 接口</field>
+        <field name="res_model">project.mes.interface</field>
+        <field name="view_mode">tree,form</field>
+    </record>
+    <!-- 验收记录 action -->
+    <record id="action_commissioning" model="ir.actions.act_window">
+        <field name="name">验收记录</field>
+        <field name="res_model">project.commissioning.check</field>
+        <field name="view_mode">tree,form</field>
+    </record>
+    <!-- 外包班组 action -->
+    <record id="action_crew" model="ir.actions.act_window">
+        <field name="name">外包班组</field>
+        <field name="res_model">project.crew</field>
+        <field name="view_mode">tree,form</field>
+    </record>
+    <!-- 现场物料区 action -->
+    <record id="action_material" model="ir.actions.act_window">
+        <field name="name">现场物料区</field>
+        <field name="res_model">site.material.zone</field>
+        <field name="view_mode">tree,form</field>
+    </record>
+</odoo>
