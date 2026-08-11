@@ -1002,7 +1002,16 @@ html, body {
   gap: 8px;
   max-height: 240px;
   overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
 }
+.worker-active-list::-webkit-scrollbar { width: 5px; }
+.worker-active-list::-webkit-scrollbar-track { background: transparent; }
+.worker-active-list::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 3px;
+}
+.worker-active-list::-webkit-scrollbar-button { display: none; }
 .worker-active-row {
   display: flex;
   align-items: center;
