@@ -108,7 +108,7 @@ async def procurement_overview(
     return {
         "stats": {
             "total": len(items),
-            "urgent": len(urgent_list) - len(urgent_transit) + len(urgent_pending),  # 兼容旧字段
+            "urgent": len(urgent_list),
             "urgent_pending": len(urgent_pending),
             "urgent_transit": len(urgent_transit),
             "by_priority": {"1": priority_counter.get("1", 0), "0": priority_counter.get("0", 0)},

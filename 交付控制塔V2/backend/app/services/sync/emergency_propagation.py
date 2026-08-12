@@ -167,7 +167,7 @@ async def _reverse_to_sale(client: OdooClient) -> dict[str, Any]:
 
 
 async def _propagate_to_purchase(client: OdooClient, so_id: int, so_name: str) -> int:
-    """通过 sale_line_id 找到该 SO 关联的 PO，把 priority!=3 的写为 3。返回受影响数。"""
+    """通过 sale_line_id 找到该 SO 关联的 PO，把 priority != 1(紧急) 的写为 1。返回受影响数。"""
     sol_ids = [
         r["id"] for r in await client.search_read(
             MODEL_SALE_ORDER_LINE, [["order_id", "=", so_id]], ["id"], limit=None,

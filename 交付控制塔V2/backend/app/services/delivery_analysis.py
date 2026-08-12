@@ -110,11 +110,11 @@ async def analyze_delivery(client: OdooClient, so_id: int) -> dict[str, Any]:
     )
     stock_map = {s["id"]: s for s in stocks}
 
-    # ── 4. 采购在途（已下单未收完的行） ──
+    # ── 4. 采购在途（不限状态拉全部行：draft/sent 询价单也算"已存在 PO"，防止重复生成；cancel 排除） ──
     pols = await client.search_read(
         MODEL_PURCHASE_LINE,
-        [["product_id", "in", pids], ["state", "in", ["purchase", "done"]]],
-        ["id", "order_id", "product_id", "product_qty", "qty_received", "date_planned"],
+        [["product_id", "in", pids], ["state", "!=", "cancel"]],
+        ["id", "order_id", "product_id", "product_qty", "qty_received", "state", "date_planned"],
         limit=None,
     )
     po_ids = list({_ref_id(p.get("order_id")) for p in pols if p.get("order_id")})
@@ -141,10 +141,11 @@ async def analyze_delivery(client: OdooClient, so_id: int) -> dict[str, Any]:
         s = stock_map.get(pid, {})
         available = s.get("qty_available") or 0
         all_lines = [l for l in pols if _ref_id(l.get("product_id")) == pid]
-        # 有效在途：已下单且未收完的行
+        # 有效在途：已下单(purchase/done)且未收完的行
         open_lines = [
             l for l in all_lines
-            if (l.get("product_qty") or 0) - (l.get("qty_received") or 0) > 0
+            if (l.get("state") or "draft") in ("purchase", "done")
+            and (l.get("product_qty") or 0) - (l.get("qty_received") or 0) > 0
         ]
         in_transit = sum((l.get("product_qty") or 0) - (l.get("qty_received") or 0) for l in open_lines)
         etas = [l.get("date_planned") for l in open_lines if l.get("date_planned")]
