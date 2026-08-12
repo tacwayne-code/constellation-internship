@@ -42,7 +42,10 @@ VIEW_ARCH = """
                class="text-start text-truncate"
                readonly="1"/>
     </xpath>
-    <xpath expr="//field[@name='move_raw_ids']/list/field[@name='product_uom_qty']" position="attributes">
+    <xpath expr="//field[@name='move_raw_ids']/list/field[@name='product_uom_qty' and @widget='mrp_should_consume']" position="attributes">
+        <attribute name="column_invisible">True</attribute>
+    </xpath>
+    <xpath expr="//field[@name='move_raw_ids']/list/field[@name='product_uom_qty' and not(@widget)]" position="attributes">
         <attribute name="column_invisible">True</attribute>
     </xpath>
     <xpath expr="//field[@name='move_raw_ids']/list/field[@name='product_uom_qty' and @widget='mrp_should_consume']" position="after">
@@ -52,6 +55,52 @@ VIEW_ARCH = """
     </xpath>
 </data>
 """.strip()
+
+
+def validate_view_arch(arch=VIEW_ARCH):
+    """Reject a view definition that leaves Odoo's inverse column visible."""
+    from xml.etree import ElementTree
+
+    root = ElementTree.fromstring(arch)
+    original_column_xpath = (
+        "//field[@name='move_raw_ids']/list/field"
+        "[@name='product_uom_qty' and @widget='mrp_should_consume']"
+    )
+    matching_xpaths = [
+        node for node in root.findall("xpath")
+        if node.get("expr") == original_column_xpath
+    ]
+    hides_original = any(
+        attribute.get("name") == "column_invisible"
+        and (attribute.text or "").strip().lower() in {"1", "true"}
+        for node in matching_xpaths
+        for attribute in node.findall("attribute")
+    )
+    adds_replacement = any(
+        node.get("position") == "after"
+        and any(
+            field.get("name") == COMPONENT_FIELD_NAME
+            for field in node.findall("field")
+        )
+        for node in matching_xpaths
+    )
+    plain_column_xpath = (
+        "//field[@name='move_raw_ids']/list/field"
+        "[@name='product_uom_qty' and not(@widget)]"
+    )
+    hides_plain = any(
+        node.get("expr") == plain_column_xpath
+        and any(
+            attribute.get("name") == "column_invisible"
+            and (attribute.text or "").strip().lower() in {"1", "true"}
+            for attribute in node.findall("attribute")
+        )
+        for node in root.findall("xpath")
+    )
+    if not hides_original or not hides_plain or not adds_replacement:
+        raise ValueError(
+            "The Odoo consumption columns must be hidden and replaced"
+        )
 
 
 class OdooRemainingQuantityFix:
@@ -155,6 +204,7 @@ def _base_view_id(client) -> int:
 
 
 def install() -> None:
+    validate_view_arch()
     client = _client()
     model_id = _model_id(client, "mrp.production")
     field_rows = client.search_read(
@@ -233,6 +283,7 @@ def install() -> None:
 
 
 def verify() -> None:
+    validate_view_arch()
     client = _client()
     rows = client.search_read(
         "mrp.production",

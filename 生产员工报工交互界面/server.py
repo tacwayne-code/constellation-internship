@@ -711,10 +711,12 @@ OPERATIONS = [
     {"id": "packing", "code": "packing", "name": "包装", "hostType": None,
      "workorderNames": ["打包"]},
     {"id": "debug", "code": "debug", "name": "调试", "hostType": None},
-    {"id": "pc_assembly_tape", "code": "pc_assembly_tape", "name": "电脑装机（编带主机）", "hostType": "tape",
-     "productClass": "host", "odooWorkcenterId": 101, "odooWorkcenterCode": "pc_assembly_tape"},
-    {"id": "pc_assembly_splitter", "code": "pc_assembly_splitter", "name": "电脑装机（分光主机）", "hostType": "splitter",
-     "productClass": "host", "odooWorkcenterId": 102, "odooWorkcenterCode": "pc_assembly_splitter"},
+    # 主机类使用两个稳定的本地工序编码，分别绑定 Odoo 的组装/打包工单。
+    # 编码保持不变，兼容已有本地工人绑定和历史报工记录。
+    {"id": "pc_assembly_tape", "code": "pc_assembly_tape", "name": "组装", "hostType": None,
+     "productClass": "host", "workorderNames": ["组装"], "odooWorkcenterId": 101, "odooWorkcenterCode": "pc_assembly_tape"},
+    {"id": "pc_assembly_splitter", "code": "pc_assembly_splitter", "name": "打包", "hostType": None,
+     "productClass": "host", "workorderNames": ["打包"], "odooWorkcenterId": 102, "odooWorkcenterCode": "pc_assembly_splitter"},
     {"id": "test_tape_operation", "code": "test_tape_operation", "name": "测试工序（编带）",
      "hostType": "tape", "odooWorkcenterId": 101,
      "odooWorkcenterCode": "pc_assembly_tape", "mockOnly": True},
@@ -896,6 +898,8 @@ def workorder_host_type(product, workcenter=None):
 
 def workorder_product_class(product):
     """Classify finished products for worker access control."""
+    if product_code(product).upper() in {"P04725", "P04726"}:
+        return "host"
     name = clean_name(product).casefold()
     if any(token in name for token in ("主机", "host computer", "controller host")):
         return "host"
@@ -927,6 +931,91 @@ def bracket_code(value):
 
 def number(value):
     return float(value or 0)
+
+
+def requires_all_route_steps(product):
+    """Return whether a finished product is completed by every active WO.
+
+    Hosts such as the tape host are machines too: producing one requires every
+    active routing step to reach the same cumulative quantity.
+    """
+    return workorder_product_class(product) in {"machine", "host"}
+
+
+def completed_machine_qty_for_reports(reports):
+    """Calculate today's completed machines from today's WO reports.
+
+    A local report identifies the MO and WO that changed today. A finished
+    unit requires every non-cancelled routing WO to have a report today; the
+    minimum daily quantity across those WOs is the daily finished output.
+    """
+    daily_qty_by_production = {}
+    for report in reports:
+        production_id = str(report.get("production_id") or report.get("productionId") or "")
+        workorder_id = str(report.get("workorder_id") or report.get("workorderId") or "")
+        if not production_id.isdigit() or not workorder_id.isdigit():
+            continue
+        daily_qty_by_production.setdefault(int(production_id), {})[int(workorder_id)] = (
+            daily_qty_by_production.setdefault(int(production_id), {}).get(int(workorder_id), 0.0)
+            + number(report.get("qty"))
+        )
+    production_ids = set(daily_qty_by_production)
+    if not production_ids:
+        return 0
+    client = get_odoo()
+    mos = client.read(
+        "mrp.production", list(production_ids), ["id", "product_id", "workorder_ids"]
+    )
+    completed = 0.0
+    for mo in mos:
+        if not requires_all_route_steps(mo.get("product_id")):
+            continue
+        workorders = client.read(
+            "mrp.workorder", mo.get("workorder_ids") or [], ["id", "state"]
+        )
+        quantities = [
+            daily_qty_by_production[mo["id"]].get(workorder["id"], 0.0)
+            for workorder in workorders
+            if workorder.get("state") != "cancel"
+        ]
+        if quantities and all(quantity > 0 for quantity in quantities):
+            completed += min(quantities)
+    return int(completed)
+
+
+def completed_machine_qty_from_odoo_today(today):
+    """Conservatively recover today's finished output from Odoo work orders.
+
+    This is a read-only fallback for a restarted panel whose local daily audit
+    rows are temporarily unavailable. A MO contributes only when every active
+    routing WO was updated on the requested local date and has a positive
+    completed quantity.
+    """
+    client = get_odoo()
+    workorders = client.search_read(
+        "mrp.workorder", [("state", "not in", ["cancel"])],
+        ["id", "production_id", "qty_produced", "state", "write_date"],
+        limit=5000,
+    )
+    by_production = {}
+    for workorder in workorders:
+        production_id = rel_id(workorder.get("production_id"))
+        if production_id:
+            by_production.setdefault(production_id, []).append(workorder)
+
+    completed = 0.0
+    for production_id, route in by_production.items():
+        mo_rows = client.read("mrp.production", [production_id], ["product_id"])
+        if not mo_rows or not requires_all_route_steps(mo_rows[0].get("product_id")):
+            continue
+        if not route or not all(
+            str(workorder.get("write_date") or "")[:10] == today
+            and number(workorder.get("qty_produced")) > 0
+            for workorder in route
+        ):
+            continue
+        completed += min(number(workorder.get("qty_produced")) for workorder in route)
+    return int(completed)
 
 
 def normalize_machine_bom_materials(submitted_items, expected_items):
@@ -2033,9 +2122,8 @@ def odoo_update_workorder_progress(client, workorder_id: int, qty: float, produc
             return {"ok": False, "error": "工单已写入但回读数量不一致",
                     "new_qty": new_wo_qty}
 
-        # 2) A machine is complete only when every active routing step reaches
-        # the same cumulative quantity. Host-computer orders keep their legacy
-        # single-operation behavior and use the highest WO quantity.
+        # 2) A machine, including a host computer, is complete only when every
+        # active routing step reaches the same cumulative quantity.
         if production_id:
             all_wos = client.call("mrp.workorder", "search_read",
                 [[("production_id", "=", production_id)]],
@@ -2050,8 +2138,10 @@ def odoo_update_workorder_progress(client, workorder_id: int, qty: float, produc
             mo = mo_rows[0]
             active_wos = [w for w in all_wos if w.get("state") != "cancel"]
             quantities = [number(w.get("qty_produced")) for w in active_wos]
-            product_class = workorder_product_class(mo.get("product_id"))
-            route_completed = (min(quantities) if product_class == "machine" else max(quantities)) if quantities else 0.0
+            route_completed = (
+                min(quantities) if requires_all_route_steps(mo.get("product_id"))
+                else max(quantities)
+            ) if quantities else 0.0
             current_mo_qty = number(mo.get("qty_produced"))
             completed_qty = max(current_mo_qty, route_completed)
             product_qty = number(mo.get("product_qty"))
@@ -2964,7 +3054,10 @@ class Handler(SimpleHTTPRequestHandler):
                     "productClass": workorder_product_class(check_rows[0].get("product_id")),
                 }
                 machine_operation = workorder_view["productClass"] == "machine"
-                machine_assembly = machine_operation and op_info.get("name") == "组装"
+                assembly_operation = (
+                    op_info.get("name") == "组装"
+                    and workorder_view["productClass"] in {"machine", "host"}
+                )
                 if worker.get("source") == "odoo" and workorder_view["productClass"] != "machine":
                     self.write_json({
                         "ok": False,
@@ -3007,7 +3100,7 @@ class Handler(SimpleHTTPRequestHandler):
             # === 物料校验 ===
             materials = report.get("materials", [])
             host_type = op_info.get("hostType")
-            if machine_assembly:
+            if assembly_operation:
                 if not isinstance(materials, list) or not materials:
                     self.write_json({
                         "ok": False,
@@ -3027,12 +3120,21 @@ class Handler(SimpleHTTPRequestHandler):
                         "error": f"机器组装 BOM 校验失败: {bom_err}",
                     }, status=HTTPStatus.BAD_REQUEST)
                     return
-            elif machine_operation and materials:
-                self.write_json({
-                    "ok": False,
-                    "error": "机器类仅组装工序允许扣减 BOM 物料",
-                }, status=HTTPStatus.BAD_REQUEST)
-                return
+            elif materials:
+                try:
+                    bom_context = get_workorder_bom_data(workorder_id)
+                    expected_items = bom_context.get("items", [])
+                    # Any routing step may consume materials.  Confirmation of
+                    # the selected MO's BOM, not the operation name, authorizes
+                    # the one-time inventory deduction.
+                    materials = normalize_machine_bom_materials(materials, expected_items)
+                    report["materials"] = materials
+                except Exception as bom_err:
+                    self.write_json({
+                        "ok": False,
+                        "error": f"工序物料清单校验失败: {bom_err}",
+                    }, status=HTTPStatus.BAD_REQUEST)
+                    return
             if materials:
                 # 校验每种物料的 actualQty > 0
                 # 注意：物料清单由前端 BOM 弹窗从 Odoo mrp.bom 动态拉取，已保证属于当前主机类型，
@@ -3380,11 +3482,16 @@ class Handler(SimpleHTTPRequestHandler):
             total_hours = sum(float(r.get("hours", 0)) for r in reports)
             unique_workers = len({r.get("worker_name") for r in reports})
             mode = get_odoo_mode()
+            completed_qty = 0
+            if mode == "real":
+                completed_qty = completed_machine_qty_for_reports(reports)
+                if not reports:
+                    completed_qty = completed_machine_qty_from_odoo_today(today)
             return {
                 "ok": True,
                 "data": {
                     "todayCount": len(reports),
-                    "todayOutput": total_qty,
+                    "todayOutput": completed_qty,
                     "todayHours": round(total_hours, 1),
                     "activeWorkers": unique_workers,
                     "recentReports": [{

@@ -56,8 +56,8 @@ const S = {
 // 工序映射（含新增）
 const OP = {
   assembly: "总装", testing: "测试", qc: "质检", packing: "包装", debug: "调试",
-  pc_assembly_tape: "电脑装机（编带主机）",
-  pc_assembly_splitter: "电脑装机（分光主机）",
+  pc_assembly_tape: "组装",
+  pc_assembly_splitter: "打包",
 };
 
 Object.assign(OP, {
@@ -157,6 +157,7 @@ async function loadAll() {
     apiGet("/api/reports").catch(() => null),
     apiGet("/api/operations").catch(() => null),
     apiGet("/api/workorders").catch(() => null),
+    apiGet("/api/report-stats").catch(() => null),
   ]);
 
   // Promise.allSettled 返回 [{status, value}, ...]，需要解包 .value
@@ -167,6 +168,7 @@ async function loadAll() {
   const reportsResp = unpack(settled[3]);
   const opsResp = unpack(settled[4]);
   const woResp = unpack(settled[5]);
+  const statsResp = unpack(settled[6]);
 
   // 处理结果
   if (dashboardResp && dashboardResp.ok) S.dashboard = dashboardResp.data;
@@ -228,6 +230,7 @@ async function loadAll() {
   } else {
     S.workorders = [];
   }
+  S.reportStats = statsResp && statsResp.data ? statsResp.data : null;
 
   if (S.selectedWorkorder) {
     const refreshedWorkorder = S.workorders.find(
@@ -332,7 +335,9 @@ function renderKpis() {
   const today = localDateKey();
   const todayR = S.reports.filter((r) => r.date === today);
   const todayReportedQty = todayR.reduce((s, r) => s + (parseInt(r.qty) || 0), 0);
-  const todayCompletedQty = completedMachineQtyForDay(S.reports, S.workorders, today);
+  const todayCompletedQty = Number.isFinite(Number(S.reportStats?.todayOutput))
+    ? Number(S.reportStats.todayOutput)
+    : completedMachineQtyForDay(S.reports, S.workorders, today);
   const todayPeople = new Set(todayR.map((r) => r.workerName)).size;
   const activeOrders = S.orders.filter((o) => parseFloat(o.remaining) > 0).length;
   const workorderCount = S.workorders.filter((w) => w.remainingQty > 0).length;
@@ -502,8 +507,8 @@ function workorderMatchesSelectedOperation(workorder) {
 
 function operationRequiresBom(operation = S.selectedOperation) {
   return !!(operation && (
-    (operation.productClass === "machine" && operation.name === "组装") ||
-    (String(operation.code || "").includes("pc_assembly") && operation.hostType)
+    ((operation.productClass === "machine" || operation.productClass === "host") &&
+      operation.name === "组装")
   ));
 }
 
@@ -629,8 +634,7 @@ function updateSubmit() {
   btn.disabled = !can;
   // 不匹配时更新 title 提示
   if (mismatch) {
-    const want = opInfo && opInfo.hostType === "tape" ? "编带机箱" :
-      opInfo && opInfo.hostType === "splitter" ? "分光机箱" : "对应";
+    const want = opInfo?.workorderNames?.join("/") || "对应";
     btn.title = `当前工序只能选择${want}工单，请重新选择`;
   } else if (!hasWorkorder) {
     btn.title = "请先选择工单";
@@ -641,25 +645,15 @@ function updateSubmit() {
 
 // ====== BOM 弹窗逻辑 ======
 async function openBomModal(nocache = false) {
+  if (!S.selectedWorkorder) {
+    toast("请先选择工单", "error");
+    return;
+  }
   const machineAssembly = !!(S.selectedOperation &&
     S.selectedOperation.productClass === "machine" &&
     S.selectedOperation.name === "组装");
-  if (machineAssembly && !S.selectedWorkorder) {
-    toast("请先选择组装工单", "error");
-    return;
-  }
   const hostType = S.selectedOperation ? S.selectedOperation.hostType : null;
-  if (!machineAssembly && !hostType) {
-    // 尝试从工单推断
-    if (S.selectedWorkorder && S.selectedWorkorder.hostType) {
-      S.selectedOperation = { ...S.selectedOperation, hostType: S.selectedWorkorder.hostType };
-    } else {
-      toast("无法确定主机类型", "error");
-      return;
-    }
-  }
-
-  const ht = S.selectedOperation.hostType;
+  const ht = hostType || S.selectedWorkorder.hostType || "";
 
   // 清理旧状态
   S.bomItems = [];
@@ -916,7 +910,7 @@ function setupEvents() {
     if (S.selectedWorkorder && !workorderMatchesSelectedOperation(S.selectedWorkorder)) {
       S.selectedWorkorder = null;
       S.selectedProduction = null;
-      toast(`已清掉不匹配的工单（${opInfo.hostType === "tape" ? "编带" : "分光"}工序）`, "info");
+      toast(`已清掉不匹配的工单（${opInfo.workorderNames?.join("/") || opInfo.name}工序）`, "info");
     }
 
     // 清理旧 BOM
@@ -927,8 +921,8 @@ function setupEvents() {
     $$(".op-chip").forEach((c) => c.classList.remove("active"));
     chip.classList.add("active");
 
-    // 电脑装机工序：直接弹出物料清单
-    if (opCode.includes("pc_assembly") && S.selectedOperation.hostType) {
+    // 主机类组装工序：直接弹出物料清单
+    if (operationRequiresBom()) {
       openBomModal();
     }
 
@@ -946,7 +940,7 @@ function setupEvents() {
     if (card.dataset.mismatch === "1") {
       const opInfo = S.operations.find((o) => o.code === S.selOperation);
       const woProd = card.querySelector(".oc-op-name")?.textContent || "该工单";
-      toast(`"${opInfo?.name || S.selOperation}" 工序只能选择 ${opInfo?.hostType === "tape" ? "编带机箱" : opInfo?.hostType === "splitter" ? "分光机箱" : "对应"} 工单，无法选择 "${woProd}"`, "error");
+      toast(`"${opInfo?.name || S.selOperation}" 工序只能选择 ${opInfo?.workorderNames?.join("/") || "对应"} 工单，无法选择 "${woProd}"`, "error");
       return;
     }
 
