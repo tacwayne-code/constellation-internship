@@ -119,10 +119,21 @@ async def analyze_delivery(client: OdooClient, so_id: int) -> dict[str, Any]:
     )
     po_ids = list({_ref_id(p.get("order_id")) for p in pols if p.get("order_id")})
     po_map: dict[int, str] = {}
+    po_details: dict[int, dict[str, Any]] = {}
     if po_ids:
         pos = await client.search_read(MODEL_PURCHASE, [["id", "in", po_ids]],
-            ["id", "name"], limit=None)
+            ["id", "name", "partner_id", "state", "priority", "date_planned"], limit=None)
         po_map = {p["id"]: p.get("name") for p in pos}
+        po_details = {
+            p["id"]: {
+                "name": p.get("name"),
+                "partner": _ref_name(p.get("partner_id")),
+                "state": p.get("state"),
+                "priority": p.get("priority") or "0",
+                "is_urgent": (p.get("priority") or "") == "1",
+                "date_planned": p.get("date_planned"),
+            } for p in pos
+        }
 
     # ── 5. 逐件计算（只在途 = 未收完的 PO 行） ──
     materials = []
@@ -143,12 +154,36 @@ async def analyze_delivery(client: OdooClient, so_id: int) -> dict[str, Any]:
             if _ref_id(l.get("order_id")) in po_map
         })
         gap = round(demand - available - in_transit, 3)
-        need_purchase = gap > 0 and not open_lines  # 缺口且无有效在途 → 需采购
-        # 配件状态（含物流同步）：充足 / 在途采购 / 需采购
+        # 已存在的关联 PO（不限状态：draft 询价单也算），用于避免重复生成
+        existing_po_names = sorted({
+            po_map[_ref_id(l.get("order_id"))]
+            for l in all_lines
+            if _ref_id(l.get("order_id")) in po_map
+        })
+        # 关联 PO 详情（按 PO 去重），供前端悬浮展示供应商/状态/交期/数量
+        existing_po_details_map: dict[int, dict[str, Any]] = {}
+        for l in all_lines:
+            pid_po = _ref_id(l.get("order_id"))
+            if pid_po in po_details and pid_po not in existing_po_details_map:
+                existing_po_details_map[pid_po] = {
+                    **po_details[pid_po],
+                    "qty_ordered": l.get("product_qty"),
+                    "qty_received": l.get("qty_received"),
+                }
+        existing_po_details = sorted(
+            existing_po_details_map.values(),
+            key=lambda x: (x["date_planned"] or "", x["name"]),
+        )
+        has_existing_po = bool(existing_po_names)
+        # 严格需采购：缺口>0 且 无在途 且 无任何已存在 PO（真正能新增的）
+        need_purchase = gap > 0 and not open_lines and not has_existing_po
+        # 配件状态（含物流同步 + 已询价）：充足 / 在途采购 / 已询价 / 需采购
         if gap <= 0:
             status, status_tone = "充足", "ok"
         elif open_lines:
             status, status_tone = "在途采购", "transit"
+        elif has_existing_po:
+            status, status_tone = "已询价", "quoted"
         else:
             status, status_tone = "需采购", "need"
         materials.append({
@@ -161,10 +196,13 @@ async def analyze_delivery(client: OdooClient, so_id: int) -> dict[str, Any]:
             "in_transit": in_transit,
             "gap": gap,
             "need_purchase": need_purchase,
+            "has_existing_po": has_existing_po,
+            "existing_po_names": existing_po_names,
+            "existing_po_details": existing_po_details,
             "status": status,
             "status_tone": status_tone,
             "eta": eta,
-            "eta_source": "在途采购" if eta else ("需采购" if need_purchase else "—"),
+            "eta_source": "在途采购" if eta else ("已询价" if has_existing_po else ("需采购" if need_purchase else "—")),
             "on_order": on_order,
         })
 
@@ -240,6 +278,8 @@ async def analyze_delivery(client: OdooClient, so_id: int) -> dict[str, Any]:
             "total": len(materials),
             "gap_count": len(gap_list),
             "need_purchase": len(need_purchase_list),
+            "need_purchase_new": sum(1 for m in materials if m["need_purchase"]),
+            "quoted": sum(1 for m in materials if m["has_existing_po"]),
             "in_transit_count": sum(1 for m in materials if m["in_transit"] > 0),
         },
         "estimated_delivery": {

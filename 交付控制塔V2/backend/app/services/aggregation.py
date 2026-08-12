@@ -201,19 +201,16 @@ async def aggregate_order(client: OdooClient, so_id: int) -> dict[str, Any]:
     # 2. PO：双链路关联 —— sale_line_id 反查 ∪ origin=SO 名（一键生成的紧急 RFQ 走 origin）
     pos = []
     po_ids: set[int] = set()
-    pols_by_po: dict[int, list[dict]] = {}
 
     # 链路 A：sale.order.line → purchase.order.line.sale_line_id
     if sol_ids:
         pols = await client.search_read(MODEL_PURCHASE_LINE,
             [["sale_line_id", "in", sol_ids]],
-            ["id", "order_id", "product_id", "product_qty", "qty_received", "state", "date_planned"],
-            limit=None)
+            ["id", "order_id"], limit=None)
         for pl in pols:
             pid = _ref_id(pl.get("order_id"))
             if pid:
                 po_ids.add(pid)
-                pols_by_po.setdefault(pid, []).append(pl)
 
     # 链路 B：purchase.order.origin = SO 名（紧急 RFQ 生成时写入的 origin）
     origin_pos = await client.search_read(MODEL_PURCHASE,
@@ -221,10 +218,19 @@ async def aggregate_order(client: OdooClient, so_id: int) -> dict[str, Any]:
         ["id", "name"], limit=None)
     for op in origin_pos:
         po_ids.add(op["id"])
-        if op["id"] not in pols_by_po:
-            pols_by_po[op["id"]] = []
 
+    pols_by_po: dict[int, list[dict]] = {}
     if po_ids:
+        # 统一拉取所有候选 PO 的 lines（覆盖双链路，确保链路 B 的 PO 也能渲染采购物品）
+        pols_all = await client.search_read(MODEL_PURCHASE_LINE,
+            [["order_id", "in", list(po_ids)]],
+            ["id", "order_id", "product_id", "product_qty", "qty_received", "state", "date_planned"],
+            limit=None)
+        for pl in pols_all:
+            pid = _ref_id(pl.get("order_id"))
+            if pid:
+                pols_by_po.setdefault(pid, []).append(pl)
+
         po_recs = await client.search_read(MODEL_PURCHASE,
             [["id", "in", list(po_ids)]],
             FIELDS_PURCHASE + ["origin"], limit=None)
@@ -291,9 +297,16 @@ async def aggregate_order(client: OdooClient, so_id: int) -> dict[str, Any]:
             "workorders": workorders,
         })
 
-    # 4. Picking：通过 origin 匹配 + 按流转类型分类（补货入库/出货/内部）
+    # 4. Picking：origin=SO 名（出货/内部）∪ origin=PO 名（采购收货物流），按流转类型分类
     picks = await client.search_read(MODEL_PICKING, [["origin", "=", so_name]],
         FIELDS_PICKING, limit=None)
+    po_names = [p["name"] for p in pos if p.get("name")]
+    if po_names:
+        po_picks = await client.search_read(MODEL_PICKING,
+            [["origin", "in", po_names]],
+            FIELDS_PICKING, limit=None)
+        seen_ids = {p["id"] for p in picks}
+        picks = picks + [p for p in po_picks if p["id"] not in seen_ids]
 
     # picking_type → code（incoming=补货入库 / outgoing=出货 / internal=内部流转）
     pt_ids = list({_ref_id(p.get("picking_type_id")) for p in picks if p.get("picking_type_id")})

@@ -6,6 +6,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import Response
+from pydantic import BaseModel
 
 from app.config import get_settings
 from app.services.aggregation import (
@@ -157,17 +158,47 @@ async def order_lookup(
     ]
 
 
+@router.get("/orders/{so_id}/urgent-purchase-options")
+async def order_urgent_purchase_options(
+    so_id: int,
+    client: ClientDep,
+    resp: Response,
+):
+    """一键生成前置：需采购配件的供应商候选列表（供前端选择供应商，替代默认供应商）"""
+    from app.services.urgent_purchase import get_urgent_purchase_options
+
+    try:
+        data = await get_urgent_purchase_options(client, so_id)
+    except Exception as e:  # noqa: BLE001
+        logger.exception("urgent_purchase_options(%s) failed", so_id)
+        raise HTTPException(status_code=500, detail=str(e))
+    if "error" in data:
+        raise HTTPException(status_code=404, detail=data["error"])
+    resp.headers["X-Data-Source"] = "odoo"
+    return data
+
+
+class UrgentPurchaseRequest(BaseModel):
+    """创建紧急采购单请求：vendors = {product_id: partner_id}（可选，缺省用默认供应商）"""
+    vendors: dict[int, int] | None = None
+
+
 @router.post("/orders/{so_id}/create-urgent-purchases")
 async def order_create_urgent_purchases(
     so_id: int,
     client: ClientDep,
     resp: Response,
+    req: UrgentPurchaseRequest | None = None,
 ):
-    """一键生成紧急采购订单：对需采购配件（无库存且无在途）创建 priority=1 的 RFQ"""
+    """一键生成紧急采购订单：对需采购配件（无库存且无在途）创建 priority=1 的 RFQ
+
+    请求体可选 {"vendors": {"<product_id>": <partner_id>}} 指定供应商；缺省用默认供应商。
+    """
     from app.services.urgent_purchase import create_urgent_purchases
 
     try:
-        data = await create_urgent_purchases(client, so_id)
+        data = await create_urgent_purchases(client, so_id,
+                                             vendors=(req.vendors if req else None))
     except Exception as e:  # noqa: BLE001
         logger.exception("create_urgent_purchases(%s) failed", so_id)
         raise HTTPException(status_code=500, detail=str(e))

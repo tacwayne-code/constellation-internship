@@ -7,7 +7,7 @@
  *   GET /delivery-tower/orders/{so_id}           → 单订单四链路聚合（PO/MO/picking/BOM）
  *   POST /delivery-tower/sync/emergency          → 手动触发紧急继承（含 BOM 配件级传播）
  */
-import { useMemo, useState } from 'react'
+import { useMemo, useState, type ReactNode } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { apiFetch } from '../../api/client'
 import { Icon } from '../common/Icon'
@@ -58,9 +58,10 @@ interface PoItem {
 }
 
 interface ProcurementOverview {
-  stats: { total: number; urgent: number; by_priority: Record<string, number>; by_state: Record<string, number> }
+  stats: { total: number; urgent: number; urgent_pending?: number; urgent_transit?: number; by_priority: Record<string, number>; by_state: Record<string, number> }
   by_priority: Record<string, PoItem[]>
-  urgent_kanban: PoItem[]
+  urgent_pending?: PoItem[]
+  urgent_transit?: PoItem[]
   items: PoItem[]
 }
 
@@ -157,16 +158,43 @@ interface DeliveryAnalysis {
   materials: Array<{
     product: string; role: string
     demand: number; available: number; in_transit: number; gap: number
-    need_purchase: boolean; eta: string | null; eta_source: string
+    need_purchase: boolean
+    has_existing_po: boolean
+    existing_po_names: string[]
+    existing_po_details: Array<{
+      name: string; partner: string; state: string; priority: string
+      is_urgent: boolean; date_planned: string | null
+      qty_ordered: number | null; qty_received: number | null
+    }>
+    eta: string | null; eta_source: string
     status: string; status_tone: string
     on_order: string[]
     pickings: Array<{ name: string; state: string; scheduled_date: string; carrier: string }>
   }>
-  eta_summary: { total: number; gap_count: number; need_purchase: number; in_transit_count: number }
+  eta_summary: {
+    total: number; gap_count: number
+    need_purchase: number          // 严格口径：缺口+无在途+无已存在 PO（可新增）
+    need_purchase_new?: number
+    quoted?: number                // 已询价中（已有 PO 关联）
+    in_transit_count: number
+  }
   estimated_delivery: {
     date: string | null; source: string
     commitment_date: string | null; overdue_days: number; risk: 'high' | 'mid' | 'ok'
   }
+}
+
+interface UrgentVendorOption {
+  product_id: number
+  product: string
+  qty: number
+  suppliers: Array<{ partner_id: number; partner_name: string; price: number; delay: number }>
+}
+
+interface CreateUrgentResult {
+  so_name: string; note: string
+  created: Array<{ po_id: number; po_name: string; product: string; qty: number; partner: string; state: string }>
+  skipped: Array<{ product: string; reason: string }>
 }
 
 interface LogisticsItem {
@@ -547,6 +575,37 @@ function ChainSteps({ chain }: { chain: OrderAggregate['chain'] }) {
 }
 
 /* ====================================================================
+ *  悬浮提示卡片（替代原生 title：样式统一、延迟小、可换行）
+ * ==================================================================== */
+function Tip({ text, children, width = 300 }: { text: string; children: ReactNode; width?: number }) {
+  const [show, setShow] = useState(false)
+  if (!text) return <>{children}</>
+  return (
+    <span
+      style={{ position: 'relative', display: 'inline-block', maxWidth: '100%', verticalAlign: 'bottom' }}
+      onMouseEnter={() => setShow(true)}
+      onMouseLeave={() => setShow(false)}
+    >
+      {children}
+      {show && (
+        <span
+          style={{
+            position: 'absolute', bottom: 'calc(100% + 8px)', left: 0, zIndex: 50,
+            maxWidth: width, minWidth: 140, whiteSpace: 'pre-wrap', wordBreak: 'break-all',
+            background: 'var(--color-background-secondary)', color: 'var(--color-text-primary)',
+            border: '1px solid var(--color-border-secondary)', borderRadius: 8,
+            padding: '8px 10px', fontSize: 12, lineHeight: 1.5,
+            boxShadow: '0 4px 14px rgba(0,0,0,0.25)', pointerEvents: 'none',
+          }}
+        >
+          {text}
+        </span>
+      )}
+    </span>
+  )
+}
+
+/* ====================================================================
  *  交付日期分析：物料齐套 + 预计到货 + 整单预计交付日 + 一键生成紧急采购
  * ==================================================================== */
 function DeliveryAnalysis({ soId }: { soId: number }) {
@@ -554,11 +613,10 @@ function DeliveryAnalysis({ soId }: { soId: number }) {
   const [creating, setCreating] = useState(false)
   const [matPage, setMatPage] = useState(1)
   const MAT_PAGE_SIZE = 5
-  const [createResult, setCreateResult] = useState<{
-    so_name: string; note: string
-    created: Array<{ po_id: number; po_name: string; product: string; qty: number; partner: string; state: string }>
-    skipped: Array<{ product: string; reason: string }>
-  } | null>(null)
+  const [createResult, setCreateResult] = useState<CreateUrgentResult | null>(null)
+  const [vendorOptions, setVendorOptions] = useState<UrgentVendorOption[] | null>(null)
+  const [vendorSel, setVendorSel] = useState<Record<number, number>>({})
+  const [pickingVendor, setPickingVendor] = useState(false)
 
   const q = useQuery({
     queryKey: ['delivery-analysis', soId],
@@ -569,19 +627,44 @@ function DeliveryAnalysis({ soId }: { soId: number }) {
     high: ['高风险', 'red'], mid: ['有风险', 'orange'], ok: ['正常', 'success'],
   }
   const STATUS_LABEL: Record<string, [string, Tone]> = {
-    充足: ['充足', 'success'], '在途采购': ['在途', 'blue'], 需采购: ['需采购', 'red'], 已到货: ['已到货', 'success'],
+    充足: ['充足', 'success'], '在途采购': ['在途', 'blue'], 需采购: ['需采购', 'red'], 已询价: ['已询价', 'orange'], 已到货: ['已到货', 'success'],
+  }
+  // PO 状态中文化
+  const PO_STATE_CN: Record<string, string> = {
+    draft: '询价中', sent: '已发送', purchase: '已下单', done: '已完成', cancel: '已取消',
+  }
+  // 询价 PO 详情 → 多行 Tooltip 文本（最多展示 8 张）
+  const buildPoTooltipText = (
+    details: DeliveryAnalysis['materials'][number]['existing_po_details'] | undefined,
+  ): string => {
+    if (!details || !details.length) return ''
+    const list = details.slice(0, 8)
+    const blocks = list.map((d) =>
+      `${d.name}${d.is_urgent ? ' · 紧急' : ''}\n` +
+      `供应商：${d.partner}\n` +
+      `状态：${PO_STATE_CN[d.state] ?? d.state}\n` +
+      `交期：${d.date_planned ? d.date_planned.slice(0, 10) : '—'}\n` +
+      `数量：${Number(d.qty_received ?? 0)} / ${Number(d.qty_ordered ?? 0)}`,
+    )
+    const tail = details.length > 8 ? `\n…… 共 ${details.length} 张` : ''
+    return blocks.join('\n─────────\n') + tail
+  }
+  // 询价 PO 列表截断：≤5 个全显示，>5 个显示前 5 + 「…+N」
+  const formatPoList = (names: string[]): string => {
+    if (names.length <= 5) return names.join(' / ')
+    return `${names.slice(0, 5).join(' / ')} …+${names.length - 5}`
   }
 
-  const onCreate = async () => {
+  const submitCreate = async (vendors: Record<number, number>) => {
     if (creating) return
     setCreating(true)
     try {
-      const res = await apiFetch<{
-        so_name: string; note: string
-        created: Array<{ po_id: number; po_name: string; product: string; qty: number; partner: string; state: string }>
-        skipped: Array<{ product: string; reason: string }>
-      }>(`/delivery-tower/orders/${soId}/create-urgent-purchases`, { method: 'POST' })
+      const res = await apiFetch<CreateUrgentResult>(
+        `/delivery-tower/orders/${soId}/create-urgent-purchases`,
+        { method: 'POST', body: JSON.stringify({ vendors }) },
+      )
       setCreateResult(res.data)
+      setPickingVendor(false)
       toast(res.data.note, res.data.created.length ? 'success' : 'warning')
       queryClient.invalidateQueries({ queryKey: ['delivery-tower-procurement'] })
       queryClient.invalidateQueries({ queryKey: ['delivery-analysis', soId] })
@@ -589,6 +672,32 @@ function DeliveryAnalysis({ soId }: { soId: number }) {
       toast('生成紧急采购单失败', 'danger')
     } finally {
       setCreating(false)
+    }
+  }
+
+  const onCreate = async () => {
+    if (creating) return
+    try {
+      // 1. 先拉需采购配件的供应商候选（Odoo 供应商中选择，而非默认供应商）
+      const opt = await apiFetch<{ so_name: string; items: UrgentVendorOption[] }>(
+        `/delivery-tower/orders/${soId}/urgent-purchase-options`,
+      ).then((r) => r.data)
+      setVendorOptions(opt.items)
+      const sel: Record<number, number> = {}
+      for (const it of opt.items) {
+        if (it.suppliers.length) sel[it.product_id] = it.suppliers[0].partner_id
+      }
+      setVendorSel(sel)
+      const anyVendor = opt.items.some((it) => it.suppliers.length)
+      if (anyVendor) {
+        // 有可选的供应商 → 展开选择区等用户确认
+        setPickingVendor(true)
+        return
+      }
+      // 全部无供应商 → 直接提交（后端会 skipped 并记录原因）
+      await submitCreate({})
+    } catch {
+      toast('加载供应商候选失败', 'danger')
     }
   }
 
@@ -617,18 +726,54 @@ function DeliveryAnalysis({ soId }: { soId: number }) {
               </div>
             </div>
 
-            {/* 一键生成紧急采购 */}
+            {/* 一键生成紧急采购（need_purchase=0 时整张不显示） */}
             {data.eta_summary.need_purchase > 0 && (
               <div className="chain-item" style={{ background: 'var(--red-soft)', borderColor: 'var(--red)' }}>
                 <div className="chain-item-head">
                   <span className="chain-item-name" style={{ color: 'var(--red)' }}>
-                    {data.eta_summary.need_purchase} 件配件缺料需采购
+                    {data.eta_summary.need_purchase} 件配件可新增采购
                   </span>
-                  <button className="ghost-btn" onClick={onCreate} disabled={creating}
+                  <button className="ghost-btn" onClick={onCreate}
+                    disabled={creating}
                     style={{ borderColor: 'var(--red)', color: 'var(--red)' }}>
-                    <Icon name="plus" size={13} /> {creating ? '生成中…' : '生成紧急采购单'}
+                    <Icon name="plus" size={13} /> {creating ? '生成中…' : `生成紧急采购单（${data.eta_summary.need_purchase}）`}
                   </button>
                 </div>
+                {pickingVendor && vendorOptions && (
+                  <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    <div className="muted" style={{ fontSize: 12 }}>选择采购供应商（来自 Odoo 供应商档案）：</div>
+                    {vendorOptions.map((it) => (
+                      <div key={it.product_id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12 }}>
+                        <span style={{ width: 130, flexShrink: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {it.product} ×{Number(it.qty).toLocaleString()}
+                        </span>
+                        {it.suppliers.length ? (
+                          <select
+                            style={{ flex: 1, fontSize: 12, padding: '3px 6px', background: 'var(--color-background-primary)', color: 'var(--color-text-primary)', border: '1px solid var(--color-border-secondary)', borderRadius: 6 }}
+                            value={vendorSel[it.product_id] ?? ''}
+                            onChange={(e) => setVendorSel({ ...vendorSel, [it.product_id]: Number(e.target.value) })}
+                          >
+                            {it.suppliers.map((sp) => (
+                              <option key={sp.partner_id} value={sp.partner_id}>
+                                {sp.partner_name} · {sp.price} 元 · 交期 {sp.delay} 天
+                              </option>
+                            ))}
+                          </select>
+                        ) : (
+                          <span className="muted">无默认供应商（将跳过）</span>
+                        )}
+                      </div>
+                    ))}
+                    <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                      <button className="ghost-btn" onClick={() => setPickingVendor(false)}>取消</button>
+                      <button className="ghost-btn" onClick={() => submitCreate(vendorSel)}
+                        disabled={creating}
+                        style={{ borderColor: 'var(--red)', color: 'var(--red)' }}>
+                        {creating ? '生成中…' : '确认生成'}
+                      </button>
+                    </div>
+                  </div>
+                )}
                 {createResult && (
                   <div className="chain-item-meta" style={{ marginTop: 8, whiteSpace: 'pre-wrap' }}>
                     <span style={{ color: createResult.created.length ? 'var(--green)' : 'var(--red)' }}>{createResult.note}</span>
@@ -651,26 +796,67 @@ function DeliveryAnalysis({ soId }: { soId: number }) {
                 const pageItems = data.materials.slice(start, start + MAT_PAGE_SIZE)
                 return (
                   <>
-                    {pageItems.map((m) => {
-                      const [stLabel, stTone] = STATUS_LABEL[m.status] ?? [m.status, 'neutral']
-                      return (
-                        <div key={m.product + m.role} className="chain-sub">
-                          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                            {m.product}
-                            <span className="muted" style={{ marginLeft: 6 }}>{m.role}</span>
-                            <StatusDot tone={stTone} />
-                            <span style={{ fontSize: 11, color: `var(--${stTone === 'blue' ? 'blue' : stTone === 'red' ? 'red' : 'green'})`, fontWeight: 600 }}>{stLabel}</span>
-                          </span>
-                          <span className="muted" style={{ whiteSpace: 'nowrap' }}>
-                            需求 {Number(m.demand).toLocaleString()} · 现有 {Number(m.available).toLocaleString()} · 在途 {Number(m.in_transit).toLocaleString()} · 缺口 {Number(m.gap).toLocaleString()}
-                            {m.eta ? ` · ETA ${m.eta}` : ''}
-                            {m.pickings && m.pickings.length > 0
-                              ? ` · 物流 ${m.pickings.map((p) => `${p.name}(${PICK_STATE[p.state]?.[0] ?? p.state})`).join(' / ')}`
-                              : ''}
-                          </span>
-                        </div>
-                      )
-                    })}
+                    <table className="mat-no-hover" style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                      <thead>
+                        <tr style={{ background: 'var(--color-background-secondary)', color: 'var(--color-text-secondary)' }}>
+                          <th style={{ textAlign: 'left', padding: '6px 8px', borderBottom: '1px solid var(--color-border-tertiary)', fontWeight: 500 }}>产品</th>
+                          <th style={{ textAlign: 'left', padding: '6px 4px', borderBottom: '1px solid var(--color-border-tertiary)', fontWeight: 500 }}>角色</th>
+                          <th style={{ textAlign: 'left', padding: '6px 4px', borderBottom: '1px solid var(--color-border-tertiary)', fontWeight: 500 }}>状态</th>
+                          <th style={{ textAlign: 'right', padding: '6px 4px', borderBottom: '1px solid var(--color-border-tertiary)', fontWeight: 500 }}>需求</th>
+                          <th style={{ textAlign: 'right', padding: '6px 4px', borderBottom: '1px solid var(--color-border-tertiary)', fontWeight: 500 }}>现有</th>
+                          <th style={{ textAlign: 'right', padding: '6px 4px', borderBottom: '1px solid var(--color-border-tertiary)', fontWeight: 500 }}>在途</th>
+                          <th style={{ textAlign: 'right', padding: '6px 4px', borderBottom: '1px solid var(--color-border-tertiary)', fontWeight: 500 }}>缺口</th>
+                          <th style={{ textAlign: 'left', padding: '6px 4px', borderBottom: '1px solid var(--color-border-tertiary)', fontWeight: 500 }}>ETA</th>
+                          <th style={{ textAlign: 'left', padding: '6px 8px', borderBottom: '1px solid var(--color-border-tertiary)', fontWeight: 500 }}>询价 PO</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {pageItems.map((m) => {
+                          const [stLabel, stTone] = STATUS_LABEL[m.status] ?? [m.status, 'neutral']
+                          const stColor =
+                            stTone === 'blue' ? 'blue'
+                              : stTone === 'red' ? 'red'
+                              : stTone === 'orange' ? 'orange'
+                              : stTone === 'success' ? 'green'
+                              : 'muted'
+                          const gap = Number(m.gap) || 0
+                          const hasPo = m.existing_po_names && m.existing_po_names.length > 0
+                          const hasPick = m.pickings && m.pickings.length > 0
+                          return (
+                            <tr key={m.product + m.role} style={{ borderBottom: '1px solid var(--color-border-tertiary)', background: 'transparent' }}
+                              onMouseEnter={(e) => { e.currentTarget.style.background = 'transparent' }}>
+                              <td style={{ padding: '6px 8px', maxWidth: 220, overflow: 'hidden' }}>
+                                <Tip text={m.product}>
+                                  <span style={{ display: 'inline-block', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', verticalAlign: 'bottom', fontWeight: 500 }}>{m.product}</span>
+                                </Tip>
+                              </td>
+                              <td style={{ padding: '6px 4px', color: 'var(--color-text-secondary)' }}>{m.role}</td>
+                              <td style={{ padding: '6px 4px', whiteSpace: 'nowrap' }}>
+                                <StatusDot tone={stTone} />
+                                <span style={{ fontSize: 11, color: `var(--${stColor})`, fontWeight: 600 }}>{stLabel}</span>
+                              </td>
+                              <td style={{ padding: '6px 4px', textAlign: 'right' }}>{Number(m.demand).toLocaleString()}</td>
+                              <td style={{ padding: '6px 4px', textAlign: 'right' }}>{Number(m.available).toLocaleString()}</td>
+                              <td style={{ padding: '6px 4px', textAlign: 'right' }}>{Number(m.in_transit).toLocaleString()}</td>
+                              <td style={{ padding: '6px 14px 6px 4px', textAlign: 'right', color: gap > 0 ? 'var(--red)' : (gap < 0 ? 'var(--green)' : undefined), fontWeight: gap !== 0 ? 600 : undefined }}>{gap.toLocaleString()}</td>
+                              <td style={{ padding: '6px 4px 6px 14px', whiteSpace: 'nowrap' }}>{m.eta || '—'}</td>
+                              <td style={{ padding: '6px 8px', maxWidth: 260, overflow: 'hidden' }}>
+                                {hasPo ? (
+                                  <Tip text={hasPo ? buildPoTooltipText(m.existing_po_details) : ''} width={320}>
+                                    <span style={{ display: 'inline-block', maxWidth: 240, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', verticalAlign: 'bottom', color: 'var(--color-text-secondary)', background: 'transparent', boxShadow: 'none' }}>
+                                      {formatPoList(m.existing_po_names)}
+                                    </span>
+                                  </Tip>
+                                ) : (
+                                  <span style={{ color: 'var(--color-text-tertiary)' }}>—</span>
+                                )}
+                                {hasPick && <span style={{ color: 'var(--color-text-tertiary)', marginLeft: 6 }}>· 物流 {m.pickings.length}</span>}
+                              </td>
+                            </tr>
+                          )
+                        })}
+                      </tbody>
+                    </table>
                     {total > MAT_PAGE_SIZE && (
                       <div style={{ padding: '4px 0' }}>
                         <Pagination page={matPage} total={total} pageSize={MAT_PAGE_SIZE} onChange={setMatPage} />
@@ -771,9 +957,10 @@ function ProcurementBoard({ overview, onOpenPo }: { overview: ProcurementOvervie
   const BOARD_PAGE_SIZE = 5
   const pageOf = (key: string) => boardPages[key] ?? 1
   const setPageOf = (key: string) => (p: number) => setBoardPages((prev) => ({ ...prev, [key]: p }))
-  // Odoo 18 priority 为两档：'1'=紧急（红） / '0'=普通（灰）
+  // 双分组：紧急待发起(draft/sent) + 紧急在途(purchase/done) + 普通(priority=0)
   const groups: Array<{ key: string; label: string; tone: Tone; items: PoItem[] }> = [
-    { key: '1', label: '紧急', tone: 'red', items: overview.by_priority['1'] ?? [] },
+    { key: 'pending', label: '紧急 · 待发起', tone: 'red', items: overview.urgent_pending ?? overview.by_priority['1'] ?? [] },
+    { key: 'transit', label: '紧急 · 在途', tone: 'orange', items: overview.urgent_transit ?? [] },
     { key: '0', label: '普通', tone: 'neutral', items: overview.by_priority['0'] ?? [] },
   ]
   return (
@@ -781,7 +968,7 @@ function ProcurementBoard({ overview, onOpenPo }: { overview: ProcurementOvervie
       <div className="panel-header">
         <span className="panel-title">采购看板 · 按紧急程度分组</span>
         <span className="muted" style={{ fontSize: 12 }}>
-          共 {overview.stats.total} 单 · 紧急 {overview.stats.urgent} 单
+          共 {overview.stats.total} 单 · 待发起 {overview.stats.urgent_pending ?? 0} · 在途 {overview.stats.urgent_transit ?? 0}
         </span>
       </div>
       <div className="board-layout">
@@ -800,7 +987,12 @@ function ProcurementBoard({ overview, onOpenPo }: { overview: ProcurementOvervie
                 {pageItems.map((p) => {
                   const [label, tone] = st(PO_STATE, p.state)
                   return (
-                    <div key={p.id} className="board-card" style={{ ...(g.tone === 'red' ? { borderColor: 'var(--red)', background: 'var(--red-soft)' } : undefined), cursor: 'pointer' }}
+                    <div key={p.id} className="board-card" style={{
+                        cursor: 'pointer',
+                        ...(g.tone === 'red' ? { borderColor: 'var(--red)', background: 'var(--red-soft)' }
+                          : g.tone === 'orange' ? { borderColor: 'var(--orange)' }
+                          : {}),
+                      }}
                       onClick={() => onOpenPo(p)}>
                       <div className="board-card-top">
                         <span className="board-card-title" style={{ color: g.tone === 'red' ? 'var(--red)' : undefined }}>{p.name}</span>
@@ -916,6 +1108,8 @@ function LogisticsTable({ title, items }: { title: string; items: LogisticsItem[
             <th>往来对象</th>
             <th>状态</th>
             <th>预计到达</th>
+            <th>预计到达状态</th>
+            <th>承诺期</th>
             <th>承运商</th>
           </tr>
         </thead>
@@ -937,6 +1131,8 @@ function LogisticsTable({ title, items }: { title: string; items: LogisticsItem[
                   <span style={{ color: etaTone === 'red' ? 'var(--red)' : etaTone === 'orange' ? 'var(--orange)' : etaTone === 'blue' ? 'var(--blue)' : 'var(--ink)' }}>
                     {p.eta ?? '—'}
                   </span>
+                </td>
+                <td style={{ whiteSpace: 'nowrap' }}>
                   <StatusDot tone={etaTone} />
                   <span style={{ fontSize: 11, color: etaTone === 'red' ? 'var(--red)' : 'var(--muted)' }}>{etaLabel}</span>
                 </td>
@@ -1219,30 +1415,6 @@ export function DeliveryTowerView() {
                 ))}
               </div>
               {overview && <ProcurementBoard overview={overview} onOpenPo={setSelectedPo} />}
-              {(overview?.urgent_kanban ?? []).length > 0 && (
-                <div className="panel">
-                  <div className="panel-header">
-                    <span className="panel-title">紧急采购单 · 优先处理</span>
-                    <span className="urgent-badge">{overview?.urgent_kanban.length}</span>
-                  </div>
-                  <div className="board-layout">
-                    {(overview?.urgent_kanban ?? []).slice(0, 10).map((p) => (
-                      <div key={p.id} className="board-card" style={{ borderColor: 'var(--red)', background: 'var(--red-soft)', cursor: 'pointer' }}
-                        onClick={() => setSelectedPo(p)}>
-                        <div className="board-card-top">
-                          <span className="board-card-title" style={{ color: 'var(--red)' }}>{p.name}</span>
-                          <StatusDot tone="red" />
-                        </div>
-                        <div className="board-card-meta">
-                          {p.partner}
-                          <br />
-                          {fmtDate(p.date_planned)} · {p.line_count} 行 · {fmtMoney(p.amount_total)}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
               {overview && <ProcurementTable items={overview.items} onOpenPo={setSelectedPo} />}
             </>
           )}

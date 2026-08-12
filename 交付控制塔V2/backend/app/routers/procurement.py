@@ -94,7 +94,13 @@ async def procurement_overview(
         if is_urgent:
             urgent_list.append(item)
 
-    urgent_list.sort(key=lambda x: x.get("date_planned") or "")
+    # 按 state 拆紧急列：待发起(draft/sent) + 在途(purchase/done)
+    urgent_pending = [i for i in items if i["is_urgent"] and i["state"] in ("draft", "sent")]
+    urgent_transit = [i for i in items if i["is_urgent"] and i["state"] in ("purchase", "done")]
+    # done 的紧急 PO 若不归入"在途"可忽略：state=done 直接排除（按业务约定）
+    # 排序
+    urgent_pending.sort(key=lambda x: x.get("date_planned") or "")
+    urgent_transit.sort(key=lambda x: x.get("date_planned") or "")
     for k in by_priority:
         by_priority[k].sort(key=lambda x: x.get("date_planned") or "")
 
@@ -102,11 +108,15 @@ async def procurement_overview(
     return {
         "stats": {
             "total": len(items),
-            "urgent": len(urgent_list),
+            "urgent": len(urgent_list) - len(urgent_transit) + len(urgent_pending),  # 兼容旧字段
+            "urgent_pending": len(urgent_pending),
+            "urgent_transit": len(urgent_transit),
             "by_priority": {"1": priority_counter.get("1", 0), "0": priority_counter.get("0", 0)},
             "by_state": dict(state_counter),
         },
         "by_priority": dict(by_priority),
         "urgent_kanban": urgent_list,
+        "urgent_pending": urgent_pending,
+        "urgent_transit": urgent_transit,
         "items": items,
     }

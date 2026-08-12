@@ -157,15 +157,17 @@
 /* ---- 看板 ---- */
 .board-layout {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 14px;
-  align-items: start;
+  align-items: stretch;
 }
 .board-column {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
 }
 .board-column-head {
   padding: 12px 14px;
@@ -185,7 +187,7 @@
   color: var(--muted);
   font-weight: 500;
 }
-.board-cards { padding: 10px; display: flex; flex-direction: column; gap: 8px; }
+.board-cards { padding: 10px; display: flex; flex-direction: column; gap: 8px; flex: 1; }
 .board-card {
   background: var(--canvas);
   border: 1px solid var(--border);
@@ -853,6 +855,21 @@
 }
 
 /* ============ 任务标签 chips ============ */
+table.mat-no-hover tbody tr,
+table.mat-no-hover tbody tr:hover,
+table.mat-no-hover td,
+table.mat-no-hover td:hover,
+table.mat-no-hover ::selection,
+table.mat-no-hover *::selection,
+table.mat-no-hover tbody *,
+table.mat-no-hover tbody *:hover,
+table.mat-no-hover tbody *:focus,
+table.mat-no-hover tbody *:active {
+  background: transparent !important;
+  background-color: transparent !important;
+  box-shadow: none !important;
+  outline: none !important;
+}
 .task-tags {
   display: inline-flex;
   gap: 4px;
