@@ -468,6 +468,7 @@ def _normalize_report(row):
     base["materialSyncStatus"] = row.get("material_sync_status", "unknown")
     base["odooProgressQty"] = row.get("odoo_progress_qty")
     base["errorMessage"] = row.get("error_message", "")
+    base["odooDisplayOnly"] = bool(row.get("odoo_display_only", False))
     return base
 
 
@@ -696,7 +697,19 @@ def load_workers(force_refresh=False):
 
 
 def load_reports():
-    return db_reports()
+    reports = db_reports()
+    if get_odoo_mode() != "real":
+        return reports
+
+    # Some historic reports reached Odoo before the local SQLite audit row was
+    # committed.  Surface today's Odoo work-order changes for the panel, but
+    # never backfill or fabricate a local report record from a cumulative WO
+    # quantity.  These read-only snapshots are explicitly marked for clients.
+    try:
+        return reports + odoo_today_progress_snapshots(reports)
+    except Exception as exc:
+        logger.warning(f"读取 Odoo 当日工单进度快照失败: {exc}")
+        return reports
 
 
 # ============================================================
@@ -943,23 +956,28 @@ def requires_all_route_steps(product):
 
 
 def completed_machine_qty_for_reports(reports):
-    """Calculate today's completed machines from today's WO reports.
+    """Calculate auditable completed machines from synchronized WO receipts.
 
-    A local report identifies the MO and WO that changed today. A finished
-    unit requires every non-cancelled routing WO to have a report today; the
-    minimum daily quantity across those WOs is the daily finished output.
+    ``odoo_progress_qty`` is the cumulative WO quantity read back immediately
+    after a successful panel report.  A finished unit requires a synchronized
+    receipt for every non-cancelled routing WO; the minimum confirmed progress
+    across those WOs is the finished output.  This deliberately excludes raw
+    Odoo cumulative changes that have no local audit receipt.
     """
-    daily_qty_by_production = {}
+    confirmed_qty_by_production = {}
     for report in reports:
         production_id = str(report.get("production_id") or report.get("productionId") or "")
         workorder_id = str(report.get("workorder_id") or report.get("workorderId") or "")
-        if not production_id.isdigit() or not workorder_id.isdigit():
+        sync_status = str(report.get("sync_status") or report.get("syncStatus") or "")
+        progress_qty = report.get("odoo_progress_qty", report.get("odooProgressQty"))
+        if (not production_id.isdigit() or not workorder_id.isdigit()
+                or sync_status != "odoo_synced" or progress_qty is None):
             continue
-        daily_qty_by_production.setdefault(int(production_id), {})[int(workorder_id)] = (
-            daily_qty_by_production.setdefault(int(production_id), {}).get(int(workorder_id), 0.0)
-            + number(report.get("qty"))
+        production_progress = confirmed_qty_by_production.setdefault(int(production_id), {})
+        production_progress[int(workorder_id)] = max(
+            production_progress.get(int(workorder_id), 0.0), number(progress_qty)
         )
-    production_ids = set(daily_qty_by_production)
+    production_ids = set(confirmed_qty_by_production)
     if not production_ids:
         return 0
     client = get_odoo()
@@ -974,7 +992,7 @@ def completed_machine_qty_for_reports(reports):
             "mrp.workorder", mo.get("workorder_ids") or [], ["id", "state"]
         )
         quantities = [
-            daily_qty_by_production[mo["id"]].get(workorder["id"], 0.0)
+            confirmed_qty_by_production[mo["id"]].get(workorder["id"], 0.0)
             for workorder in workorders
             if workorder.get("state") != "cancel"
         ]
@@ -1016,6 +1034,78 @@ def completed_machine_qty_from_odoo_today(today):
             continue
         completed += min(number(workorder.get("qty_produced")) for workorder in route)
     return int(completed)
+
+
+def odoo_today_progress_snapshots(local_reports):
+    """Return read-only panel rows for today's Odoo work-order changes.
+
+    Odoo keeps a cumulative ``qty_produced`` on each work order, not the
+    original quantity of a missing panel request.  The rows returned here are
+    therefore display-only snapshots: they are not inserted into SQLite and
+    must not be used to calculate submitted quantity or finished output.
+    """
+    local_now = datetime.now(LOCAL_TZ)
+    today = local_now.strftime("%Y-%m-%d")
+    local_start = local_now.replace(hour=0, minute=0, second=0, microsecond=0)
+    utc_start = local_start.astimezone(timezone.utc)
+    utc_end = utc_start + timedelta(days=1)
+    existing_workorders = {
+        str(report.get("workorder_id") or report.get("workorderId") or "")
+        for report in local_reports
+        if str(report.get("date") or "") == today
+    }
+    client = get_odoo()
+    rows = client.search_read(
+        "mrp.workorder",
+        [("write_date", ">=", utc_start.strftime("%Y-%m-%d %H:%M:%S")),
+         ("write_date", "<", utc_end.strftime("%Y-%m-%d %H:%M:%S"))],
+        ["id", "name", "production_id", "product_id", "qty_produced", "write_date"],
+        limit=500,
+        order="write_date desc",
+    )
+    snapshots = []
+    for workorder in rows:
+        workorder_id = str(workorder.get("id") or "")
+        production_id = rel_id(workorder.get("production_id"))
+        if not workorder_id or not production_id or workorder_id in existing_workorders:
+            continue
+        write_date = str(workorder.get("write_date") or "")
+        try:
+            changed_at = datetime.strptime(
+                write_date, "%Y-%m-%d %H:%M:%S"
+            ).replace(tzinfo=timezone.utc).astimezone(LOCAL_TZ)
+        except ValueError:
+            continue
+        snapshots.append({
+            "id": f"odoo-progress-{workorder_id}-{write_date}",
+            "worker_id": "",
+            "worker_name": "Odoo 工单进度",
+            "worker_team": "",
+            "order_id": f"odoo-progress-{workorder_id}",
+            "order_customer": "",
+            "order_product": clean_name(workorder.get("product_id")),
+            "operation": f"odoo_workorder_{workorder_id}",
+            "operation_label": str(workorder.get("name") or "工单进度"),
+            "qty": 0,
+            "qualified": 0,
+            "hours": 0,
+            "remark": "仅展示 Odoo 当日工单进度，未补造本地报工记录",
+            "date": today,
+            "time": changed_at.strftime("%H:%M"),
+            "timestamp": int(changed_at.timestamp() * 1000),
+            "production_id": str(production_id),
+            "workorder_id": workorder_id,
+            "odoo_employee_id": 0,
+            "idempotency_key": "",
+            "odoo_report_id": workorder_id,
+            "odoo_stock_move_ids": "[]",
+            "sync_status": "odoo_progress_snapshot",
+            "material_sync_status": "unknown",
+            "odoo_progress_qty": number(workorder.get("qty_produced")),
+            "error_message": "仅展示 Odoo 当日工单进度，未补造本地报工记录",
+            "odoo_display_only": True,
+        })
+    return snapshots
 
 
 def normalize_machine_bom_materials(submitted_items, expected_items):
@@ -2243,6 +2333,73 @@ def _direct_deduct_quant(client, product_id, code, actual_qty):
         raise ValueError(f"物料 {code} 在 WH/生产前没有库存")
 
 
+def _restore_source_quant(client, product_id, actual_qty):
+    """Restore a compensated material quantity to WH/生产前."""
+    quant_ids = odoo_call(client, "stock.quant", "search", [[
+        ("product_id", "=", product_id),
+        ("location_id", "=", SRC_LOCATION_ID),
+    ]])
+    if quant_ids:
+        quant = odoo_call(
+            client, "stock.quant", "read", [[quant_ids[0]]],
+            {"fields": ["quantity"]},
+        )[0]
+        restored = number(quant.get("quantity")) + number(actual_qty)
+        odoo_call(client, "stock.quant", "write", [[quant_ids[0]], {
+            "quantity": restored,
+            "inventory_quantity": restored,
+        }])
+    else:
+        odoo_call(client, "stock.quant", "create", [{
+            "product_id": product_id,
+            "location_id": SRC_LOCATION_ID,
+            "quantity": number(actual_qty),
+            "inventory_quantity": number(actual_qty),
+        }])
+
+
+def compensate_material_deduction(client, materials, production_id):
+    """Undo this request's material write when WO progress did not commit."""
+    if not materials or not production_id:
+        return {"ok": True, "restored": []}
+    mo_rows = client.read("mrp.production", [int(production_id)], ["move_raw_ids"])
+    if not mo_rows:
+        raise ValueError(f"制造订单 #{production_id} 不存在")
+    raw_moves = client.read(
+        "stock.move", mo_rows[0].get("move_raw_ids") or [],
+        ["id", "product_id", "quantity", "picked"],
+    )
+    moves_by_product = {}
+    for move in raw_moves:
+        moves_by_product.setdefault(rel_id(move.get("product_id")), []).append(move)
+
+    restored = []
+    with MATERIAL_QUANTITY_LOCK:
+        for material in materials:
+            product_id = int(material.get("productId") or 0)
+            actual_qty = number(material.get("actualQty"))
+            moves = moves_by_product.get(product_id) or []
+            if not moves or actual_qty <= 0:
+                raise ValueError(f"物料 {material.get('defaultCode', product_id)} 无法补偿")
+            remaining = actual_qty
+            for move in reversed(moves):
+                if remaining <= 1e-6:
+                    break
+                current = max(number(move.get("quantity")), 0.0)
+                take = min(current, remaining)
+                new_quantity = current - take
+                odoo_call(client, "stock.move", "write", [[move["id"]], {
+                    "quantity": new_quantity,
+                    "picked": new_quantity > 0,
+                }])
+                remaining -= take
+            if remaining > 1e-6:
+                raise ValueError(f"物料 {material.get('defaultCode', product_id)} 补偿数量不足")
+            _restore_source_quant(client, product_id, actual_qty)
+            restored.append({"productId": product_id, "quantity": actual_qty})
+    return {"ok": True, "restored": restored}
+
+
 def odoo_deduct_materials(materials, production_id=None, qty=0, idempotency_key=""):
     """
     报工物料扣减 + MO 进度同步（通过 stock.move，让 Odoo UI 显示正确）
@@ -3304,6 +3461,23 @@ class Handler(SimpleHTTPRequestHandler):
                     logger.warning(f"Odoo 进度同步异常: {e}")
                     progress_result = {"ok": False, "error": str(e)}
 
+            compensation_result = None
+            if (not retry_existing_report and materials and odoo_result and odoo_result.get("ok")
+                    and not (progress_result and progress_result.get("ok"))):
+                try:
+                    compensation_result = compensate_material_deduction(
+                        get_odoo(), materials, int(production_id)
+                    )
+                    logger.warning(
+                        f"工单进度失败，已补偿本次物料扣减: {compensation_result}"
+                    )
+                except Exception as compensation_error:
+                    compensation_result = {
+                        "ok": False,
+                        "error": str(compensation_error),
+                    }
+                    logger.error(f"物料自动补偿失败: {compensation_error}")
+
             # 只有所有需要写入 Odoo 的部分都成功，才能标记为完整同步。
             # 之前只要物料扣减成功就写成 odoo_synced，导致“库存已变、MO/WO 未变”
             # 被面板误显示为成功。
@@ -3319,6 +3493,8 @@ class Handler(SimpleHTTPRequestHandler):
                 report["materialSyncStatus"] = retry_material_status
             elif not materials:
                 report["materialSyncStatus"] = "not_required"
+            elif compensation_result and compensation_result.get("ok"):
+                report["materialSyncStatus"] = "compensated"
             elif odoo_result and odoo_result.get("partial"):
                 report["materialSyncStatus"] = "partial"
             elif odoo_result and odoo_result.get("ok"):
@@ -3332,9 +3508,16 @@ class Handler(SimpleHTTPRequestHandler):
                 material_partial = retry_material_status == "partial"
                 material_write_ok = retry_material_status in ("synced", "partial")
             else:
-                material_ok = (not material_required) or bool(odoo_result and odoo_result.get("ok"))
+                material_ok = (
+                    (not material_required)
+                    or bool(odoo_result and odoo_result.get("ok"))
+                    or bool(compensation_result and compensation_result.get("ok"))
+                )
                 material_partial = bool(odoo_result and odoo_result.get("partial"))
-                material_write_ok = bool(odoo_result and odoo_result.get("ok"))
+                material_write_ok = bool(
+                    odoo_result and odoo_result.get("ok")
+                    and not (compensation_result and compensation_result.get("ok"))
+                )
             progress_ok = bool(progress_result and progress_result.get("ok"))
             # 历史兼容：旧客户端可能在没有 workorder/production ID 时把物料写入 Odoo。
             # 新请求已在上方拒绝这种数据；这里即使被旧进程处理，也不能再标记为完整同步。
@@ -3362,6 +3545,11 @@ class Handler(SimpleHTTPRequestHandler):
             if not progress_ok:
                 progress_error = (progress_result or {}).get("error", "制造订单/工序进度同步失败")
                 errors_list.append(progress_error)
+            if compensation_result and not compensation_result.get("ok"):
+                errors_list.append(
+                    "工单同步失败且物料自动补偿失败: "
+                    + compensation_result.get("error", "未知错误")
+                )
 
             if material_ok and progress_ok and not material_partial:
                 report["syncStatus"] = "odoo_synced"
@@ -3483,14 +3671,14 @@ class Handler(SimpleHTTPRequestHandler):
             unique_workers = len({r.get("worker_name") for r in reports})
             mode = get_odoo_mode()
             completed_qty = 0
+            display_reports = reports
             if mode == "real":
-                completed_qty = completed_machine_qty_for_reports(reports)
-                if not reports:
-                    completed_qty = completed_machine_qty_from_odoo_today(today)
+                completed_qty = completed_machine_qty_for_reports(db_reports(limit=5000))
+                display_reports = reports + odoo_today_progress_snapshots(reports)
             return {
                 "ok": True,
                 "data": {
-                    "todayCount": len(reports),
+                    "todayCount": len(display_reports),
                     "todayOutput": completed_qty,
                     "todayHours": round(total_hours, 1),
                     "activeWorkers": unique_workers,

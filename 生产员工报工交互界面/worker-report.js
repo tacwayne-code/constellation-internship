@@ -334,16 +334,19 @@ function renderKpis() {
 
   const today = localDateKey();
   const todayR = S.reports.filter((r) => r.date === today);
-  const todayReportedQty = todayR.reduce((s, r) => s + (parseInt(r.qty) || 0), 0);
+  const auditedTodayR = todayR.filter((r) => !r.odooDisplayOnly);
+  const odooSnapshotCount = todayR.length - auditedTodayR.length;
+  const todayReportedQty = auditedTodayR.reduce((s, r) => s + (parseInt(r.qty) || 0), 0);
   const todayCompletedQty = Number.isFinite(Number(S.reportStats?.todayOutput))
     ? Number(S.reportStats.todayOutput)
     : completedMachineQtyForDay(S.reports, S.workorders, today);
-  const todayPeople = new Set(todayR.map((r) => r.workerName)).size;
+  const todayPeople = new Set(auditedTodayR.map((r) => r.workerName)).size;
   const activeOrders = S.orders.filter((o) => parseFloat(o.remaining) > 0).length;
   const workorderCount = S.workorders.filter((w) => w.remainingQty > 0).length;
 
   const kpis = [
-    ["今日报工", String(todayR.length), "条", `已提交 ${todayReportedQty}台`, "#10b981"],
+    ["今日报工", String(todayR.length), "条",
+      odooSnapshotCount ? `Odoo 同步 ${odooSnapshotCount}项` : `已提交 ${todayReportedQty}台`, "#10b981"],
     ["今日产量", String(todayCompletedQty), "台", `在岗 ${todayPeople}人`, "#0ea5c9"],
     ["待处理工单", String(workorderCount), "个", "今日新增", "#f59e0b"],
     ["可报工人", String(S.workers.length), "人", `共 ${S.workers.length}人`, "#4f8cf7"],
@@ -416,7 +419,9 @@ function renderActiveWorkers() {
 
   // 取今天报过工的员工 + 当前工单
   const today = localDateKey();
-  const todayReports = (S.reports || []).filter((r) => r.date === today);
+  const todayReports = (S.reports || []).filter(
+    (r) => r.date === today && !r.odooDisplayOnly
+  );
   // 同员工最新报工 = 实时任务
   const lastByWorker = new Map();
   todayReports.forEach((r) => {
@@ -582,8 +587,9 @@ function renderReportOverview() {
 
   const today = localDateKey();
   const todayR = S.reports.filter((r) => r.date === today);
-  const todayQty = todayR.reduce((s, r) => s + (parseInt(r.qty) || 0), 0);
-  const todayPeople = new Set(todayR.map((r) => r.workerName)).size;
+  const auditedTodayR = todayR.filter((r) => !r.odooDisplayOnly);
+  const todayQty = auditedTodayR.reduce((s, r) => s + (parseInt(r.qty) || 0), 0);
+  const todayPeople = new Set(auditedTodayR.map((r) => r.workerName)).size;
 
   if (stat) stat.textContent = todayQty + " 台 / " + todayPeople + " 人";
 
@@ -601,16 +607,20 @@ function renderReportOverview() {
   todayR.slice(-6).reverse().forEach((r) => {
     const syncStatus = String(r.syncStatus || "local");
     const syncLabel = syncStatus === "odoo_synced" ? "Odoo已同步" :
+      syncStatus === "odoo_progress_snapshot" ? "Odoo进度快照" :
       syncStatus === "odoo_partial" ? "Odoo部分同步" :
       syncStatus === "odoo_failed" ? "Odoo未同步" :
       syncStatus === "mock" ? "模拟数据" : "本地记录";
     const syncClass = syncStatus === "odoo_synced" ? "sync-ok" :
+      syncStatus === "odoo_progress_snapshot" ? "sync-local" :
       syncStatus === "odoo_partial" ? "sync-partial" :
       syncStatus === "odoo_failed" ? "sync-failed" : "sync-local";
     html += '<div class="overview-report-item">' +
       '<span class="or-worker">' + esc(r.workerName) + '</span>' +
       '<span class="or-detail">' + esc(r.operationLabel || r.operation) + '</span>' +
-      '<span class="or-qty">' + r.qty + '台</span>' +
+      '<span class="or-qty">' + (r.odooDisplayOnly
+        ? '累计' + (Number(r.odooProgressQty) || 0) + '台'
+        : r.qty + '台') + '</span>' +
       '<span class="or-sync ' + syncClass + '" title="' + esc(r.errorMessage || syncLabel) + '">' + syncLabel + '</span>' +
       '</div>';
   });
