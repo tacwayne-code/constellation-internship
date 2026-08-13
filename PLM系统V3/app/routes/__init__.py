@@ -27,6 +27,16 @@ def allowed_file(filename):
          'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'txt', 'zip', 'rar', 'jpg', 'png'}
 
 
+# 档案类型白名单：只允许 new(新图号)/old(旧图号)，其它值一律回退 new。
+# 防止 URL/表单传任意值落库产生脏数据。
+_ARCHIVE_WHITELIST = ('new', 'old')
+
+
+def _normalize_archive(value):
+    """archive 参数白名单校验：new / old 之外的值一律回退为 new"""
+    return value if value in _ARCHIVE_WHITELIST else 'new'
+
+
 def require_role(*roles):
     """检查当前用户是否拥有指定角色之一，否则 abort(403)"""
     if not current_user.is_authenticated:
@@ -229,7 +239,7 @@ def list_docs():
     keyword = request.args.get('q', '').strip()
     status_filter = request.args.get('status', '')
     fmt_filter = request.args.get('fmt', '').strip()  # PDF/CAD/3D 格式筛选
-    archive = request.args.get('archive', 'new')  # new=新图号档案, old=旧图号档案
+    archive = _normalize_archive(request.args.get('archive', 'new'))  # new=新图号档案, old=旧图号档案
     page = request.args.get('page', 1, type=int)
     per_page = 20
 
@@ -304,11 +314,11 @@ def list_docs():
 @document_bp.route('/create', methods=['GET', 'POST'])
 @login_required
 def create_doc():
-    archive = request.args.get('archive', 'new')  # new=新图号档案（默认）, old=旧图号档案
+    archive = _normalize_archive(request.args.get('archive', 'new'))  # new=新图号档案（默认）, old=旧图号档案
     if request.method == 'POST':
         drawing_no = request.form.get('title', '').strip()
         name = request.form.get('name', '').strip()
-        archive = request.form.get('archive', 'new')
+        archive = _normalize_archive(request.form.get('archive', 'new'))
         import re
         if not drawing_no:
             flash('请填写图号', 'danger')
@@ -360,7 +370,7 @@ def tree_view():
     selected_path = request.args.get('path', '').strip()
     keyword = request.args.get('q', '').strip()
     category_id = request.args.get('category_id', type=int)
-    archive = request.args.get('archive', 'new')  # new=新图号档案, old=旧图号档案
+    archive = _normalize_archive(request.args.get('archive', 'new'))  # new=新图号档案, old=旧图号档案
 
     # 1) 收集所有路径 → 文档
     # 8 大机器类映射（与 plm1 对齐，让旧档案树状浏览和原 PLM 一致）
@@ -443,10 +453,16 @@ def tree_view():
     _machine_root_pat = _re_machine.compile(r'^\d{2}-\d{2}')
     _drawing_pat = _re_machine.compile(r'^(\d{2}-\d{2})-(\d{2})-(\d{2})$')  # 91-01-01-01
 
-    # 机器代码 → 机器全名（用于树状视图根视图）
+    # 机器代码 → 机器全名（用于树状视图根视图）。
+    # 目前仅确认 91-01 一种机型；新增机型时在此补充全名，
+    # 未收录的机型码走下方 _machine_label 兜底显示「XX-XX 机型」而非裸码。
     MACHINE_NAME = {
         '91-01': '91-01 常规编带机-2835-V5',
     }
+
+    def _machine_label(code):
+        """机型码显示：优先已知映射，未知则显示为「XX-XX 机型」而非裸码"""
+        return MACHINE_NAME.get(code, f'{code} 机型')
 
     category_tree = defaultdict(list)
     category_folder_doc_count = defaultdict(int)
@@ -463,7 +479,7 @@ def tree_view():
             machine_part = m.group(1)  # 91-01
             mod = m.group(2)            # 01
             seq = m.group(3)            # 01
-            machine_label = MACHINE_NAME.get(machine_part, machine_part)
+            machine_label = _machine_label(machine_part)
             folder_path = f'{machine_label}\\{machine_part}-{mod}'
             category_tree[folder_path].append(d)
             category_folder_doc_count[folder_path] += 1
