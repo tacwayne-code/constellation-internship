@@ -120,7 +120,7 @@ STATIC_FILE_WHITELIST = {
 }
 
 STATE_LABELS = {
-    "draft": "询价",
+    "draft": "询价单",
     "sent": "已发送",
     "to approve": "待审批",
     "purchase": "采购订单",
@@ -563,6 +563,10 @@ class DashboardHandler(SimpleHTTPRequestHandler):
         super().__init__(*args, directory=str(BASE_DIR), **kwargs)
 
     def end_headers(self):
+        # 静态资源默认 no-cache，避免浏览器缓存旧版本（改 CSS/JS 后普通刷新即可生效）
+        self.send_header("Cache-Control", "no-cache, no-store, must-revalidate")
+        self.send_header("Pragma", "no-cache")
+        self.send_header("Expires", "0")
         # 同源部署：前端由本服务提供，无需跨域。去掉 CORS * 可阻止恶意网页跨域读取看板数据。
         # 如需局域网内其他站点调用 API，请按实际来源域名配置 Access-Control-Allow-Origin。
         super().end_headers()

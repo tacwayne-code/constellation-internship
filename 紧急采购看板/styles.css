@@ -8,8 +8,8 @@
   --text: #f2f4f7;
   --muted: #98a2b3;
   --soft: #cbd5e1;
-  --p0: #d92d20;
-  --p0-dark: #912018;
+  --p0: #b91c1c;
+  --p0-dark: #8c1d1d;
   --p1: #f79009;
   --p2: #fdb022;
   --info: #1570ef;
@@ -362,8 +362,8 @@ button {
 }
 
 .risk-kpi.level-p0 {
-  background: linear-gradient(135deg, #dc2626, #991b1b 62%, #451a1a);
-  box-shadow: 0 0 28px rgba(239, 68, 68, 0.28);
+  background: linear-gradient(135deg, #b91c1c, #8c1d1d 62%, #450a0a);
+  box-shadow: 0 0 28px rgba(153, 27, 27, 0.28);
 }
 
 .risk-kpi.level-p1 {
@@ -594,7 +594,7 @@ button {
 .risk-tile-wall {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-  grid-auto-rows: minmax(135px, 1fr);
+  grid-auto-rows: minmax(160px, 1fr);
   align-content: start;
   gap: 8px;
   min-height: 0;
@@ -605,7 +605,7 @@ button {
 
 .risk-tile {
   position: relative;
-  min-height: 135px;
+  min-height: 160px;
   height: 100%;
   padding: 9px;
   overflow: hidden;
@@ -639,9 +639,9 @@ button {
 }
 
 .risk-tile.level-p0 {
-  border-color: rgba(254, 202, 202, 0.54);
-  background: linear-gradient(135deg, #ef4444 0%, #b91c1c 48%, #5f1515 100%);
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.1), 0 0 30px rgba(239, 68, 68, 0.32);
+  border-color: rgba(248, 180, 180, 0.42);
+  background: linear-gradient(135deg, #b91c1c 0%, #8c1d1d 48%, #450a0a 100%);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08), 0 0 26px rgba(153, 27, 27, 0.3);
 }
 
 .risk-tile.level-p1 {
@@ -665,6 +665,10 @@ button {
 .risk-tile.expanded {
   grid-row: span 2;
   min-height: 284px;
+}
+
+.risk-tile.expanded::after {
+  display: none;
 }
 
 .tile-level {
@@ -889,7 +893,7 @@ button {
 }
 
 .risk-row.level-p0 {
-  background-image: linear-gradient(90deg, rgba(239, 68, 68, 0.14), transparent 22%);
+  background-image: linear-gradient(90deg, rgba(153, 27, 27, 0.14), transparent 22%);
   box-shadow: inset 4px 0 0 var(--p0);
 }
 
@@ -1165,6 +1169,139 @@ button {
 .toast.show {
   opacity: 1;
   transform: translateY(0);
+}
+
+.detail-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 55;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(2, 6, 23, 0.72);
+  backdrop-filter: blur(6px);
+}
+
+.detail-overlay.open {
+  display: flex;
+}
+
+.detail-modal {
+  width: min(680px, 96vw);
+  max-height: 86vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid rgba(56, 189, 248, 0.3);
+  border-radius: 10px;
+  background: #0b1527;
+  box-shadow: 0 30px 90px rgba(0, 0, 0, 0.5);
+}
+
+.detail-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--line);
+  background: rgba(7, 17, 31, 0.9);
+}
+
+.detail-modal-header h2 {
+  margin: 0;
+  font-size: 16px;
+  line-height: 1.3;
+}
+
+.detail-close {
+  width: 32px;
+  height: 32px;
+  flex: 0 0 auto;
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  color: var(--text);
+  background: rgba(15, 23, 42, 0.88);
+}
+
+.detail-close:hover {
+  border-color: rgba(239, 68, 68, 0.6);
+}
+
+.detail-modal-body {
+  padding: 14px 18px 18px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.3) transparent;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--soft);
+}
+
+.detail-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 8px 16px;
+  margin: 0 0 14px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(2, 6, 23, 0.28);
+}
+
+.detail-field {
+  min-width: 0;
+}
+
+.detail-field dt {
+  margin: 0 0 2px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.detail-field dd {
+  margin: 0;
+  color: var(--text);
+  font-size: 13px;
+  word-break: break-all;
+}
+
+.detail-lines {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.detail-lines th,
+.detail-lines td {
+  padding: 7px 9px;
+  text-align: left;
+  vertical-align: top;
+  border: 1px solid var(--line);
+}
+
+.detail-lines th {
+  color: #9fb0c8;
+  background: rgba(2, 6, 23, 0.32);
+  white-space: nowrap;
+}
+
+.detail-lines td {
+  color: var(--soft);
+  line-height: 1.45;
+  word-break: break-word;
+}
+
+.detail-section-title {
+  margin: 16px 0 8px;
+  color: #e0f2fe;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.detail-section-title:first-child {
+  margin-top: 0;
 }
 
 .help-overlay {

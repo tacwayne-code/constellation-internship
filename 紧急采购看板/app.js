@@ -9,10 +9,18 @@ const fallbackData = {
 };
 
 const LEVEL_META = {
-  P0: { label: "P0", text: "今天必须处理", color: "#ef4444", order: 0 },
+  P0: { label: "P0", text: "今天必须处理", color: "#b91c1c", order: 0 },
   P1: { label: "P1", text: "3 天内处理", color: "#f97316", order: 1 },
   P2: { label: "P2", text: "本周关注", color: "#eab308", order: 2 },
   P3: { label: "P3", text: "普通提醒", color: "#38bdf8", order: 3 }
+};
+
+// 物料明细行状态的中文映射（Odoo purchase.order.line 的 state 原始值）
+const LINE_STATE_TEXT = {
+  "draft": "询价单",
+  "purchase": "采购中",
+  "done": "已完成",
+  "cancel": "已取消",
 };
 
 const DASHBOARD_CACHE_KEY = "urgentPurchaseBoardLastGoodData";
@@ -63,11 +71,11 @@ function buildDemoData() {
     lines: item.materials.map((product) => ({ product, qty: 1, received: 0, remaining: 1, price: 0, uom: "pcs", state: "draft" }))
   });
   const orders = [
-    { id: 342, name: "P00342", supplier: "[P00202] 淘宝电商公司", buyer: "杨艳桢", amount: 452.9, state: "draft", stateText: "询价", orderOffset: -18, plannedOffset: -18, waiting: 18, overdue: 18, planned: 0, level: "P0", materials: ["[P01352] 3分牙12厘接头"] },
+    { id: 342, name: "P00342", supplier: "[P00202] 淘宝电商公司", buyer: "杨艳桢", amount: 452.9, state: "draft", stateText: "询价单", orderOffset: -18, plannedOffset: -18, waiting: 18, overdue: 18, planned: 0, level: "P0", materials: ["[P01352] 3分牙12厘接头"] },
     { id: 341, name: "P00341", supplier: "[P00260] 华南精密传动有限公司", buyer: "采购员C", amount: 16200, state: "sent", stateText: "已发送", orderOffset: -12, plannedOffset: -9, waiting: 12, overdue: 9, planned: 0, level: "P0", materials: ["[P06018] 直线导轨滑块", "[P06035] 轴承座组件"] },
     { id: 320, name: "P00320", supplier: "[P00255] 奥陶纪光电有限公司", buyer: "采购员A", amount: 12800, state: "sent", stateText: "已发送", orderOffset: -10, plannedOffset: -7, waiting: 10, overdue: 7, planned: 0, level: "P0", materials: ["[P02084] 光纤传感器"] },
-    { id: 318, name: "P00318", supplier: "[P00123] 东莞市奥威自动化设备有限公司", buyer: "采购员B", amount: 8600, state: "draft", stateText: "询价", orderOffset: -8, plannedOffset: -2, waiting: 8, overdue: 2, planned: 0, level: "P0", materials: ["[P02155] 节流阀"] },
-    { id: 330, name: "P00330", supplier: "[P00261] 长三角工业备件有限公司", buyer: "采购员D", amount: 21500, state: "draft", stateText: "询价", orderOffset: -6, plannedOffset: 2, waiting: 6, overdue: 0, planned: 2, level: "P1", materials: ["[P03001] 伺服线缆", "[P03005] 伺服驱动风扇"] },
+    { id: 318, name: "P00318", supplier: "[P00123] 东莞市奥威自动化设备有限公司", buyer: "采购员B", amount: 8600, state: "draft", stateText: "询价单", orderOffset: -8, plannedOffset: -2, waiting: 8, overdue: 2, planned: 0, level: "P0", materials: ["[P02155] 节流阀"] },
+    { id: 330, name: "P00330", supplier: "[P00261] 长三角工业备件有限公司", buyer: "采购员D", amount: 21500, state: "draft", stateText: "询价单", orderOffset: -6, plannedOffset: 2, waiting: 6, overdue: 0, planned: 2, level: "P1", materials: ["[P03001] 伺服线缆", "[P03005] 伺服驱动风扇"] },
     { id: 326, name: "P00326", supplier: "[P00262] 南方机电配件有限公司", buyer: "采购员E", amount: 6900, state: "sent", stateText: "已发送", orderOffset: -5, plannedOffset: 5, waiting: 5, overdue: 0, planned: 5, level: "P2", materials: ["[P04021] 真空发生器"] },
     { id: 322, name: "P00322", supplier: "[P00263] 中科精密五金有限公司", buyer: "采购员F", amount: 3200, state: "to approve", stateText: "待审批", orderOffset: -4, plannedOffset: 9, waiting: 4, overdue: 0, planned: 9, level: "P3", materials: ["[P06056] 伺服驱动风扇"] }
   ].map(mk);
@@ -81,7 +89,7 @@ function buildDemoData() {
   };
   demo.orders = orders;
   demo.states = [
-    ["询价", orders.filter((o) => o.state === "draft").length, "#ffbf4d"],
+    ["询价单", orders.filter((o) => o.state === "draft").length, "#ffbf4d"],
     ["已发送", orders.filter((o) => o.state === "sent").length, "#18d8ff"],
     ["待审批", orders.filter((o) => o.state === "to approve").length, "#ff6274"]
   ].filter((row) => row[1] > 0);
@@ -345,11 +353,9 @@ function ScreenTitleStrip(orders, displayOrders) {
 
 function RiskTile(order, index) {
   const meta = LEVEL_META[order.level] || LEVEL_META.P3;
-  const orderId = String(order.id);
-  const expanded = expandedOrderId === orderId;
-  const selected = selectedOrderId === orderId;
+  const selected = selectedOrderId === String(order.id);
   return `
-    <article class="risk-tile level-${order.level.toLowerCase()} ${selected ? "selected" : ""} ${expanded ? "expanded" : ""}" data-order-id="${escapeHTML(order.id)}" role="button" tabindex="0" style="--tile-color:${meta.color}">
+    <article class="risk-tile level-${order.level.toLowerCase()} ${selected ? "selected" : ""}" data-order-id="${escapeHTML(order.id)}" role="button" tabindex="0" style="--tile-color:${meta.color}">
       <span class="tile-level">${order.level}</span>
       <span class="tile-rank">#${String(index + 1).padStart(2, "0")}</span>
       <strong>${escapeHTML(order.name)}</strong>
@@ -360,13 +366,6 @@ function RiskTile(order, index) {
         <i>${escapeHTML(order.plannedText)}</i>
         <i>${escapeHTML(order.amountText)}</i>
       </div>
-      <small>动作：${escapeHTML(orderAction(order))}</small>
-      ${expanded ? `
-        <div class="tile-evidence">
-          <b>Odoo 依据</b>
-          ${orderEvidenceItems(order).map((item) => `<div>· ${escapeHTML(item)}</div>`).join("")}
-        </div>
-      ` : ""}
     </article>
   `;
 }
@@ -437,7 +436,6 @@ function RiskTopTable(orders) {
               <th>预计 / 超期</th>
               <th>状态</th>
               <th>金额</th>
-              <th>建议动作</th>
             </tr>
           </thead>
           <tbody>
@@ -460,9 +458,8 @@ function RiskTopTable(orders) {
                 </td>
                 <td>${escapeHTML(order.stateText)}</td>
                 <td>${escapeHTML(order.amountText)}</td>
-                <td>${escapeHTML(orderAction(order))}</td>
               </tr>
-              ${expanded ? `<tr class="expand-row"><td colspan="9">${evidenceDetails(order)}</td></tr>` : ""}
+              ${expanded ? `<tr class="expand-row"><td colspan="8">${evidenceDetails(order)}</td></tr>` : ""}
             `;
             }).join("")}
           </tbody>
@@ -679,6 +676,72 @@ async function loadRealDashboard(nocache = false) {
   }
 }
 
+function orderDetailHTML(order) {
+  const meta = LEVEL_META[order.level] || LEVEL_META.P3;
+  const fields = [
+    ["紧急等级", order.level + " · " + meta.text],
+    ["单号", order.name],
+    ["供应商", order.supplier],
+    ["采购员", order.buyer || "-"],
+    ["状态", order.stateText],
+    ["金额", order.amountText],
+    ["下单日期", order.dateOrder ? String(order.dateOrder).slice(0, 10) : "-"],
+    ["预计日期", order.plannedText],
+    ["等待天数", order.daysWaiting + " 天"],
+    ["处理动作", orderAction(order)],
+  ];
+  const lines = order.lines || [];
+  const lineRows = lines.length
+    ? lines.map((line) => `
+      <tr>
+        <td>${escapeHTML(line.product || line.name || "-")}</td>
+        <td>${escapeHTML(numberText(line.qty, 2))}${escapeHTML(line.uom && line.uom !== "-" ? " " + line.uom : "")}</td>
+        <td>${escapeHTML(numberText(line.received, 2))}</td>
+        <td>${escapeHTML(numberText(line.remaining, 2))}</td>
+        <td>${escapeHTML(line.price ? moneyText(line.price) : "-")}</td>
+        <td>${escapeHTML(LINE_STATE_TEXT[line.state] || line.state || "-")}</td>
+      </tr>`).join("")
+    : `<tr><td colspan="6" style="text-align:center;color:var(--muted)">无物料明细</td></tr>`;
+
+  return `
+    <dl class="detail-fields">
+      ${fields.map(([k, v]) => `
+        <div class="detail-field">
+          <dt>${escapeHTML(k)}</dt>
+          <dd>${escapeHTML(v)}</dd>
+        </div>`).join("")}
+    </dl>
+    <div class="detail-section-title">物料明细（${lines.length} 行）</div>
+    <table class="detail-lines">
+      <thead>
+        <tr>
+          <th>物料</th>
+          <th>数量</th>
+          <th>已收</th>
+          <th>未收</th>
+          <th>单价</th>
+          <th>状态</th>
+        </tr>
+      </thead>
+      <tbody>${lineRows}</tbody>
+    </table>
+    <div class="detail-section-title">处理原因</div>
+    <p style="margin:0">${escapeHTML(orderReason(order))}</p>
+  `;
+}
+
+function openOrderDetail(id) {
+  const order = (rawData.orders || []).find((o) => String(o.id) === String(id));
+  if (!order) return;
+  setText("#detailTitle", `${order.name} · ${order.supplier}`);
+  setHTML("#detailBody", orderDetailHTML(order));
+  $("#detailOverlay")?.classList.add("open");
+}
+
+function closeOrderDetail() {
+  $("#detailOverlay")?.classList.remove("open");
+}
+
 function bindControls() {
   $("#levelFilter")?.addEventListener("change", (event) => {
     levelFilter = event.target.value;
@@ -686,9 +749,7 @@ function bindControls() {
     selectedOrderId = "";
     expandedOrderId = "";
     renderAll();
-  });
-
-  $("#orderSearch")?.addEventListener("input", (event) => {
+  });  $("#orderSearch")?.addEventListener("input", (event) => {
     searchTerm = event.target.value;
     displayLimit = 20;
     selectedOrderId = "";
@@ -748,10 +809,17 @@ function bindControls() {
     if (tile) {
       const id = tile.dataset.orderId;
       selectedOrderId = id;
-      expandedOrderId = expandedOrderId === id ? "" : id;
-      renderAll();
+      openOrderDetail(id);
       return;
     }
+  });
+
+  $("#detailClose")?.addEventListener("click", closeOrderDetail);
+  $("#detailOverlay")?.addEventListener("click", (e) => {
+    if (e.target === e.currentTarget) closeOrderDetail();
+  });
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") closeOrderDetail();
   });
 }
 
