@@ -1,0 +1,104 @@
+{% extends "base.html" %}
+
+{% block title %}PLM - {{ process.name }}{% endblock %}
+
+{% block page_header %}
+<div class="d-flex align-items-center gap-2">
+    <a href="#" class="btn btn-outline-secondary btn-sm">
+        <i class="bi bi-arrow-left"></i>
+    </a>
+    <h5 class="mb-0"><i class="bi bi-gear me-2"></i>{{ process.name }}</h5>
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="row g-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header bg-white">
+                <i class="bi bi-info-circle me-1"></i>工艺详情
+            </div>
+            <div class="card-body">
+                <div class="row g-3">
+                    <div class="col-md-3">
+                        <small class="text-muted d-block">工艺名称</small>
+                        <strong>{{ process.name }}</strong>
+                    </div>
+                    <div class="col-md-3">
+                        <small class="text-muted d-block">关联产品</small>
+                        <strong>{{ process.product.name }}</strong>
+                    </div>
+                    <div class="col-md-2">
+                        <small class="text-muted d-block">版本</small>
+                        <strong>v{{ process.version }}</strong>
+                    </div>
+                    <div class="col-md-2">
+                        <small class="text-muted d-block">状态</small>
+                        {% set status_map = {'draft': 'secondary', 'review': 'warning', 'approved': 'success', 'obsolete': 'danger'} %}
+                        <span class="badge badge-status bg-{{ status_map.get(process.status, 'secondary') }}">
+                            {{ process.status }}
+                        </span>
+                    </div>
+                    <div class="col-md-2">
+                        <small class="text-muted d-block">创建人</small>
+                        <strong>{{ process.creator.display_name }}</strong>
+                    </div>
+                    {% if process.description %}
+                    <div class="col-12">
+                        <small class="text-muted d-block">描述</small>
+                        <p class="mb-0">{{ process.description }}</p>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header bg-white">
+                <i class="bi bi-list-ol me-1"></i>工艺步骤
+            </div>
+            <div class="card-body p-0">
+                {% if steps %}
+                <div class="table-responsive">
+                    <table class="table table-hover mb-0">
+                        <thead>
+                            <tr>
+                                <th style="width:60px">序号</th>
+                                <th>步骤名称</th>
+                                <th>标准工时</th>
+                                <th>工作中心</th>
+                                <th>工装夹具</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for step in steps %}
+                            <tr>
+                                <td>{{ step.seq }}</td>
+                                <td>{{ step.name }}</td>
+                                <td>{{ step.standard_hours or '-' }}</td>
+                                <td>{{ step.work_center or '-' }}</td>
+                                <td>{{ step.tooling or '-' }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <div class="empty-state">
+                    <i class="bi bi-list-ol"></i>
+                    <p>暂无工艺步骤</p>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <div class="col-12">
+        <a href="#" class="btn btn-outline-secondary">
+            <i class="bi bi-arrow-left me-1"></i>返回工艺列表
+        </a>
+    </div>
+</div>
+{% endblock %}

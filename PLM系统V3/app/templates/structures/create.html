@@ -1,0 +1,187 @@
+{% extends "base.html" %}
+
+{% block title %}新建产品{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h4 class="mb-0"><i class="bi bi-plus-square me-2"></i>新建产品</h4>
+    <a href="{{ url_for('structures.tree') }}" class="btn btn-outline-secondary btn-sm">
+        <i class="bi bi-arrow-left me-1"></i>返回结构树
+    </a>
+</div>
+
+<div class="row">
+    <div class="col-lg-8">
+        <!-- 编码体系说明 -->
+        <div class="alert alert-info mb-4" style="font-size:13px;">
+            <i class="bi bi-info-circle-fill me-2"></i>
+            <strong>PLM 编码体系（按方案文档要求）：</strong>
+            <ol class="mb-0 mt-2 small">
+                <li><strong>系统主物料号</strong> 由系统自动分配（弱语义：<code>ITM-20260723-xxxxx</code>），<u>不承担业务含义</u>，<u>不在主号里编入机型/日期/材料</u></li>
+                <li><strong>原图号</strong>（您下面要填的"产品编码"）—— 兼容历史图号，便于和老图纸对得上</li>
+                <li><strong>修订号</strong> 默认 <code>R00</code>，每次受控修改递增 <code>R01/R02</code>，<u>独立于主物料号</u></li>
+                <li><strong>适用范围</strong>（机型）作为属性字段单独记录，<u>不进入主号</u></li>
+            </ol>
+        </div>
+
+        <div class="card">
+            <div class="card-body">
+                <form method="POST" action="{{ url_for('structures.create_product') }}">
+                    <!-- 系统主物料号占位 -->
+                    <div class="row mb-3">
+                        <label class="col-sm-2 col-form-label">主物料号</label>
+                        <div class="col-sm-10">
+                            <input type="text" class="form-control" disabled
+                                   value="保存后由系统自动分配，如 ITM-20260723-xxxxxxxx">
+                            <div class="form-text"><strong>产品的唯一标识。</strong>创建时系统自动生成，一经建立不再改变。不编码机型、日期、材料等业务信息。</div>
+                        </div>
+                    </div>
+
+                    <div class="row mb-3">
+                        <label for="name" class="col-sm-2 col-form-label">产品名称 <span class="text-danger">*</span></label>
+                        <div class="col-sm-10">
+                            <input type="text" class="form-control" id="name" name="name" required
+                                   placeholder="请输入产品名称">
+                        </div>
+                    </div>
+
+                    <div class="row mb-3">
+                        <label for="code" class="col-sm-2 col-form-label">产品编码/图号</label>
+                        <div class="col-sm-10">
+                            <input type="text" class="form-control" id="code" name="code"
+                                   placeholder="如 01-02-03-04 或留空自动使用主物料号" maxlength="80">
+                            <div class="form-text">可输入对应图纸的图号，留空则自动使用系统生成的主物料号</div>
+                        </div>
+                    </div>
+
+                    <div class="row mb-3">
+                        <label for="document_id" class="col-sm-2 col-form-label">关联图纸</label>
+                        <div class="col-sm-10">
+                            <select class="form-select" id="document_id" name="document_id">
+                                <option value="">-- 暂不关联 --</option>
+                                {% for doc in available_docs %}
+                                <option value="{{ doc.id }}" {% if pre_select_doc and pre_select_doc == doc.id %}selected{% endif %}>
+                                    [{{ doc.title }}] {{ doc.name or doc.title }}
+                                </option>
+                                {% endfor %}
+                            </select>
+                            <div class="form-text">选择关联的图纸文档（新建文档后可在此选择绑定）</div>
+                        </div>
+                    </div>
+
+                    <div class="row mb-3">
+                        <label for="item_type" class="col-sm-2 col-form-label">物料类型</label>
+                        <div class="col-sm-10">
+                            <select class="form-select" id="item_type" name="item_type">
+                                <option value="PART" selected>PART — 自制零件（机加工、钣金、功能件）</option>
+                                <option value="ASM">ASM — 装配体 / 子装配</option>
+                                <option value="STD">STD — 标准件（轴承、导轨、气缸）</option>
+                                <option value="BUY">BUY — 外购件</option>
+                            </select>
+                            <div class="form-text">类型用字段区分（不进入主物料号）</div>
+                        </div>
+                    </div>
+
+                    <div class="row mb-3">
+                        <label for="parent_id" class="col-sm-2 col-form-label">上级产品</label>
+                        <div class="col-sm-10">
+                            <select class="form-select" id="parent_id" name="parent_id" onchange="autoFillLevel()">
+                                <option value="">-- 无上级（作为根产品/整机） --</option>
+                                {% set level_labels = {0: '整机', 1: '部件', 2: '组件', 3: '零件'} %}
+                                {% for parent in parents|sort(attribute='level') %}
+                                <option value="{{ parent.id }}" data-level="{{ parent.level }}">
+                                    [{{ parent.system_id or parent.code[:20] }}] {{ parent.code }} — {{ parent.name }} [{{ level_labels.get(parent.level, '?') }}]
+                                </option>
+                                {% endfor %}
+                            </select>
+                            <div class="form-text">留空 = 创建根产品（整机）。选择上级后，层级自动+1</div>
+                        </div>
+                    </div>
+
+                    <div class="row mb-3">
+                        <label for="level" class="col-sm-2 col-form-label">层级</label>
+                        <div class="col-sm-10">
+                            <select class="form-select" id="level" name="level">
+                                <option value="0">0 - 整机（顶级产品）</option>
+                                <option value="1">1 - 部件</option>
+                                <option value="2" selected>2 - 组件</option>
+                                <option value="3">3 - 零件</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="row mb-3">
+                        <label for="revision" class="col-sm-2 col-form-label">修订号</label>
+                        <div class="col-sm-10">
+                            <input type="text" class="form-control" id="revision" name="revision"
+                                   value="R00" placeholder="R00" maxlength="10">
+                            <div class="form-text">每次受控修改递增 R01/R02，独立于主物料号</div>
+                        </div>
+                    </div>
+
+                    <div class="row mb-3">
+                        <label for="applicable_models" class="col-sm-2 col-form-label">适用范围（机型）</label>
+                        <div class="col-sm-10">
+                            <input type="text" class="form-control" id="applicable_models" name="applicable_models"
+                                   placeholder="如：710分光,910编带,850点胶（逗号分隔）">
+                            <div class="form-text">通用件可以多选，专用件填具体型号。机型不进主号，作为多值属性</div>
+                        </div>
+                    </div>
+
+                    <div class="row mb-3">
+                        <label for="description" class="col-sm-2 col-form-label">描述</label>
+                        <div class="col-sm-10">
+                            <textarea class="form-control" id="description" name="description" rows="2"
+                                      placeholder="产品描述、规格参数等（可选）"></textarea>
+                        </div>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-sm-10 offset-sm-2">
+                            <button type="submit" class="btn btn-primary">
+                                <i class="bi bi-check-lg me-1"></i>创建产品
+                            </button>
+                            <a href="{{ url_for('structures.tree') }}" class="btn btn-outline-secondary ms-2">取消</a>
+                        </div>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-4">
+        <div class="card bg-light">
+            <div class="card-body">
+                <h6><i class="bi bi-info-circle me-1"></i>使用提示</h6>
+                <ul class="small mb-0">
+                    <li><strong>整机</strong>：最终产品</li>
+                    <li><strong>部件</strong>：整机的组成部分</li>
+                    <li><strong>组件</strong>：部件的子模块</li>
+                    <li><strong>零件</strong>：最小装配单元</li>
+                </ul>
+                <hr>
+                <p class="small mb-0 text-muted"><strong>为什么主号是自动的？</strong><br>
+                主物料号只负责「唯一识别」，不承担历史图号、机型、日期等业务含义。系统自动发号避免人工占号/跳号/改号。</p>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<script>
+function autoFillLevel() {
+    const sel = document.getElementById('parent_id');
+    const levelSel = document.getElementById('level');
+    const opt = sel.options[sel.selectedIndex];
+    if (opt && opt.dataset.level !== undefined) {
+        const parentLevel = parseInt(opt.dataset.level);
+        const newLevel = Math.min(parentLevel + 1, 3);
+        levelSel.value = newLevel;
+    } else {
+        levelSel.value = 0;
+    }
+}
+</script>
+{% endblock %}

@@ -1,0 +1,195 @@
+{% extends "base.html" %}
+
+{% block title %}新建文档 - PLM3{% endblock %}
+
+{% block page_header %}
+<h5 class="mb-0"><i class="bi bi-plus-circle me-2"></i>新建文档</h5>
+{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-lg-8">
+        <div class="card">
+            <div class="card-body p-4">
+                <form method="POST" action="{{ url_for('documents.create_doc', archive=archive) }}" enctype="multipart/form-data">
+                    <input type="hidden" name="archive" value="{{ archive }}">
+
+                    <!-- 图号 -->
+                    {% if archive == 'old' %}
+                    <div class="mb-3">
+                        <label for="title" class="form-label fw-medium">
+                            图号 <span class="text-danger">*</span>
+                        </label>
+                        <input type="text" class="form-control" id="title" name="title"
+                               placeholder="旧图号可自由填写，如 HFS6-3030-50 / 61-44-08-25" maxlength="64" required>
+                        <div class="form-text">
+                            <i class="bi bi-info-circle me-1 text-secondary"></i>
+                            <strong>旧图号档案</strong>——图号格式不限，仅用于存档检索
+                        </div>
+                    </div>
+                    {% else %}
+                    <!-- 图号 8位规范 (自动格式化) -->
+                    <div class="mb-3">
+                        <label class="form-label fw-medium">
+                            图号 <span class="text-danger">*</span>
+                        </label>
+                        <div class="drawing-no-input d-flex align-items-center gap-1">
+                            <input type="text" class="form-control text-center" id="seg1" maxlength="2" placeholder="XX"
+                                   inputmode="numeric" pattern="\d{2}" required style="width:70px; font-weight:600;">
+                            <span class="text-muted fw-bold">-</span>
+                            <input type="text" class="form-control text-center" id="seg2" maxlength="2" placeholder="XX"
+                                   inputmode="numeric" pattern="\d{2}" required style="width:70px; font-weight:600;">
+                            <span class="text-muted fw-bold">-</span>
+                            <input type="text" class="form-control text-center" id="seg3" maxlength="2" placeholder="XX"
+                                   inputmode="numeric" pattern="\d{2}" required style="width:70px; font-weight:600;">
+                            <span class="text-muted fw-bold">-</span>
+                            <input type="text" class="form-control text-center" id="seg4" maxlength="2" placeholder="XX"
+                                   inputmode="numeric" pattern="\d{2}" required style="width:70px; font-weight:600;">
+                        </div>
+                        <!-- 实际提交到后端的字段 -->
+                        <input type="hidden" id="title" name="title" pattern="^\d{2}-\d{2}-\d{2}-\d{2}$" required>
+                        <div class="form-text">
+                            <i class="bi bi-info-circle me-1 text-primary"></i>
+                            <strong>8 位编码规则</strong> ——
+                            <code>机型-唯一编码-模块-顺序</code>：每段 2 位数字
+                            <span class="text-muted">（仅需填数字，<code>-</code> 自动呈现）</span>
+                            <br>
+                            <span class="ms-4 small">
+                                ①<strong>机型</strong> 2位 ·
+                                ②<strong>唯一编码</strong> 2位 ·
+                                ③<strong>模块</strong> 2位 ·
+                                ④<strong>顺序</strong> 2位
+                            </span>
+                            <br>
+                            <span class="ms-4 small">
+                                机型参考：<code>71</code>=分光机 · <code>81</code>=编带机 · <code>85</code>=点胶机 · <code>11</code>=固晶机 · <code>99</code>=通用件
+                            </span>
+                        </div>
+                    </div>
+                    {% endif %}
+
+                    <!-- 名称 -->
+                    <div class="mb-3">
+                        <label for="name" class="form-label fw-medium">
+                            名称 <span class="text-danger">*</span>
+                        </label>
+                        <input type="text" class="form-control" id="name" name="name"
+                               placeholder="例：主安装板 / M3 牙套 / 真空泵架子"
+                               maxlength="255" required>
+                        <div class="form-text">
+                            <i class="bi bi-info-circle me-1 text-primary"></i>
+                            图纸的中文名称（可含描述性英文规格），<strong class="text-danger">不要包含图号</strong>
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="description" class="form-label">描述</label>
+                        <textarea class="form-control" id="description" name="description" rows="3" placeholder="可选：补充图纸的用途、技术参数、版本说明等"></textarea>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="category_id" class="form-label">分类</label>
+                        <select class="form-select" id="category_id" name="category_id">
+                            <option value="">请选择分类</option>
+                            {% for cat in categories %}
+                            <option value="{{ cat.id }}">{{ cat.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="tags" class="form-label">标签</label>
+                        <input type="text" class="form-control" id="tags" name="tags" placeholder="多个标签请用逗号分隔">
+                    </div>
+
+                    <div class="mb-4">
+                        <label for="file" class="form-label">上传文件</label>
+                        <input class="form-control" type="file" id="file" name="file">
+                        <div class="form-text">支持 PDF、DWG、DXF、STEP、Office 文档、图片等格式</div>
+                    </div>
+
+                    <div class="d-flex justify-content-between">
+                        <a href="{{ url_for('documents.list_docs', archive=archive) }}" class="btn btn-outline-secondary">
+                            <i class="bi bi-arrow-left me-1"></i>返回
+                        </a>
+                        <button type="submit" class="btn btn-primary">
+                            <i class="bi bi-check-lg me-1"></i>创建文档
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<script>
+{% if archive != 'old' %}
+// 4段图号输入：自动跳转 + 同步到 hidden title 字段
+document.addEventListener('DOMContentLoaded', function() {
+    const segs = ['seg1', 'seg2', 'seg3', 'seg4'].map(id => document.getElementById(id));
+    const hidden = document.getElementById('title');
+    const nameInput = document.getElementById('name');
+
+    // 同步到隐藏字段
+    function sync() {
+        const v = segs.map(s => s.value).join('-');
+        hidden.value = v;
+        // 把绘图号传递给名称校验
+        nameInput.dispatchEvent(new Event('input'));
+    }
+
+    segs.forEach((seg, idx) => {
+        // 仅允许数字
+        seg.addEventListener('input', function(e) {
+            this.value = this.value.replace(/[^0-9]/g, '');
+            if (this.value.length === 2 && idx < 3) {
+                segs[idx + 1].focus();
+            }
+            sync();
+        });
+
+        // Backspace 到空时光标回到上一段
+        seg.addEventListener('keydown', function(e) {
+            if (e.key === 'Backspace' && this.value === '' && idx > 0) {
+                segs[idx - 1].focus();
+                segs[idx - 1].value = '';
+                e.preventDefault();
+                sync();
+            }
+        });
+
+        // 粘贴支持
+        seg.addEventListener('paste', function(e) {
+            e.preventDefault();
+            const pasted = (e.clipboardData.getData('text') || '').replace(/[^0-9]/g, '');
+            const all = segs.map(s => s.value).join('') + pasted;
+            all.split('').slice(0, 8).forEach((d, i) => {
+                segs[Math.floor(i / 2)].value = (segs[Math.floor(i / 2)].value + d).slice(-2);
+            });
+            sync();
+            const nextEmpty = segs.findIndex(s => s.value === '');
+            if (nextEmpty >= 0) segs[nextEmpty].focus();
+            else segs[3].focus();
+        });
+    });
+
+    // 名称不能包含图号
+    function checkName() {
+        const title = hidden.value.trim();
+        const name = nameInput.value.trim();
+        if (title && name && name.includes(title)) {
+            nameInput.setCustomValidity('名称中不能包含图号「' + title + '」');
+            nameInput.classList.add('is-invalid');
+        } else {
+            nameInput.setCustomValidity('');
+            nameInput.classList.remove('is-invalid');
+        }
+    }
+    nameInput.addEventListener('input', checkName);
+});
+{% endif %}
+</script>
+{% endblock %}

@@ -1,0 +1,222 @@
+{% extends "base.html" %}
+
+{% block title %}PLM — 系统集成（PLM → Odoo 单向推送）{% endblock %}
+
+{% block page_header %}
+<h5 class="mb-0"><i class="bi bi-plug me-2"></i>系统集成</h5>
+{% endblock %}
+
+{% block content %}
+<!-- 架构说明 -->
+<div class="alert alert-info border-info mb-4 py-2" style="font-size:13px;">
+    <div class="d-flex align-items-center gap-2">
+        <i class="bi bi-info-circle-fill fs-5"></i>
+        <div class="flex-grow-1">
+            <strong>集成架构：PLM 纯单向推送</strong>
+            <span class="text-muted ms-2">| PLM 是数据源，只向 Odoo 推送 mBOM，不获取任何 Odoo 数据。</span>
+        </div>
+        <span class="text-muted small">
+            待推送 <span class="badge bg-warning text-dark">{{ pending_count }}</span> 个 mBOM
+        </span>
+    </div>
+</div>
+
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header bg-white d-flex justify-content-between align-items-center">
+                <span><i class="bi bi-plus-circle me-1"></i>添加集成配置</span>
+                <button class="btn btn-primary btn-sm" data-bs-toggle="collapse" data-bs-target="#addConfigForm">
+                    <i class="bi bi-chevron-down"></i>
+                </button>
+            </div>
+            <div class="collapse" id="addConfigForm">
+                <div class="card-body">
+                    <form method="POST" action="#">
+                        <div class="row g-3">
+                            <div class="col-md-6">
+                                <label class="form-label">名称 <span class="text-danger">*</span></label>
+                                <input type="text" name="name" class="form-control" required placeholder="如：生产环境 Odoo">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">系统类型 <span class="text-danger">*</span></label>
+                                <select name="system_type" class="form-select" required>
+                                    <option value="">-- 选择类型 --</option>
+                                    <option value="odoo">Odoo</option>
+                                    <option value="cad">CAD</option>
+                                    <option value="erp">ERP</option>
+                                    <option value="mes">MES</option>
+                                </select>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">API 地址 <span class="text-danger">*</span></label>
+                                <input type="url" name="api_url" class="form-control" required placeholder="https://odoo.yourcompany.com">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">API Key</label>
+                                <input type="password" name="api_key" class="form-control" placeholder="Bearer token">
+                            </div>
+                            <div class="col-12">
+                                <div class="form-check">
+                                    <input type="checkbox" name="is_active" class="form-check-input" id="isActiveCheck" checked>
+                                    <label class="form-check-label" for="isActiveCheck">启用该集成</label>
+                                </div>
+                                <small class="text-muted">启用后才可进行 mBOM 推送</small>
+                            </div>
+                            <div class="col-12">
+                                <button type="submit" class="btn btn-primary"><i class="bi bi-check-lg me-1"></i>保存配置</button>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 集成配置卡片 -->
+<div class="row mb-4">
+    {% if configs %}
+    {% for cfg in configs %}
+    <div class="col-md-6 col-lg-4 mb-4">
+        <div class="card h-100">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-start mb-3">
+                    <div>
+                        <h6 class="card-title mb-1">{{ cfg.name }}</h6>
+                        <span class="badge bg-{{ {'odoo': 'dark', 'cad': 'info', 'erp': 'success', 'mes': 'warning'}.get(cfg.system_type, 'secondary') }}">
+                            {{ cfg.system_type }}
+                        </span>
+                    </div>
+                    {% if cfg.is_active %}
+                    <span class="badge bg-success"><i class="bi bi-link-45deg me-1"></i>已连接</span>
+                    {% else %}
+                    <span class="badge bg-secondary"><i class="bi bi-link-45deg me-1"></i>未启用</span>
+                    {% endif %}
+                </div>
+
+                {% if cfg.api_url %}
+                <div class="mb-2">
+                    <form method="POST" action="{{ url_for('integrations.update_config', id=cfg.id) }}" class="d-flex gap-1 align-items-center" id="urlForm-{{ cfg.id }}">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                        <input type="text" name="api_url" class="form-control form-control-sm" value="{{ cfg.api_url }}" style="font-size:11px;">
+                        <button type="submit" class="btn btn-outline-primary btn-sm" title="保存URL">
+                            <i class="bi bi-check"></i>
+                        </button>
+                        <button type="button" class="btn btn-outline-secondary btn-sm" title="测试连接"
+                                onclick="testConnection({{ cfg.id }})">
+                            <i class="bi bi-wifi"></i>
+                        </button>
+                    </form>
+                    <small class="text-muted" id="testResult-{{ cfg.id }}" style="font-size:11px;"></small>
+                </div>
+                {% endif %}
+
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <small class="text-muted">
+                        <i class="bi bi-arrow-repeat me-1"></i>
+                        {% if cfg.last_sync %}
+                        上次推送：{{ cfg.last_sync.strftime('%m-%d %H:%M') }}
+                        {% else %}
+                        尚未推送
+                        {% endif %}
+                    </small>
+                </div>
+
+                {% if cfg.system_type == 'odoo' %}
+                {# Odoo 专用：批量推送 mBOM #}
+                <form method="POST" action="{{ url_for('integrations.push_all_mbom', id=cfg.id) }}" class="mb-2">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                    <input type="hidden" name="direction" value="export">
+                    <button type="submit" class="btn btn-dark btn-sm w-100"
+                            onclick="return confirm('确认推送全部待同步的 mBOM 到 Odoo？\n\n这是单向操作（PLM → Odoo），不会拉取任何数据。');">
+                        <i class="bi bi-cloud-upload me-1"></i>
+                        批量推送 mBOM（{{ pending_count }} 个待推送）
+                    </button>
+                </form>
+                <small class="text-muted" style="font-size:11px;">
+                    <i class="bi bi-info-circle me-1"></i>只推不取 — 单向同步架构
+                </small>
+                {% else %}
+                <span class="btn btn-outline-secondary btn-sm w-100 disabled">
+                    <i class="bi bi-arrow-repeat me-1"></i>仅 Odoo 支持推送
+                </span>
+                {% endif %}
+
+                <form method="POST" action="{{ url_for('integrations.delete_config', id=cfg.id) }}" class="mt-2"
+                      onsubmit="return confirm('确认删除配置「{{ cfg.name }}」？');">
+                    <button type="submit" class="btn btn-outline-danger btn-sm w-100">
+                        <i class="bi bi-trash me-1"></i>删除配置
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+    {% else %}
+    <div class="col-12">
+        <div class="empty-state">
+            <i class="bi bi-plug"></i>
+            <p>暂无集成配置</p>
+            <p class="small text-muted">点击上方「添加集成配置」添加 Odoo 连接，然后即可推送 mBOM。</p>
+        </div>
+    </div>
+    {% endif %}
+</div>
+
+<!-- 最近同步日志 -->
+{% if recent_logs %}
+<div class="card">
+    <div class="card-header bg-white">
+        <strong><i class="bi bi-clock-history me-2"></i>最近推送记录</strong>
+    </div>
+    <div class="card-body p-0">
+        <div class="list-group list-group-flush" style="max-height:300px; overflow-y:auto;">
+            {% for log in recent_logs %}
+            <div class="list-group-item d-flex justify-content-between align-items-center py-2">
+                <div>
+                    <span class="badge bg-{{ 'success' if log.status == 'success' else 'danger' if log.status == 'failed' else 'warning' }} me-2">
+                        {{ log.status }}
+                    </span>
+                    <span class="badge bg-light text-dark me-2">{{ log.direction }}</span>
+                    <small>{{ log.message[:80] }}{% if log.message|length > 80 %}…{% endif %}</small>
+                </div>
+                <small class="text-muted">{{ log.created_at.strftime('%m-%d %H:%M') }}</small>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<script>
+function testConnection(cfgId) {
+    const el = document.getElementById('testResult-' + cfgId);
+    el.textContent = '✅ v' + data.version + ' | uid=' + data.uid<i class="spinner-border spinner-border-sm"></i> 测试中...';
+    el.className = 'text-muted';
+    const csrf = document.querySelector('input[name=csrf_token]').value;
+    fetch('/integrations/' + cfgId + '/test', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+        body: 'csrf_token=' + encodeURIComponent(csrf)
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.ok) {
+            el.textContent = '✅ v' + data.version + ' | uid=' + data.uid✅ Odoo v' + data.version + ' | uid=' + data.uid;
+            el.className = 'text-success';
+        } else {
+            el.textContent = '✅ v' + data.version + ' | uid=' + data.uid❌ ' + data.error;
+            el.className = 'text-danger';
+        }
+    })
+    .catch(e => {
+        el.textContent = '✅ v' + data.version + ' | uid=' + data.uid❌ ' + e;
+        el.className = 'text-danger';
+    });
+}
+</script>
+{% endblock %}

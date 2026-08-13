@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PLM3登录</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.3/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body { background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%); min-height: 100vh; display: flex; align-items: center; justify-content: center; font-family: -apple-system, 'Microsoft YaHei', sans-serif; }
+        .login-card { background: #fff; border-radius: 16px; padding: 40px; width: 400px; box-shadow: 0 20px 60px rgba(0,0,0,0.3); }
+        .login-card h1 { font-size: 24px; font-weight: 600; text-align: center; margin-bottom: 8px; }
+        .login-card p { text-align: center; color: #888; margin-bottom: 32px; font-size: 14px; }
+        .login-card .brand-icon { text-align: center; font-size: 48px; color: #4dabf7; margin-bottom: 16px; }
+        .btn-primary { background: #1a1a2e; border: none; padding: 12px; font-weight: 500; }
+        .btn-primary:hover { background: #2d2d5e; }
+    </style>
+</head>
+<body>
+    <div class="login-card">
+        <div class="brand-icon">&#9881;</div>
+        <h1>PLM3</h1>
+        <p>产品生命周期管理平台</p>
+        {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+        {% for category, message in messages %}
+        <div class="alert alert-{{ category }}">{{ message }}</div>
+        {% endfor %}
+        {% endif %}
+        {% endwith %}
+        <form method="post">
+            <div class="mb-3">
+                <label class="form-label">用户名</label>
+                <input type="text" name="username" class="form-control form-control-lg" required>
+            </div>
+            <div class="mb-4">
+                <label class="form-label">密码</label>
+                <input type="password" name="password" class="form-control form-control-lg" required>
+            </div>
+            <button type="submit" class="btn btn-primary w-100 btn-lg">登 录</button>
+        </form>
+    </div>
+</body>
+</html>

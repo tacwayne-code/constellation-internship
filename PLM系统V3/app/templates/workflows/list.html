@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+
+{% block title %}流程管理{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1 class="h3 mb-0">流程管理</h1>
+        <a href="{{ url_for('workflows.create_workflow') }}" class="btn btn-primary">
+            <i class="bi bi-plus-lg"></i> 新建流程
+        </a>
+    </div>
+
+    <div class="card shadow-sm">
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover table-striped mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th scope="col" style="width: 50px;">#</th>
+                            <th scope="col">流程名称</th>
+                            <th scope="col">描述</th>
+                            <th scope="col">模型类型</th>
+                            <th scope="col">状态</th>
+                            <th scope="col">创建时间</th>
+                            <th scope="col" style="width: 120px;">操作</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% if workflows %}
+                            {% for workflow in workflows %}
+                            <tr>
+                                <td>{{ loop.index }}</td>
+                                <td>{{ workflow.name }}</td>
+                                <td>{{ workflow.description | truncate(50) }}</td>
+                                <td>
+                                    <span class="badge bg-info">{{ workflow.model_type }}</span>
+                                </td>
+                                <td>
+                                    {% if workflow.is_active %}
+                                        <span class="badge bg-success">启用</span>
+                                    {% else %}
+                                        <span class="badge bg-secondary">禁用</span>
+                                    {% endif %}
+                                </td>
+                                <td>{{ workflow.created_at.strftime('%Y-%m-%d %H:%M') if workflow.created_at else '-' }}</td>
+                                <td>
+                                    <div class="d-flex gap-1 align-items-center">
+                                        <a href="{{ url_for('workflows.view_workflow', id=workflow.id) }}" class="btn btn-outline-primary btn-sm d-inline-flex align-items-center justify-content-center" title="查看" style="width:32px;height:32px;padding:0;">
+                                            <i class="bi bi-eye"></i>
+                                        </a>
+                                        <a href="{{ url_for('workflows.edit_workflow', id=workflow.id) }}" class="btn btn-outline-secondary btn-sm d-inline-flex align-items-center justify-content-center" title="编辑" style="width:32px;height:32px;padding:0;">
+                                            <i class="bi bi-pencil"></i>
+                                        </a>
+                                        <form method="post" action="{{ url_for('workflows.toggle_workflow', id=workflow.id) }}" onsubmit="return confirm('确定要切换「启用/禁用」状态吗？');">
+                                            <button type="submit" class="btn btn-outline-warning btn-sm d-inline-flex align-items-center justify-content-center" title="启用/禁用" style="width:32px;height:32px;padding:0;">
+                                                <i class="bi bi-{% if workflow.is_active %}pause{% else %}play{% endif %}-fill"></i>
+                                            </button>
+                                        </form>
+                                        <form method="post" action="{{ url_for('workflows.delete_workflow', id=workflow.id) }}" onsubmit="return confirm('确定要删除流程「{{ workflow.name }}」吗？\n此操作不可撤销！');">
+                                            <button type="submit" class="btn btn-outline-danger btn-sm d-inline-flex align-items-center justify-content-center" title="删除" style="width:32px;height:32px;padding:0;">
+                                                <i class="bi bi-trash"></i>
+                                            </button>
+                                        </form>
+                                    </div>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        {% else %}
+                            <tr>
+                                <td colspan="7" class="text-center text-muted py-4">
+                                    <i class="bi bi-inbox" style="font-size: 2rem; display: block; margin-bottom: 8px;"></i>
+                                    暂无流程数据
+                                </td>
+                            </tr>
+                        {% endif %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

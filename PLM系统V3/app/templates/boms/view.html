@@ -1,0 +1,538 @@
+{% extends "base.html" %}
+
+{% block title %}BOM 详情 - {{ bom.bom_no }}{% endblock %}
+
+{% block content %}
+<!-- 头部 -->
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h4 class="mb-0">
+        <i class="bi bi-list-check me-2 text-primary"></i>{{ bom.name }}
+        <code class="fs-6 text-muted ms-2">{{ bom.bom_no }}</code>
+    </h4>
+    <div class="d-flex gap-2">
+        <a href="{{ back_url }}" class="btn btn-outline-secondary btn-sm">
+            <i class="bi bi-arrow-left me-1"></i>返回列表
+        </a>
+        {% if bom.status == 'draft' %}
+        <form method="post" action="{{ url_for('boms.bom_submit_approval', id=bom.id) }}" style="display:inline;">
+            <button type="submit" class="btn btn-outline-info btn-sm">
+                <i class="bi bi-send me-1"></i>提交审批
+            </button>
+        </form>
+        {% endif %}
+        {% if bom.status == 'approved' %}
+        <form method="post" action="{{ url_for('boms.release_bom', id=bom.id) }}" style="display:inline;">
+            <button type="submit" class="btn btn-success btn-sm">
+                <i class="bi bi-rocket-takeoff me-1"></i>发布
+            </button>
+        </form>
+        {% endif %}
+        {% if bom.status == 'released' and bom.bom_type == 'EBOM' %}
+        <a href="{{ url_for('boms.convert_to_mbom', id=bom.id) }}" class="btn btn-primary btn-sm">
+            <i class="bi bi-arrow-right-circle me-1"></i>转为 mBOM
+        </a>
+        {% endif %}
+        {% if bom.status == 'released' and bom.bom_type == 'MBOM' %}
+        <form method="post" action="{{ url_for('boms.push_to_odoo', id=bom.id) }}" style="display:inline;">
+            <button type="submit" class="btn btn-outline-primary btn-sm">
+                <i class="bi bi-cloud-upload me-1"></i>推送 Odoo
+            </button>
+        </form>
+        {% endif %}
+        <a href="{{ url_for('boms.export_bom_excel', id=bom.id) }}" class="btn btn-outline-secondary btn-sm" title="导出 CSV">
+            <i class="bi bi-download me-1"></i>导出
+        </a>
+        <form method="post" action="{{ url_for('boms.copy_bom', id=bom.id) }}" style="display:inline;">
+            <button type="submit" class="btn btn-outline-secondary btn-sm" title="复制 BOM">
+                <i class="bi bi-copy me-1"></i>复制
+            </button>
+        </form>
+    </div>
+</div>
+
+<!-- 基本信息 -->
+<div class="row mb-3">
+    <div class="col-md-3"><span class="text-muted">BOM 类型:</span>
+        <span class="badge ms-1 bg-{{ 'success' if bom.bom_type == 'EBOM' else 'warning' }}">{{ bom.bom_type }}</span>
+    </div>
+    <div class="col-md-2"><span class="text-muted">版本:</span> <strong>{{ bom.version }}</strong></div>
+    <div class="col-md-2"><span class="text-muted">状态:</span>
+        {% set status_map = {'draft': '草稿','review':'审批中','approved':'已批准','released':'已发布','rejected':'已驳回'} %}
+        <span class="badge ms-1 bg-{{ 'success' if bom.status in ('approved','released') else 'warning' if bom.status == 'review' else 'danger' if bom.status == 'rejected' else 'secondary' }}">
+            {{ status_map.get(bom.status, bom.status) }}
+        </span>
+    </div>
+    {% if bom.bom_type == 'MBOM' and bom.status == 'released' %}
+    <div class="col-md-3"><span class="text-muted">Odoo 同步:</span>
+        {% if bom.sync_status == 'not_synced' or not bom.sync_status %}
+            <span class="badge bg-secondary ms-1">未同步</span>
+        {% elif bom.sync_status == 'synced' %}
+            <span class="badge bg-success ms-1">✓ 已同步</span>
+            {% if bom.sync_time %}<small class="ms-1 text-success">{{ bom.sync_time.strftime('%m-%d %H:%M') if bom.sync_time else '' }}</small>{% endif %}
+        {% elif bom.sync_status == 'exported' %}
+            <span class="badge bg-info ms-1">已导出文件</span>
+        {% elif bom.sync_status == 'sync_failed' %}
+            <span class="badge bg-danger ms-1">✗ 同步失败</span>
+            {% if bom.sync_message %}<small class="ms-1 text-danger" title="{{ bom.sync_message }}">{{ bom.sync_message[:50] }}</small>{% endif %}
+        {% else %}
+            <span class="badge bg-secondary ms-1">{{ bom.sync_status }}</span>
+        {% endif %}
+    </div>
+    {% endif %}
+    <div class="col-md-3"><span class="text-muted">关联产品:</span>
+        {% if bom.product %}
+        <a href="{{ url_for('structures.product_detail', id=bom.product.id) }}">{{ bom.product.name }}</a>
+        {% else %}-{% endif %}
+    </div>
+    <div class="col-md-2"><span class="text-muted">物料数:</span> <strong>{{ bom.items.count() }}</strong></div>
+</div>
+
+<!-- Tab 导航 -->
+<ul class="nav nav-tabs mb-3" role="tablist">
+    <li class="nav-item"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#tab-components"><i class="bi bi-box me-1"></i>组件 ({{ bom.items.count() }})</button></li>
+    <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-docs"><i class="bi bi-file-earmark-text me-1"></i>文档 ({{ docs_total }})</button></li>
+    <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-approvals"><i class="bi bi-check-circle me-1"></i>审批 ({{ approvals|length }})</button></li>
+    <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-versions"><i class="bi bi-clock-history me-1"></i>版本对比</button></li>
+</ul>
+
+<div class="tab-content">
+    <!-- Tab 1: 组件 -->
+    <div class="tab-pane fade show active" id="tab-components">
+        <div class="table-responsive">
+            <table class="table table-hover table-sm">
+                <thead><tr>
+                    <th style="width:40px">#</th>
+                    <th style="width:130px">编码</th>
+                    <th>物料 (ITM号)</th>
+                    <th>名称</th>
+                    <th style="width:70px">用量</th>
+                    <th style="width:50px">单位</th>
+                    <th>替代料</th>
+                    <th>备注</th>
+                    {% if bom.status == 'draft' %}
+                    <th style="width:80px">操作</th>
+                    {% endif %}
+                </tr></thead>
+                <tbody>
+                {% for item in items %}
+                <tr>
+                    <td>{{ item.seq }}</td>
+                    <td>
+                        {% if item.code %}
+                        <code class="text-primary small code-cell" title="{{ item.part_type or '配件' }}" data-item-id="{{ item.id }}" data-code="{{ item.code }}">{{ item.code }}</code>
+                        {% else %}
+                        <span class="text-muted small code-cell code-empty" data-item-id="{{ item.id }}" title="点击设置编码" style="cursor:pointer">—</span>
+                        {% endif %}
+                        {% if bom.status == 'draft' %}
+                        <i class="bi bi-pencil-square text-muted ms-1 edit-code-btn" style="cursor:pointer;font-size:11px" data-item-id="{{ item.id }}" data-code="{{ item.code or '' }}" title="编辑编码"></i>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <a href="{{ url_for('structures.product_detail', id=item.product.id) }}" class="text-decoration-none">
+                            <code>{{ item.product.system_id or item.product.code }}</code>
+                        </a>
+                    </td>
+                    <td>{{ item.product.name }}</td>
+                    <td>{{ item.quantity|round(2) }}</td>
+                    <td>{{ item.unit }}</td>
+                    <td>
+                        {% if item.substitute %}
+                        <a href="{{ url_for('structures.product_detail', id=item.substitute.id) }}" class="text-decoration-none">
+                            <span class="badge bg-warning text-dark">备: {{ item.substitute.name[:15] }}</span>
+                        </a>
+                        {% else %}
+                        <span class="text-muted">-</span>
+                        {% endif %}
+                    </td>
+                    <td class="small text-muted">{{ item.note or '' }}</td>
+                    {% if bom.status == 'draft' %}
+                    <td>
+                        <button class="btn btn-outline-warning btn-sm" title="设置替代料"
+                                onclick="setSubstitute({{ item.id }}, '{{ item.product.name[:20] }}')">
+                            <i class="bi bi-arrow-repeat"></i>
+                        </button>
+                    </td>
+                    {% endif %}
+                </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        {# 组件翻页 #}
+        {% if items_total_pages > 1 %}
+        <div class="d-flex justify-content-between align-items-center p-3 border-top">
+            <small class="text-muted">
+                每页 {{ items_per_page }} 条，共 {{ items_total }} 条 / {{ items_total_pages }} 页
+            </small>
+            <nav>
+                <ul class="pagination pagination-sm mb-0">
+                    <li class="page-item {% if items_page <= 1 %}disabled{% endif %}">
+                        <a class="page-link" href="{{ url_for('boms.view_bom', id=bom.id, items_page=1) }}">
+                            <i class="bi bi-chevron-double-left"></i>
+                        </a>
+                    </li>
+                    <li class="page-item {% if items_page <= 1 %}disabled{% endif %}">
+                        <a class="page-link" href="{{ url_for('boms.view_bom', id=bom.id, items_page=items_page-1) }}">
+                            <i class="bi bi-chevron-left"></i>
+                        </a>
+                    </li>
+                    {% for p in range(1, items_total_pages + 1) %}
+                    {% if p == 1 or p == items_total_pages or (p >= items_page - 2 and p <= items_page + 2) %}
+                    <li class="page-item {% if p == items_page %}active{% endif %}">
+                        <a class="page-link" href="{{ url_for('boms.view_bom', id=bom.id, items_page=p) }}">{{ p }}</a>
+                    </li>
+                    {% elif p == items_page - 3 or p == items_page + 3 %}
+                    <li class="page-item disabled"><span class="page-link">…</span></li>
+                    {% endif %}
+                    {% endfor %}
+                    <li class="page-item {% if items_page >= items_total_pages %}disabled{% endif %}">
+                        <a class="page-link" href="{{ url_for('boms.view_bom', id=bom.id, items_page=items_page+1) }}">
+                            <i class="bi bi-chevron-right"></i>
+                        </a>
+                    </li>
+                    <li class="page-item {% if items_page >= items_total_pages %}disabled{% endif %}">
+                        <a class="page-link" href="{{ url_for('boms.view_bom', id=bom.id, items_page=items_total_pages) }}">
+                            <i class="bi bi-chevron-double-right"></i>
+                        </a>
+                    </li>
+                </ul>
+            </nav>
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- Tab 2: 关联文档 -->
+    <div class="tab-pane fade" id="tab-docs">
+        <div class="mb-3 d-flex gap-2 align-items-center">
+            <form method="post" action="#" style="display:inline;">
+                <button type="submit" class="btn btn-success btn-sm">
+                    <i class="bi bi-stars me-1"></i>自动关联文档
+                </button>
+            </form>
+            <small class="text-muted">
+                按 BOM 物料号前缀（如 850-001-001）从 3000+ 文档中自动筛选
+            </small>
+        </div>
+        <div class="mb-3">
+<!-- TODO:             <form method="post" action="#" class="row g-2">-->
+                <div class="col-sm-8">
+                    <select name="document_id" class="form-select form-select-sm" required>
+                        <option value="">-- 候选文档（{{ candidate_docs|length }} 条与本 BOM 物料号匹配） --</option>
+                        {% for d in candidate_docs %}
+                        <option value="{{ d.id }}">{{ d.title[:60] }} ({{ d.doc_no }})</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-sm-auto">
+                    <button type="submit" class="btn btn-primary btn-sm"><i class="bi bi-paperclip me-1"></i>手动关联</button>
+                </div>
+            </form>
+        </div>
+        {% if linked_docs %}
+        <table class="table table-sm">
+            <thead><tr><th>文件</th><th>编号</th><th>版本</th><th></th></tr></thead>
+            <tbody>
+            {% for ld in linked_docs %}
+            <tr>
+                <td>
+                    <i class="bi bi-file-earmark me-1 text-muted"></i>
+                    <a href="{{ url_for('documents.view_doc', id=ld.document.id) }}">{{ ld.document.title[:50] }}</a>
+                    {% if ld.document.file_path %}
+                    <a href="href="#"" class="ms-1" download title="下载"><i class="bi bi-download"></i></a>
+                    {% endif %}
+                </td>
+                <td><code>{{ ld.document.doc_no }}</code></td>
+                <td>{{ ld.document.version }}</td>
+                <td>
+<!-- TODO:                     <form method="post" action="#" style="display:inline;">-->
+                        <button type="submit" class="btn btn-outline-danger btn-sm" title="取消关联"><i class="bi bi-x"></i></button>
+                    </form>
+                </td>
+            </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+        {# 关联文档翻页 #}
+        {% if docs_total_pages > 1 %}
+        <div class="d-flex justify-content-between align-items-center p-3 border-top">
+            <small class="text-muted">每页 {{ docs_per_page }} 条，共 {{ docs_total }} 条 / {{ docs_total_pages }} 页</small>
+            <nav>
+                <ul class="pagination pagination-sm mb-0">
+                    <li class="page-item {% if docs_page <= 1 %}disabled{% endif %}">
+                        <a class="page-link" href="{{ url_for('boms.view_bom', id=bom.id, docs_page=1, items_page=items_page) }}"><i class="bi bi-chevron-double-left"></i></a>
+                    </li>
+                    <li class="page-item {% if docs_page <= 1 %}disabled{% endif %}">
+                        <a class="page-link" href="{{ url_for('boms.view_bom', id=bom.id, docs_page=docs_page-1, items_page=items_page) }}"><i class="bi bi-chevron-left"></i></a>
+                    </li>
+                    {% for p in range(1, docs_total_pages + 1) %}
+                    {% if p == 1 or p == docs_total_pages or (p >= docs_page - 2 and p <= docs_page + 2) %}
+                    <li class="page-item {% if p == docs_page %}active{% endif %}">
+                        <a class="page-link" href="{{ url_for('boms.view_bom', id=bom.id, docs_page=p, items_page=items_page) }}">{{ p }}</a>
+                    </li>
+                    {% elif p == docs_page - 3 or p == docs_page + 3 %}
+                    <li class="page-item disabled"><span class="page-link">…</span></li>
+                    {% endif %}
+                    {% endfor %}
+                    <li class="page-item {% if docs_page >= docs_total_pages %}disabled{% endif %}">
+                        <a class="page-link" href="{{ url_for('boms.view_bom', id=bom.id, docs_page=docs_page+1, items_page=items_page) }}"><i class="bi bi-chevron-right"></i></a>
+                    </li>
+                    <li class="page-item {% if docs_page >= docs_total_pages %}disabled{% endif %}">
+                        <a class="page-link" href="{{ url_for('boms.view_bom', id=bom.id, docs_page=docs_total_pages, items_page=items_page) }}"><i class="bi bi-chevron-double-right"></i></a>
+                    </li>
+                </ul>
+            </nav>
+        </div>
+        {% endif %}
+        {% else %}
+        <div class="text-muted py-3">暂无关联文档。通过上方下拉框选择并关联。</div>
+        {% endif %}
+    </div>
+
+    <!-- Tab 3: 审批流 -->
+    <div class="tab-pane fade" id="tab-approvals">
+        {% if approvals %}
+        <table class="table table-sm">
+            <thead><tr><th style="width:50px">步骤</th><th>审批人</th><th>状态</th><th>意见</th><th>时间</th><th>操作</th></tr></thead>
+            <tbody>
+            {% for a in approvals %}
+            <tr>
+                <td>{{ a.step }}</td>
+                <td>{{ a.approver.display_name }}</td>
+                <td>
+                    {% if a.status == 'approved' %}<span class="badge bg-success">通过</span>
+                    {% elif a.status == 'rejected' %}<span class="badge bg-danger">驳回</span>
+                    {% else %}<span class="badge bg-warning text-dark">待审批</span>{% endif %}
+                </td>
+                <td class="small">{{ a.comment or '' }}</td>
+                <td class="small text-muted">{{ a.decided_at.strftime('%m/%d %H:%M') if a.decided_at else '-' }}</td>
+                <td>
+                    {% if a.status == 'pending' and a.approver_id == current_user.id %}
+                    <div class="d-flex gap-1">
+                        <form method="post" action="{{ url_for('boms.bom_approve_step', id=bom.id, step=a.step) }}" style="display:inline;">
+                            <button type="submit" class="btn btn-success btn-sm" title="通过"><i class="bi bi-check"></i></button>
+                        </form>
+                        <form method="post" action="{{ url_for('boms.bom_reject_step', id=bom.id, step=a.step) }}" style="display:inline;">
+                            <input type="hidden" name="comment" value="驳回">
+                            <button type="submit" class="btn btn-danger btn-sm" title="驳回"><i class="bi bi-x"></i></button>
+                        </form>
+                    </div>
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <div class="text-muted py-3">尚未提交审批。点击上方「提交审批」按钮发起审批流程。</div>
+        {% endif %}
+    </div>
+
+    <!-- Tab 4: 版本对比 -->
+    <div class="tab-pane fade" id="tab-versions">
+        <p class="small text-muted mb-3">选择同系列的两个版本进行对比（需为同一产品下的同一 BOM 类型）</p>
+        <form method="get" action="#" class="row g-2 mb-4">
+            <div class="col-sm-5">
+                <select name="a" class="form-select form-select-sm" required>
+                    <option value="">-- 基准版本 (A) --</option>
+                    {% for b in sibling_boms %}
+                    <option value="{{ b.id }}">{{ b.version }} - {{ b.name[:40] }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-sm-5">
+                <select name="b" class="form-select form-select-sm" required>
+                    <option value="">-- 对比版本 (B) --</option>
+                    {% for b in sibling_boms %}
+                    <option value="{{ b.id }}">{{ b.version }} - {{ b.name[:40] }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-sm-2">
+                <button type="submit" class="btn btn-primary btn-sm w-100"><i class="bi bi-arrow-left-right me-1"></i>对比</button>
+            </div>
+        </form>
+        {% if not sibling_boms %}
+        <div class="text-muted py-3">暂无同系列其他版本可对比。创建新版本 BOM 后即可进行差异比较。</div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- 替代料 Modal -->
+<div class="modal fade" id="substituteModal" tabindex="-1">
+    <div class="modal-dialog modal-sm">
+        <div class="modal-content">
+            <form id="subForm" method="post">
+                <div class="modal-header">
+                    <h6 class="modal-title">设置替代料</h6>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="small text-muted" id="subItemName"></p>
+                    <select name="substitute_product_id" class="form-select" required>
+                        <option value="">-- 选择替代物料 --</option>
+                        {% for prod in all_products %}
+                        <option value="{{ prod.id }}">{{ prod.system_id or prod.code }} - {{ prod.name[:30] }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="modal-footer">
+                    <button type="submit" class="btn btn-primary btn-sm">保存</button>
+                    <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">取消</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- 编码编辑模态框 -->
+<div class="modal fade" id="codeModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h6 class="modal-title"><i class="bi bi-upc-scan me-1"></i>编辑物料编码</h6>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form id="codeForm" method="post">
+                <div class="modal-body">
+                    <div class="row g-2 mb-3">
+                        <div class="col-md-3">
+                            <label class="form-label small">大类</label>
+                            <select name="part_type" class="form-select form-select-sm" id="codePartType">
+                                <option value="">— 配件编码 —</option>
+                                <option value="01">01 设备配件</option>
+                                <option value="02">02 钣金件</option>
+                                <option value="03">03 电气件</option>
+                                <option value="04">04 焊接结构件</option>
+                                <option value="05">05 气动/液压件</option>
+                            </select>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label small">产品族</label>
+                            <select name="family" class="form-select form-select-sm" id="codeFamily">
+                                <option value="01">01 分光机</option>
+                                <option value="02">02 编带机</option>
+                                <option value="03">03 点胶机</option>
+                                <option value="04">04 固晶机</option>
+                                <option value="05">05 搅拌机</option>
+                                <option value="06">06 贴片机</option>
+                                <option value="99">99 通用件</option>
+                            </select>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label small">部件分类</label>
+                            <select name="component" class="form-select form-select-sm" id="codeComponent">
+                                <option value="01">01 机架/底座</option>
+                                <option value="02">02 传动机构</option>
+                                <option value="03">03 送料机构</option>
+                                <option value="04">04 光学组件</option>
+                                <option value="05">05 电气安装</option>
+                                <option value="06">06 气动组件</option>
+                                <option value="07">07 管路/接头</option>
+                                <option value="08">08 防护/罩壳</option>
+                                <option value="09">09 工装/治具</option>
+                                <option value="10">10 焊接结构</option>
+                            </select>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label small">&nbsp;</label>
+                            <button type="button" class="btn btn-outline-primary btn-sm w-100" id="btnAutoCode">
+                                <i class="bi bi-magic me-1"></i>自动生成
+                            </button>
+                        </div>
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label small">编码结果</label>
+                        <div class="input-group input-group-sm">
+                            <input type="text" name="code" class="form-control font-monospace" id="codeInput" placeholder="01-01-04-001" readonly>
+                            <button type="button" class="btn btn-outline-secondary" id="btnCopyCode" title="复制"><i class="bi bi-clipboard"></i></button>
+                        </div>
+                    </div>
+                    <div class="text-muted small">
+                        <i class="bi bi-info-circle me-1"></i>
+                        <span>或直接输入已有编码（如 ST-01-001-M040 标准件编码）</span>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <input type="hidden" name="item_id" id="codeItemId">
+                    <button type="submit" class="btn btn-primary btn-sm"><i class="bi bi-check me-1"></i>保存</button>
+                    <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">取消</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // 编码编辑按钮
+    document.querySelectorAll('.edit-code-btn').forEach(btn => {
+        btn.addEventListener('click', function() {
+            const itemId = this.dataset.itemId;
+            const code = this.dataset.code;
+            document.getElementById('codeItemId').value = itemId;
+            document.getElementById('codeInput').value = code;
+            document.getElementById('codeForm').action = '/boms/' + {{ bom.id }} + '/set-item-code';
+            new bootstrap.Modal(document.getElementById('codeModal')).show();
+        });
+    });
+
+    // 自动生成编码
+    document.getElementById('btnAutoCode').addEventListener('click', function() {
+        const form = new FormData();
+        form.append('category', document.getElementById('codePartType').value || '01');
+        form.append('family', document.getElementById('codeFamily').value || '01');
+        form.append('component', document.getElementById('codeComponent').value || '01');
+        form.append('bom_name', document.querySelector('.page-title') ? document.querySelector('.page-title').textContent.trim() : '');
+        
+        fetch('/boms/api/generate-code', { method: 'POST', body: form })
+            .then(r => r.json())
+            .then(data => {
+                document.getElementById('codeInput').value = data.code;
+            })
+            .catch(e => alert('生成失败: ' + e));
+    });
+
+    // 复制编码
+    document.getElementById('btnCopyCode').addEventListener('click', function() {
+        const input = document.getElementById('codeInput');
+        input.select();
+        document.execCommand('copy');
+        this.innerHTML = '<i class="bi bi-check text-success"></i>';
+        setTimeout(() => { this.innerHTML = '<i class="bi bi-clipboard"></i>'; }, 1500);
+    });
+});
+</script>
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<script>
+function setSubstitute(itemId, itemName) {
+    document.getElementById('subItemName').innerText = itemName;
+    document.getElementById('subForm').action = 'href="#"'.replace('99999', itemId);
+    new bootstrap.Modal(document.getElementById('substituteModal')).show();
+}
+</script>
+
+{% if bom.bom_type == 'MBOM' and bom.sync_status and bom.sync_status not in ('synced','sync_failed','exported') %}
+<script>
+// 轮询同步状态（每5秒查一次，查到结果后更新 badge）
+(function pollSync() {
+    var maxPolls = 36, count = 0;
+    var timer = setInterval(function() {
+        if (count++ > maxPolls) { clearInterval(timer); location.reload(); return; }
+        fetch("{{ url_for('boms.bom_sync_status', id=bom.id) }}")
+            .then(r => r.json())
+            .then(data => {
+                if (data.sync_status === 'synced' || data.sync_status === 'sync_failed') {
+                    clearInterval(timer);
+                    location.reload();
+                }
+            });
+    }, 5000);
+})();
+</script>
+{% endif %}
+
+{% endblock %}

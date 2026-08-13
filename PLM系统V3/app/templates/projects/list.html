@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+
+{% block title %}项目管理{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2 class="mb-0">项目管理</h2>
+        <a href="#" class="btn btn-primary">
+            <i class="bi bi-plus-lg"></i> 新建项目
+        </a>
+    </div>
+
+    {% if projects %}
+    <div class="row row-cols-1 row-cols-md-2 row-cols-xl-3 g-4">
+        {% for project in projects %}
+        <div class="col">
+            <a href="{{ '#' }}" class="text-decoration-none">
+                <div class="card h-100 shadow-sm">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between align-items-start mb-2">
+                            <h5 class="card-title mb-0 text-dark">{{ project.name }}</h5>
+                            <span class="badge rounded-pill
+                                {% if project.status == 'planning' %}bg-secondary
+                                {% elif project.status == 'active' %}bg-primary
+                                {% elif project.status == 'completed' %}bg-success
+                                {% elif project.status == 'cancelled' %}bg-dark
+                                {% else %}bg-secondary{% endif %}">
+                                {{ project.status }}
+                            </span>
+                        </div>
+                        <p class="card-text text-muted small mb-1">
+                            <span class="text-monospace">{{ project.proj_no }}</span>
+                        </p>
+                        <div class="mb-2">
+                            <span class="badge
+                                {% if project.priority == 'high' %}bg-danger
+                                {% elif project.priority == 'medium' %}bg-warning text-dark
+                                {% elif project.priority == 'low' %}bg-info text-dark
+                                {% else %}bg-secondary{% endif %}">
+                                {{ project.priority }}
+                            </span>
+                        </div>
+                        <div class="small text-muted">
+                            <div><strong>负责人：</strong>{{ project.manager.display_name if project.manager else '未指派' }}</div>
+                            <div><strong>开始：</strong>{{ project.start_date.strftime('%Y-%m-%d') if project.start_date else '-' }}</div>
+                            <div><strong>结束：</strong>{{ project.end_date.strftime('%Y-%m-%d') if project.end_date else '-' }}</div>
+                            <div><strong>任务数：</strong>{{ task_counts[project.id] }}</div>
+                        </div>
+                    </div>
+                </div>
+            </a>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="text-center py-5 text-muted">
+        <p class="fs-5">暂无项目</p>
+        <a href="#" class="btn btn-outline-primary">新建项目</a>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

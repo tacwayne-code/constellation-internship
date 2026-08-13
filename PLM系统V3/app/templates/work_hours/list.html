@@ -1,0 +1,113 @@
+{% extends "base.html" %}
+
+{% block title %}PLM - 工时管理{% endblock %}
+
+{% block page_header %}
+<h5 class="mb-0"><i class="bi bi-clock me-2"></i>工时管理</h5>
+{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header bg-white d-flex justify-content-between align-items-center">
+                <span><i class="bi bi-plus-circle me-1"></i>添加工时标准</span>
+                <button class="btn btn-primary btn-sm" data-bs-toggle="collapse" data-bs-target="#addForm">
+                    <i class="bi bi-chevron-down"></i>
+                </button>
+            </div>
+            <div class="collapse" id="addForm">
+                <div class="card-body">
+                    <form method="POST" action="#">
+                        <div class="row g-3">
+                            <div class="col-md-4">
+                                <label class="form-label">产品 <span class="text-danger">*</span></label>
+                                <select name="product_id" class="form-select" required>
+                                    <option value="">-- 选择产品 --</option>
+                                    {% for p in products %}
+                                    <option value="{{ p.id }}">{{ p.name }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">工序名称 <span class="text-danger">*</span></label>
+                                <input type="text" name="process_name" class="form-control" required>
+                            </div>
+                            <div class="col-md-2">
+                                <label class="form-label">标准工时 <span class="text-danger">*</span></label>
+                                <input type="number" step="0.01" name="standard_hours" class="form-control" required>
+                            </div>
+                            <div class="col-md-2">
+                                <label class="form-label">单位</label>
+                                <input type="text" name="unit" class="form-control" value="小时">
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">设备类型</label>
+                                <input type="text" name="machine_type" class="form-control">
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">人工类型</label>
+                                <input type="text" name="labor_type" class="form-control">
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">备注</label>
+                                <textarea name="note" class="form-control" rows="1"></textarea>
+                            </div>
+                            <div class="col-12">
+                                <button type="submit" class="btn btn-primary"><i class="bi bi-check-lg me-1"></i>保存</button>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header bg-white">
+        <i class="bi bi-list-columns me-1"></i>工时标准列表
+    </div>
+    <div class="card-body p-0">
+        {% if whs %}
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead>
+                    <tr>
+                        <th>产品名称</th>
+                        <th>工序名称</th>
+                        <th>标准工时</th>
+                        <th>单位</th>
+                        <th>设备类型</th>
+                        <th>人工类型</th>
+                        <th>备注</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for wh in whs %}
+                    <tr>
+                        <td>
+                            <a href="{{ '#' }}" class="text-decoration-none">
+                                {{ wh.product.name }}
+                            </a>
+                        </td>
+                        <td>{{ wh.process_name }}</td>
+                        <td>{{ wh.standard_hours }}</td>
+                        <td>{{ wh.unit or '-' }}</td>
+                        <td>{{ wh.machine_type or '-' }}</td>
+                        <td>{{ wh.labor_type or '-' }}</td>
+                        <td>{{ wh.note or '-' }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="empty-state">
+            <i class="bi bi-clock"></i>
+            <p>暂无工时标准数据</p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

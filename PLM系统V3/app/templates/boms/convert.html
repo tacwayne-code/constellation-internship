@@ -1,0 +1,162 @@
+{% extends "base.html" %}
+
+{% block title %}eBOM 转 mBOM — {{ ebom.bom_no }}{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h4 class="mb-0">
+        <i class="bi bi-arrow-repeat me-2 text-success"></i>eBOM → mBOM 结构变换
+    </h4>
+    <div>
+        <a href="{{ url_for('boms.view_bom', id=ebom.id) }}" class="btn btn-outline-secondary btn-sm">
+            <i class="bi bi-arrow-left me-1"></i>返回 eBOM 详情
+        </a>
+    </div>
+</div>
+
+<!-- 架构说明 -->
+<div class="alert alert-light border mb-4 py-3" style="font-size:14px;">
+    <div class="d-flex align-items-center gap-3">
+        <div class="fs-5">
+            <span class="badge bg-primary px-3 py-2">eBOM</span>
+            <i class="bi bi-arrow-right mx-2"></i>
+            <span class="badge bg-info px-3 py-2">结构变换</span>
+            <i class="bi bi-arrow-right mx-2"></i>
+            <span class="badge bg-success px-3 py-2">mBOM</span>
+            <i class="bi bi-arrow-right mx-2"></i>
+            <span class="badge bg-dark px-3 py-2">Odoo</span>
+        </div>
+    </div>
+    <div class="mt-2 text-muted small">
+        <i class="bi bi-info-circle me-1"></i>
+        此操作仅做 BOM 结构变换，<strong>不包含工序、工时、损耗率等制造参数</strong>——这些数据由 Odoo 侧的工艺人员在 mBOM 基础上补充。
+        mBOM 发布后通过单向推送（PLM → Odoo）同步，<strong>不会从 Odoo 拉取任何数据</strong>。
+    </div>
+</div>
+
+<div class="row g-4">
+    <!-- 左侧：源 eBOM -->
+    <div class="col-md-6">
+        <div class="card h-100">
+            <div class="card-header bg-primary bg-opacity-10 border-primary border-opacity-25">
+                <h5 class="mb-0"><i class="bi bi-cpu me-2 text-primary"></i>源 eBOM（工程 BOM）</h5>
+            </div>
+            <div class="card-body">
+                <div class="mb-3">
+                    <span class="fw-bold">{{ ebom.bom_no }}</span>
+                    <span class="text-muted ms-2">—</span>
+                    <span class="ms-2">{{ ebom.name }}</span>
+                </div>
+                <div class="mb-3">
+                    <span class="text-muted small">关联产品：</span>
+                    <span>{{ ebom.product.code if ebom.product else '-' }} — {{ ebom.product.name if ebom.product else '' }}</span>
+                </div>
+                <div class="mb-3">
+                    <span class="text-muted small">版本：</span><span class="badge bg-light text-dark">{{ ebom.version }}</span>
+                    <span class="text-muted small ms-3">创建人：</span><span>{{ ebom.creator.display_name if ebom.creator else '-' }}</span>
+                </div>
+
+                <hr>
+                <h6 class="mb-3">物料清单（{{ ebom.items.count() }} 项）</h6>
+                <div class="table-responsive" style="max-height:400px; overflow-y:auto;">
+                    <table class="table table-sm table-bordered">
+                        <thead class="table-light">
+                            <tr>
+                                <th>#</th>
+                                <th>物料编码</th>
+                                <th>名称</th>
+                                <th>数量</th>
+                                <th>单位</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for item in ebom.items %}
+                            <tr>
+                                <td class="text-center">{{ loop.index }}</td>
+                                <td><code class="small">{{ item.product.code }}</code></td>
+                                <td class="small">{{ item.product.name }}</td>
+                                <td class="text-center">{{ item.quantity }}</td>
+                                <td class="text-center">{{ item.unit }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 右侧：目标 mBOM -->
+    <div class="col-md-6">
+        <div class="card h-100">
+            <div class="card-header bg-success bg-opacity-10 border-success border-opacity-25">
+                <h5 class="mb-0"><i class="bi bi-gear me-2 text-success"></i>目标 mBOM（制造 BOM）</h5>
+            </div>
+            <div class="card-body">
+                <form method="POST" action="{{ url_for('boms.convert_to_mbom', id=ebom.id) }}">
+                    <div class="mb-3">
+                        <label class="form-label">mBOM 名称 <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control" name="name" required
+                               value="{{ ebom.name }} - 制造BOM">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">描述</label>
+                        <textarea class="form-control" name="description" rows="2"
+                                  placeholder="由 eBOM {{ ebom.bom_no }} 结构变换而来">{{ '由 ' + ebom.bom_no + ' 结构变换而来' }}</textarea>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">转换备注</label>
+                        <textarea class="form-control" name="conversion_note" rows="4"
+                                  placeholder="说明本结构变换做了哪些调整（如：虚拟件展开、补充中间半成品等）">{{ auto_note or '' }}</textarea>
+                        <small class="text-muted">
+                            <i class="bi bi-magic me-1"></i>已根据上次转换自动识别差异，您可修改后提交
+                        </small>
+                    </div>
+
+                    <hr>
+                    <h6 class="mb-3">转换说明</h6>
+                    <ul class="small text-muted mb-4">
+                        <li>mBOM 初始结构与 eBOM 完全一致（{{ ebom.items.count() }} 项物料）</li>
+                        <li>创建后请进入 mBOM 详情页<strong>手工调整结构</strong>，如：
+                            <ul>
+                                <li>拆分虚拟件为多个物理零件</li>
+                                <li>添加中间半成品节点</li>
+                                <li>调整数量单位适配产线</li>
+                            </ul>
+                        </li>
+                        <li>调整完成后<strong>发布 mBOM</strong>，即可推送到 Odoo</li>
+                        <li>推送到 Odoo 为<strong>纯单向</strong>（PLM → Odoo），不会拉取任何数据</li>
+                    </ul>
+
+                    <button type="submit" class="btn btn-success w-100">
+                        <i class="bi bi-arrow-repeat me-1"></i>确认转换 —— 从 eBOM 创建 mBOM
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 已有派生 mBOM 提醒 -->
+{% if ebom.derived_mboms.count() > 0 %}
+<div class="card mt-4 border-warning">
+    <div class="card-header bg-warning bg-opacity-10">
+        <i class="bi bi-exclamation-triangle me-2 text-warning"></i>
+        此 eBOM 已有 {{ ebom.derived_mboms.count() }} 个派生 mBOM
+    </div>
+    <div class="card-body">
+        <div class="d-flex flex-wrap gap-2">
+            {% for mbom in ebom.derived_mboms %}
+            <a href="{{ url_for('boms.view_bom', id=mbom.id) }}" class="btn btn-outline-success btn-sm">
+                {{ mbom.bom_no }} — {{ mbom.name }}
+                <span class="badge {% if mbom.sync_status == 'synced' %}bg-success{% else %}bg-warning text-dark{% endif %} ms-1">
+                    {{ '已同步' if mbom.sync_status == 'synced' else '待推送' }}
+                </span>
+            </a>
+            {% endfor %}
+        </div>
+        <small class="text-muted mt-2 d-block">再次转换将创建新的 mBOM 版本</small>
+    </div>
+</div>
+{% endif %}
+{% endblock %}

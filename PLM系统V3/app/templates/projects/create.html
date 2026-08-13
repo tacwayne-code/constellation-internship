@@ -1,0 +1,265 @@
+{% extends "base.html" %}
+
+{% block title %}新建项目{% endblock %}
+
+{% block head %}
+{{ super() }}
+<style>
+.searchable-select {
+    position: relative;
+}
+.searchable-select .form-control[id="managerTrigger"] {
+    background: #fff;
+    cursor: pointer;
+    padding: 0.5rem 0.75rem;
+    text-align: left;
+}
+.searchable-select .form-control[id="managerTrigger"]:hover {
+    border-color: #86b7fe;
+    background: #f8f9fa;
+}
+.searchable-select .dropdown-panel {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    background: #fff;
+    border: 1px solid #ced4da;
+    border-radius: 6px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    z-index: 1050;
+    display: none;
+    margin-top: 4px;
+    overflow: hidden;
+}
+.searchable-select .dropdown-panel.show {
+    display: block;
+}
+.searchable-select .dropdown-list {
+    max-height: 240px;
+    overflow-y: auto;
+}
+.searchable-select .dropdown-item {
+    padding: 8px 12px;
+    cursor: pointer;
+    border-bottom: 1px solid #f0f0f0;
+}
+.searchable-select .dropdown-item:last-child {
+    border-bottom: none;
+}
+.searchable-select .dropdown-item:hover {
+    background: #f0f4ff;
+}
+.searchable-select .dropdown-item.selected {
+    background: #e7f5ff;
+    border-left: 3px solid #1971c2;
+}
+.searchable-select .dropdown-item .user-meta {
+    font-size: 11px;
+    color: #6c757d;
+}
+.searchable-select .dropdown-empty {
+    padding: 16px;
+    color: #999;
+    text-align: center;
+    font-size: 13px;
+}
+#managerDisplay.selected {
+    color: #212529;
+    font-weight: 500;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2 class="mb-0">新建项目</h2>
+        <a href="#" class="btn btn-outline-secondary">
+            <i class="bi bi-arrow-left"></i> 返回项目列表
+        </a>
+    </div>
+
+    <div class="card shadow-sm">
+        <div class="card-body">
+            <form method="POST" action="#">
+                <div class="mb-3">
+                    <label for="name" class="form-label">项目名称 <span class="text-danger">*</span></label>
+                    <input type="text" class="form-control" id="name" name="name" required>
+                </div>
+
+                <div class="mb-3">
+                    <label for="description" class="form-label">项目描述</label>
+                    <textarea class="form-control" id="description" name="description" rows="4"></textarea>
+                </div>
+
+                <div class="row mb-3">
+                    <div class="col-md-6">
+                        <label for="priority" class="form-label">优先级 <span class="text-danger">*</span></label>
+                        <select class="form-select" id="priority" name="priority" required>
+                            <option value="">请选择</option>
+                            <option value="high">高</option>
+                            <option value="medium">中</option>
+                            <option value="low">低</option>
+                        </select>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">项目经理</label>
+                        <!-- 可搜索下拉 -->
+                        <div class="searchable-select" id="managerSelector">
+                            <button type="button" class="form-control text-start d-flex justify-content-between align-items-center" id="managerTrigger">
+                                <span id="managerDisplay" class="text-muted">
+                                    <i class="bi bi-person me-1"></i>点击选择项目经理...
+                                </span>
+                                <i class="bi bi-chevron-down"></i>
+                            </button>
+                            <input type="hidden" name="manager_id" id="managerHidden" value="">
+                            <div class="dropdown-panel" id="managerPanel" style="display: none;">
+                                <div class="p-2 border-bottom">
+                                    <input type="text" class="form-control form-control-sm" id="managerSearch"
+                                           placeholder="🔍 搜索（姓名/部门/账号）..." autocomplete="off">
+                                </div>
+                                <div class="dropdown-list" id="managerList">
+                                    <div class="dropdown-item" data-value="" data-text="未指派">
+                                        <i class="bi bi-x-circle me-1"></i><span>未指派</span>
+                                    </div>
+                                    {% for user in users %}
+                                    <div class="dropdown-item"
+                                         data-value="{{ user.id }}"
+                                         data-text="{{ user.display_name }}"
+                                         data-search="{{ user.display_name }} {{ user.department or '' }} {{ user.username }}">
+                                        <div class="d-flex align-items-center">
+                                            <i class="bi bi-person-circle me-2 text-primary"></i>
+                                            <div class="flex-grow-1">
+                                                <div><strong>{{ user.display_name }}</strong>
+                                                    <span class="badge bg-{% if user.role == 'admin' %}danger{% elif user.role == 'manager' %}warning text-dark{% elif user.role == 'viewer' %}info{% else %}secondary{% endif %} ms-1" style="font-size:10px;">
+                                                        {% if user.role == 'admin' %}管理员
+                                                        {% elif user.role == 'manager' %}经理
+                                                        {% elif user.role == 'viewer' %}查看者
+                                                        {% else %}工程师{% endif %}
+                                                    </span>
+                                                </div>
+                                                <div class="user-meta">{{ user.department or '未分配部门' }} · {{ user.username }}</div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    {% endfor %}
+                                </div>
+                            </div>
+                        </div>
+                        <div class="form-text">直接点上面框就能看到所有项目经理，输字可快速筛选</div>
+                    </div>
+                </div>
+
+                <div class="row mb-3">
+                    <div class="col-md-6">
+                        <label for="start_date" class="form-label">开始日期</label>
+                        <input type="date" class="form-control" id="start_date" name="start_date">
+                    </div>
+                    <div class="col-md-6">
+                        <label for="end_date" class="form-label">结束日期</label>
+                        <input type="date" class="form-control" id="end_date" name="end_date">
+                    </div>
+                </div>
+
+                <div class="d-flex justify-content-end gap-2">
+                    <a href="#" class="btn btn-outline-secondary">取消</a>
+                    <button type="submit" class="btn btn-primary">创建项目</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<script>
+(function() {
+    const trigger = document.getElementById('managerTrigger');
+    const panel = document.getElementById('managerPanel');
+    const search = document.getElementById('managerSearch');
+    const list = document.getElementById('managerList');
+    const hidden = document.getElementById('managerHidden');
+    const display = document.getElementById('managerDisplay');
+    let isOpen = false;
+
+    function open() {
+        panel.style.display = 'block';
+        const arrow = trigger.querySelector('i.bi-chevron-down');
+        if (arrow) arrow.style.transform = 'rotate(180deg)';
+        isOpen = true;
+        setTimeout(() => search.focus(), 50);
+    }
+    function close() {
+        panel.style.display = 'none';
+        const arrow = trigger.querySelector('i.bi-chevron-down');
+        if (arrow) arrow.style.transform = '';
+        isOpen = false;
+    }
+    function toggle() { isOpen ? close() : open(); }
+    function filter(kw) {
+        const k = (kw || '').trim().toLowerCase();
+        let visible = 0;
+        list.querySelectorAll('.dropdown-item').forEach(function(item) {
+            const text = (item.dataset.search || '').toLowerCase();
+            const match = !k || text.indexOf(k) >= 0;
+            item.style.display = match ? '' : 'none';
+            if (match) visible++;
+        });
+        let empty = list.parentElement.querySelector('.dropdown-empty');
+        if (visible === 0 && k) {
+            if (!empty) {
+                empty = document.createElement('div');
+                empty.className = 'dropdown-empty';
+                empty.textContent = '未找到匹配的人员';
+                list.parentElement.appendChild(empty);
+            }
+        } else if (empty) {
+            empty.remove();
+        }
+    }
+    function selectItem(item) {
+        const value = item.dataset.value;
+        const text = item.dataset.text || '';
+        hidden.value = value;
+        list.querySelectorAll('.dropdown-item').forEach(function(i) { i.classList.remove('selected'); });
+        item.classList.add('selected');
+        // 使用 textContent 防 XSS，仅图标用 innerHTML
+        display.innerHTML = '';
+        var icon = document.createElement('i');
+        if (value) {
+            icon.className = 'bi bi-person-check-fill me-1 text-primary';
+            display.appendChild(icon);
+            display.appendChild(document.createTextNode(text.split(' ')[0]));
+            display.classList.add('selected');
+        } else {
+            icon.className = 'bi bi-x-circle me-1';
+            display.appendChild(icon);
+            display.appendChild(document.createTextNode('未指派'));
+            display.classList.remove('selected');
+        }
+        close();
+    }
+
+    trigger.addEventListener('click', function(e) {
+        e.preventDefault();
+        toggle();
+    });
+    search.addEventListener('input', function() { filter(search.value); });
+    search.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape') { close(); trigger.focus(); }
+    });
+
+    list.querySelectorAll('.dropdown-item').forEach(function(item) {
+        item.addEventListener('click', function() { selectItem(item); });
+    });
+
+    document.addEventListener('click', function(e) {
+        if (!document.getElementById('managerSelector').contains(e.target)) {
+            close();
+        }
+    });
+})();
+</script>
+{% endblock %}

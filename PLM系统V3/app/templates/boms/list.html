@@ -1,0 +1,278 @@
+{% extends "base.html" %}
+
+{% block title %}BOM 管理{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h4 class="mb-0"><i class="bi bi-list-check me-2"></i>BOM 管理
+    {% if my_pending_bom_count > 0 %}
+    <span class="badge bg-warning text-dark ms-2" title="有待审批的 BOM">
+        <i class="bi bi-bell-fill"></i> 待审批 {{ my_pending_bom_count }}
+    </span>
+    {% endif %}
+</h4>
+    <div class="d-flex gap-2">
+        <form method="post" action="#" style="display:inline;">
+            <button type="submit" class="btn btn-success btn-sm">
+                <i class="bi bi-stars me-1"></i>批量自动关联全部 BOM
+            </button>
+        </form>
+        <a href="{{ url_for('boms.create_bom') }}" class="btn btn-primary btn-sm">
+            <i class="bi bi-plus-lg me-1"></i>新建 eBOM
+        </a>
+    </div>
+</div>
+
+<!-- 架构说明横幅 -->
+<div class="alert alert-info alert-dismissible fade show mb-4 py-2" role="alert" style="font-size:13px;">
+    <div class="d-flex align-items-center gap-2">
+        <i class="bi bi-info-circle-fill fs-5"></i>
+        <div>
+            <strong>BOM 数据流：</strong>
+            <span class="badge bg-primary">eBOM</span> 设计工程师创建 →
+            <span class="badge bg-success">mBOM</span> 结构变换 →
+            <span class="badge bg-dark">Odoo</span> 单向推送（只推不取）
+        </div>
+    </div>
+    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+</div>
+
+<!-- 类型筛选 + 统计卡片 -->
+<div class="row g-3 mb-4">
+    <div class="col-md-3">
+        <a href="{{ url_for('boms.list_boms') }}" class="text-decoration-none">
+            <div class="card stat-card h-100 {% if not bom_type %}border-primary{% endif %}" style="cursor:pointer;">
+                <div class="d-flex align-items-center gap-2">
+                    <div class="icon" style="background:#e8eaf6;color:#3f51b5;"><i class="bi bi-list-check"></i></div>
+                    <div>
+                        <div class="text-muted" style="font-size:12px;">全部 BOM</div>
+                        <div style="font-size:22px;font-weight:600;">{{ ebom_count + mbom_count }}</div>
+                    </div>
+                </div>
+            </div>
+        </a>
+    </div>
+    <div class="col-md-3">
+        <a href="{{ url_for('boms.list_boms', type='EBOM') }}" class="text-decoration-none">
+            <div class="card stat-card h-100 {% if bom_type == 'EBOM' %}border-primary{% endif %}" style="cursor:pointer;">
+                <div class="d-flex align-items-center gap-2">
+                    <div class="icon" style="background:#e3f2fd;color:#1976d2;"><i class="bi bi-cpu"></i></div>
+                    <div>
+                        <div class="text-muted" style="font-size:12px;">eBOM 工程BOM</div>
+                        <div style="font-size:22px;font-weight:600;">{{ ebom_count }}</div>
+                    </div>
+                </div>
+            </div>
+        </a>
+    </div>
+    <div class="col-md-3">
+        <a href="{{ url_for('boms.list_boms', type='MBOM') }}" class="text-decoration-none">
+            <div class="card stat-card h-100 {% if bom_type == 'MBOM' %}border-success{% endif %}" style="cursor:pointer;">
+                <div class="d-flex align-items-center gap-2">
+                    <div class="icon" style="background:#e8f5e9;color:#388e3c;"><i class="bi bi-gear"></i></div>
+                    <div>
+                        <div class="text-muted" style="font-size:12px;">mBOM 制造BOM</div>
+                        <div style="font-size:22px;font-weight:600;">{{ mbom_count }}</div>
+                    </div>
+                </div>
+            </div>
+        </a>
+    </div>
+    <div class="col-md-3">
+        <a href="{{ url_for('boms.list_boms', type='MBOM', sync='not_synced') }}" class="text-decoration-none">
+            <div class="card stat-card h-100 {% if sync_filter == 'not_synced' %}border-warning{% endif %}" style="cursor:pointer;">
+                <div class="d-flex align-items-center gap-2">
+                    <div class="icon" style="background:#fff8e1;color:#f57c00;"><i class="bi bi-cloud-upload"></i></div>
+                    <div>
+                        <div class="text-muted" style="font-size:12px;">待推送 Odoo</div>
+                        <div style="font-size:22px;font-weight:600;">{{ pending_sync }}</div>
+                    </div>
+                </div>
+            </div>
+        </a>
+    </div>
+</div>
+
+<!-- BOM 列表 -->
+<div class="card">
+    <div class="card-header bg-white border-bottom d-flex justify-content-between align-items-center">
+        <div class="d-flex gap-2">
+            {% if bom_type or sync_filter %}
+            <span class="badge bg-light text-dark">
+                {% if bom_type %}{{ bom_type }}{% endif %}
+                {% if sync_filter %}{% if bom_type %} / {% endif %}{{ '待推送' if sync_filter == 'not_synced' else sync_filter }}{% endif %}
+            </span>
+            {% endif %}
+        </div>
+        <div>
+            {% if bom_type or sync_filter %}
+            <a href="{{ url_for('boms.list_boms') }}" class="btn btn-outline-secondary btn-sm">
+                <i class="bi bi-x-circle me-1"></i>清除筛选
+            </a>
+            {% endif %}
+        </div>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0">
+                <thead class="table-light">
+                    <tr class="text-nowrap">
+                        <th style="width:170px;">BOM 编号</th>
+                        <th style="width:200px;">名称</th>
+                        <th style="width:70px;">类型</th>
+                        <th style="width:150px;">源 BOM</th>
+                        <th style="width:160px;">关联产品</th>
+                        <th style="width:60px;">版本</th>
+                        <th style="width:80px;">状态</th>
+                        <th style="width:100px;">Odoo 同步</th>
+                        <th style="width:80px;">创建人</th>
+                        <th style="width:100px;">时间</th>
+                        <th style="width:120px;">操作</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for bom in boms %}
+                    <tr {% if bom.id in pending_by_bom %}class="table-warning"{% endif %} class="text-nowrap">
+                        <td>
+                            <a href="{{ url_for('boms.view_bom', id=bom.id) }}" class="text-decoration-none fw-semibold">
+                                {{ bom.bom_no }}
+                            </a>
+                            {% if bom.id in pending_by_bom %}
+                            <a href="{{ url_for('boms.view_bom', id=bom.id) }}#tab-approvals" class="badge bg-danger ms-1" title="点击前往审批">
+                                <i class="bi bi-bell-fill"></i> 待我审 第{{ pending_by_bom[bom.id] }}步
+                            </a>
+                            {% endif %}
+                        </td>
+                        <td class="text-truncate" style="max-width:200px;" title="{{ bom.name }}">
+                            <a href="{{ url_for('boms.view_bom', id=bom.id) }}" class="text-decoration-none">
+                                {{ bom.name }}
+                            </a>
+                        </td>
+                        <td>
+                            {% if bom.bom_type == 'EBOM' %}
+                            <span class="badge bg-primary">eBOM</span>
+                            {% elif bom.bom_type == 'MBOM' %}
+                            <span class="badge bg-success">mBOM</span>
+                            {% else %}
+                            <span class="badge bg-secondary">{{ bom.bom_type }}</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if bom.source_ebom %}
+                            <a href="{{ url_for('boms.view_bom', id=bom.source_ebom.id) }}" class="text-decoration-none small">
+                                <i class="bi bi-arrow-right me-1"></i>{{ bom.source_ebom.bom_no }}
+                            </a>
+                            {% elif bom.bom_type == 'EBOM' %}
+                            <span class="text-muted small">— 数据源</span>
+                            {% else %}
+                            <span class="text-muted small">—</span>
+                            {% endif %}
+                        </td>
+                        <td class="text-truncate" style="max-width:160px;" title="{{ bom.product.code if bom.product else '-' }}">
+                            {% if bom.product %}
+                                {% if bom.product.code and bom.product.code[:3] != 'ITM' %}
+                                    <code class="small">{{ bom.product.code }}</code>
+                                {% else %}
+                                    <code class="small" title="{{ bom.product.system_id }}">{{ bom.product.name or bom.product.system_id[:18] + '...' }}</code>
+                                {% endif %}
+                            {% else %}-{% endif %}
+                        </td>
+                        <td>{{ bom.version }}</td>
+                        <td>
+                            {% if bom.status == 'draft' %}
+                            <span class="badge bg-warning text-dark">草稿</span>
+                            {% elif bom.status == 'released' %}
+                            <span class="badge bg-success">已发布</span>
+                            {% elif bom.status == 'obsolete' %}
+                            <span class="badge bg-secondary">已作废</span>
+                            {% else %}
+                            <span class="badge bg-light text-dark">{{ bom.status }}</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if bom.bom_type == 'MBOM' %}
+                                {% if bom.sync_status == 'synced' %}
+                                <span class="badge bg-success" title="{{ bom.sync_time.strftime('%Y-%m-%d %H:%M') if bom.sync_time else '' }}">
+                                    <i class="bi bi-check-circle me-1"></i>已同步
+                                </span>
+                                {% elif bom.sync_status == 'sync_failed' %}
+                                <span class="badge bg-danger" title="{{ bom.sync_message }}">
+                                    <i class="bi bi-x-circle me-1"></i>失败
+                                </span>
+                                {% else %}
+                                <span class="badge bg-warning text-dark">
+                                    <i class="bi bi-cloud-upload me-1"></i>待推送
+                                </span>
+                                {% endif %}
+                            {% else %}
+                            <span class="text-muted small">—</span>
+                            {% endif %}
+                        </td>
+                        <td><span class="small">{{ bom.creator.display_name if bom.creator else '-' }}</span></td>
+                        <td><span class="small">{{ bom.created_at.strftime('%m-%d %H:%M') if bom.created_at else '-' }}</span></td>
+                        <td>
+                            <div class="d-flex gap-1 align-items-center">
+                                <a href="{{ url_for('boms.view_bom', id=bom.id) }}"
+                                   class="btn btn-outline-primary btn-sm d-inline-flex align-items-center justify-content-center"
+                                   title="查看详情" style="width:32px;height:32px;padding:0;">
+                                    <i class="bi bi-eye"></i>
+                                </a>
+                                {% if bom.status != 'released' %}
+                                <a href="{{ url_for('boms.edit_bom', id=bom.id) }}"
+                                   class="btn btn-outline-secondary btn-sm d-inline-flex align-items-center justify-content-center"
+                                   title="编辑" style="width:32px;height:32px;padding:0;">
+                                    <i class="bi bi-pencil"></i>
+                                </a>
+                                {% endif %}
+                                <form method="post" action="{{ url_for('boms.delete_bom', id=bom.id) }}"
+                                      onsubmit="return confirm('确定要删除 BOM「{{ bom.name }}」吗？\n{% if bom.bom_type == 'EBOM' %}如果已有派生 mBOM，需先删除 mBOM。\n{% endif %}此操作不可撤销！');">
+                                    <button type="submit" class="btn btn-outline-danger btn-sm d-inline-flex align-items-center justify-content-center"
+                                            title="删除" style="width:32px;height:32px;padding:0;">
+                                        <i class="bi bi-trash"></i>
+                                    </button>
+                                </form>
+                            </div>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="11" class="text-center text-muted py-5">
+                            <i class="bi bi-inbox d-block mb-2" style="font-size:32px;"></i>
+                            {% if bom_type %}
+                            暂无 {{ bom_type }} 类型的 BOM
+                            {% else %}
+                            暂无 BOM 数据，点击「新建 eBOM」创建第一个工程 BOM
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% if total_pages > 1 %}
+        <div class="d-flex justify-content-between align-items-center px-3 py-2 border-top bg-light">
+            <small class="text-muted">共 <strong>{{ total }}</strong> 条，第 <strong>{{ page }}</strong> / {{ total_pages }} 页</small>
+            <nav>
+                <ul class="pagination pagination-sm mb-0">
+                    <li class="page-item {% if page <= 1 %}disabled{% endif %}">
+                        <a class="page-link" href="{{ url_for('boms.list_boms', page=page-1, type=bom_type, sync=sync_filter) }}"><i class="bi bi-chevron-left"></i></a>
+                    </li>
+                    {% for p in range(1, total_pages+1) %}
+                        {% if p == 1 or p == total_pages or (p >= page-2 and p <= page+2) %}
+                            <li class="page-item {% if p == page %}active{% endif %}">
+                                <a class="page-link" href="{{ url_for('boms.list_boms', page=p, type=bom_type, sync=sync_filter) }}">{{ p }}</a>
+                            </li>
+                        {% elif p == page-3 or p == page+3 %}
+                            <li class="page-item disabled"><span class="page-link">…</span></li>
+                        {% endif %}
+                    {% endfor %}
+                    <li class="page-item {% if page >= total_pages %}disabled{% endif %}">
+                        <a class="page-link" href="{{ url_for('boms.list_boms', page=page+1, type=bom_type, sync=sync_filter) }}"><i class="bi bi-chevron-right"></i></a>
+                    </li>
+                </ul>
+            </nav>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
