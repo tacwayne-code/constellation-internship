@@ -1,0 +1,9 @@
+{% extends "admin/change_list.html" %}
+
+{% block object-tools-items %}
+  {% if can_create_employee %}
+    <li>
+      <a href="{% url 'admin:employees_employee_add' %}" class="addlink">新建</a>
+    </li>
+  {% endif %}
+{% endblock %}

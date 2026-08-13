@@ -1,0 +1,52 @@
+{% extends "admin/index.html" %}
+{% load static %}
+
+{% block head %}
+  <style type="text/css">
+    .logo-wrap .brand-logo {
+      display: block;
+      width: 38px;
+      max-width: 38px;
+      height: auto;
+      margin: 0 10px 0 0;
+    }
+    .logo-wrap .brand-name {
+      color: #fff;
+      font-weight: 600;
+      white-space: nowrap;
+    }
+    .logo-wrap .brand-content {
+      display: flex;
+      align-items: center;
+      height: 58px;
+      padding-left: 10px;
+    }
+  </style>
+{% endblock %}
+
+{% block logo %}
+  <div class="logo-wrap" v-if="!fold">
+    <div class="brand-content">
+      <img class="brand-logo" src="{% static 'admin/branding/inspiri-logo-white.png' %}" alt="Inspiri">
+      <span class="brand-name">生产报工管理</span>
+    </div>
+  </div>
+{% endblock %}
+
+{% block index_js %}
+  <script type="text/javascript">
+    // SimpleUI opens its header home action with window.open(). Keep only
+    // this application's home route in the current browser page.
+    (function (openWindow) {
+      window.open = function (url) {
+        if (url === "/" || url === "/admin/" || !url) {
+          window.location.assign("/admin/");
+          return window;
+        }
+        return openWindow.apply(window, arguments);
+      };
+    }(window.open));
+  </script>
+  <script type="text/javascript" src="{% static 'admin/simpleui-menu.js' %}?v=2"></script>
+  <script type="text/javascript" src="{% static 'admin/simpleui-x/js/index.js' %}"></script>
+{% endblock %}
