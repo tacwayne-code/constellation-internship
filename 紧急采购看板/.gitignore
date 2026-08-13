@@ -1,0 +1,13 @@
+# 配置文件（含账号密码），禁止提交
+.env
+
+# Python
+__pycache__/
+*.pyc
+
+# 运行日志
+server.log
+server.err.log
+
+# 工作记忆（可能含内网地址/账号等敏感信息），禁止提交
+.workbuddy/
