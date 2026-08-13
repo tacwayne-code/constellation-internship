@@ -20,6 +20,38 @@ class ReceiveWorkReportTests(TestCase):
     def post(self, payload=None):
         return self.client.post("/internal/api/v1/work-reports/", data=json.dumps(payload or self.payload), content_type="application/json", headers={"X-Internal-API-Key": "test-api-key"})
 
+    def test_internal_api_uses_api_key_without_csrf_cookie(self):
+        csrf_client = self.client_class(enforce_csrf_checks=True)
+        response = csrf_client.post(
+            "/internal/api/v1/work-reports/",
+            data=json.dumps(self.payload),
+            content_type="application/json",
+            headers={"X-Internal-API-Key": "test-api-key"},
+        )
+        self.assertEqual(response.status_code, 201)
+
+        status_response = csrf_client.post(
+            "/internal/api/v1/work-reports/sync-status/",
+            data=json.dumps({
+                "sourceReportId": "legacy-42",
+                "idempotencyKey": "request-42",
+                "eventKey": "legacy-42-csrf-final",
+                "syncStatus": "synced",
+            }),
+            content_type="application/json",
+            headers={"X-Internal-API-Key": "test-api-key"},
+        )
+        self.assertEqual(status_response.status_code, 200)
+
+    def test_csrf_exemption_does_not_bypass_api_key(self):
+        csrf_client = self.client_class(enforce_csrf_checks=True)
+        response = csrf_client.post(
+            "/internal/api/v1/work-reports/",
+            data=json.dumps(self.payload),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 401)
+
     def test_creates_report_and_snapshot(self):
         response = self.post()
         self.assertEqual(response.status_code, 201)

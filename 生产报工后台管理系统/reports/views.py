@@ -11,6 +11,7 @@ from django.db.models import Count, Sum
 from django.http import HttpResponse, HttpResponseBadRequest, JsonResponse
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
+from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET, require_POST
 
 from .models import AuditLog, ReportMaterialSnapshot, ReportSyncEvent, WorkReport
@@ -65,6 +66,7 @@ def _get_report_from_identity(data):
     return None, JsonResponse({"detail": "Work report not found"}, status=404)
 
 
+@csrf_exempt
 @require_POST
 def receive_work_report(request):
     if not _api_authorized(request):
@@ -141,6 +143,7 @@ def receive_work_report(request):
     return JsonResponse({"id": report.pk, "created": True, "sourceReportId": report.source_report_id}, status=201)
 
 
+@csrf_exempt
 @require_POST
 def receive_sync_status(request):
     if not _api_authorized(request):
