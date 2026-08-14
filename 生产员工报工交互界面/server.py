@@ -1,5 +1,5 @@
 import json
-import hashlib
+import hmac
 import logging
 import math
 import os
@@ -15,6 +15,8 @@ from http import HTTPStatus
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlparse
+from urllib.error import HTTPError, URLError
+from urllib.request import Request, urlopen
 
 import odoo_adapter
 from odoo_remaining_qty_fix import OdooRemainingQuantityFix
@@ -45,6 +47,8 @@ ODOO_PASSWORD = os.getenv("ODOO_PASSWORD", "")
 MOCK_MODE = os.getenv("ODOO_MOCK_MODE", "false").lower() == "true"
 LOCAL_TZ = timezone(timedelta(hours=8))
 API_KEY = os.getenv("API_KEY", "").strip()
+REPORT_ADMIN_API_URL = os.getenv("REPORT_ADMIN_API_URL", "").strip().rstrip("/")
+REPORT_ADMIN_API_KEY = os.getenv("REPORT_ADMIN_API_KEY", "").strip()
 DB_FILE = BASE_DIR / ("data.mock.db" if MOCK_MODE else "data.db")
 RESET_MARKER_FILE = BASE_DIR / ".reset.marker"
 WHITE_EXT = {".html", ".css", ".js", ".svg", ".ico", ".png"}
@@ -78,6 +82,83 @@ if MOCK_MODE:
 else:
     logger.info(f"Odoo: {ODOO_URL}")
     logger.debug(f"Odoo 连接详情: db={ODOO_DB} user={ODOO_USER}")
+
+
+def _report_admin_configured():
+    return bool(REPORT_ADMIN_API_URL and REPORT_ADMIN_API_KEY)
+
+
+def _report_admin_payload(report, materials):
+    """Translate the existing SOP row to the management-service contract."""
+    return {
+        "sourceReportId": str(report["id"]),
+        "idempotencyKey": str(report["idempotencyKey"]),
+        "productionId": str(report.get("productionId", "")),
+        "workorderId": str(report.get("workorderId", "")),
+        "workerId": str(report["workerId"]),
+        "workerName": str(report["workerName"]),
+        "workerTeam": str(report.get("workerTeam", "")),
+        "operation": str(report["operation"]),
+        "operationLabel": str(report["operationLabel"]),
+        "orderId": str(report.get("orderId", "")),
+        "orderCustomer": str(report.get("orderCustomer", "")),
+        "orderProduct": str(report.get("orderProduct", "")),
+        "qty": report["qty"],
+        "qualified": report.get("qualified", report["qty"]),
+        "hours": report.get("hours", 0),
+        "remark": report.get("remark", ""),
+        "date": report["date"],
+        "time": report["time"],
+        "syncStatus": report.get("syncStatus", "local"),
+        "materialSyncStatus": report.get("materialSyncStatus", "unknown"),
+        "odooReportId": report.get("odooReportId", ""),
+        "odooStockMoveIds": report.get("odooStockMoveIds", "[]"),
+        "odooProgressQty": report.get("odooProgressQty"),
+        "errorMessage": report.get("errorMessage", ""),
+        "materials": materials or [],
+    }
+
+
+def _post_report_admin(path, payload):
+    body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+    request = Request(
+        f"{REPORT_ADMIN_API_URL}{path}", body,
+        headers={"Content-Type": "application/json", "X-Internal-API-Key": REPORT_ADMIN_API_KEY},
+        method="POST",
+    )
+    try:
+        with urlopen(request, timeout=5) as response:
+            if response.status not in (200, 201):
+                raise RuntimeError(f"unexpected status {response.status}")
+        return True
+    except (HTTPError, URLError, TimeoutError, OSError, RuntimeError) as exc:
+        logger.warning("后台管理副本推送失败 (%s): %s", path, exc)
+        return False
+
+
+def _push_report_admin(report, materials, final_status=False):
+    """Run outside the worker request; failure never affects SOP/Odoo processing."""
+    if not _report_admin_configured():
+        return
+    payload = _report_admin_payload(report, materials)
+
+    def push():
+        if not _post_report_admin("/internal/api/v1/work-reports/", payload):
+            return
+        if final_status:
+            _post_report_admin("/internal/api/v1/work-reports/sync-status/", {
+                "sourceReportId": payload["sourceReportId"],
+                "idempotencyKey": payload["idempotencyKey"],
+                "eventKey": f"{payload['sourceReportId']}:final:{payload['syncStatus']}:{payload['materialSyncStatus']}",
+                "syncStatus": payload["syncStatus"],
+                "materialSyncStatus": payload["materialSyncStatus"],
+                "odooReportId": payload["odooReportId"],
+                "odooStockMoveIds": payload["odooStockMoveIds"],
+                "odooProgressQty": payload["odooProgressQty"],
+                "errorMessage": payload["errorMessage"],
+            })
+
+    threading.Thread(target=push, name="report-admin-sync", daemon=True).start()
 
 # ============================================================
 # 并发锁
@@ -335,6 +416,7 @@ def _init_db():
                 viewed_at      TEXT DEFAULT (datetime('now','localtime'))
             );
             CREATE INDEX IF NOT EXISTS idx_sop_logs_wo ON sop_view_logs(workorder_id);
+
         """)
         conn.commit()
         conn.close()
@@ -437,6 +519,25 @@ def db_add_worker(wid, name, team, source="local", odoo_employee_id=0,
         c.commit()
         c.close()
     logger.info(f"添加工人: {name} ({wid}), source={source}")
+
+
+def db_upsert_worker(wid, name, team, source="report_admin", operation_codes=None):
+    operation_codes = operation_codes or []
+    with DB_LOCK:
+        c = sqlite3.connect(str(DB_FILE))
+        c.execute(
+            """INSERT INTO workers (id, name, team, source, odoo_employee_id, operation_codes)
+               VALUES (?, ?, ?, ?, 0, ?)
+               ON CONFLICT(id) DO UPDATE SET
+                 name=excluded.name,
+                 team=excluded.team,
+                 source=excluded.source,
+                 odoo_employee_id=0,
+                 operation_codes=excluded.operation_codes""",
+            (wid, name, team, source, json.dumps(operation_codes, ensure_ascii=False)),
+        )
+        c.commit()
+        c.close()
 
 
 def _normalize_report(row):
@@ -614,15 +715,9 @@ def db_get_report_materials(report_id):
 # ============================================================
 
 PRODUCTION_DEPARTMENT_NAME = os.getenv("ODOO_PRODUCTION_DEPARTMENT", "生产车间").strip()
-_WORKER_CACHE_TTL = 10
+_WORKER_CACHE_TTL = 30
 _WORKER_CACHE_LOCK = threading.Lock()
 _WORKER_CACHE = {"data": None, "ts": 0}
-
-
-def _job_operation_code(name):
-    """Return a stable API code for an Odoo job-position operation name."""
-    digest = hashlib.sha1(str(name).strip().encode("utf-8")).hexdigest()[:12]
-    return f"odoo_job_{digest}"
 
 
 def _split_job_operations(job_name):
@@ -633,67 +728,57 @@ def _split_job_operations(job_name):
     ]
 
 
-def _load_odoo_production_workers():
-    """Read active workers and their job positions from the configured department."""
-    client = get_odoo()
-    departments = client.search_read(
-        "hr.department", [("active", "=", True)],
-        ["id", "name"], limit=100, order="id asc",
+def _load_report_admin_workers():
+    """Read the employee master data from the management service over HTTP."""
+    if not _report_admin_configured():
+        raise RuntimeError("未配置后台员工接口")
+    request = Request(
+        f"{REPORT_ADMIN_API_URL}/internal/api/v1/employees/",
+        headers={"Accept": "application/json", "X-Internal-API-Key": REPORT_ADMIN_API_KEY},
+        method="GET",
     )
-    department_ids = [
-        row["id"] for row in departments
-        if str(row.get("name") or "").strip() == PRODUCTION_DEPARTMENT_NAME
-    ]
-    if not department_ids:
-        raise OdooError(f"未找到 Odoo 部门: {PRODUCTION_DEPARTMENT_NAME}")
-
-    rows = client.search_read(
-        "hr.employee",
-        [("department_id", "in", department_ids), ("active", "=", True)],
-        ["id", "name", "department_id", "job_id", "job_title"],
-        limit=500, order="id asc",
-    )
+    with urlopen(request, timeout=5) as response:
+        payload = json.load(response)
+    rows = payload.get("data", []) if isinstance(payload, dict) else []
+    if not isinstance(rows, list):
+        raise ValueError("后台员工接口返回格式无效")
     workers = []
     for row in rows:
-        name = str(row.get("name") or "").strip()
-        if not name or name == "罗伟华":
+        worker_id = str(row.get("sourceWorkerId", "")).strip()
+        name = str(row.get("name", "")).strip()
+        operation_codes = row.get("operationCodes", [])
+        if not worker_id or not name or not isinstance(operation_codes, list):
             continue
-        job_name = rel_name(row.get("job_id"), str(row.get("job_title") or "")).strip()
-        job_operations = _split_job_operations(job_name)
         workers.append({
-            "id": f"ODOO_EMP_{row['id']}",
+            "id": worker_id,
             "name": name,
-            "team": rel_name(row.get("department_id"), PRODUCTION_DEPARTMENT_NAME),
-            "source": "odoo",
-            "odooEmployeeId": row["id"],
-            "jobTitle": job_name,
-            "jobOperationNames": job_operations,
-            "operationCodes": [_job_operation_code(item) for item in job_operations],
+            "team": str(row.get("departmentName", row.get("team", ""))).strip(),
+            "source": "report_admin",
+            "odooEmployeeId": 0,
+            "jobTitle": str(row.get("jobTitle", "")).strip(),
+            "jobOperationNames": _split_job_operations(row.get("jobTitle", "")),
+            "operationCodes": [str(code) for code in operation_codes if str(code) in VALID_OPERATIONS],
         })
     return workers
 
 
 def load_workers(force_refresh=False):
-    local_workers = db_workers()
-    if get_odoo_mode() != "real":
-        return local_workers
-
     now = time.time()
     with _WORKER_CACHE_LOCK:
         if (not force_refresh and _WORKER_CACHE["data"] is not None
                 and now - _WORKER_CACHE["ts"] < _WORKER_CACHE_TTL):
-            return local_workers + list(_WORKER_CACHE["data"])
+            return list(_WORKER_CACHE["data"])
     try:
-        odoo_workers = _load_odoo_production_workers()
+        workers = _load_report_admin_workers()
         with _WORKER_CACHE_LOCK:
-            _WORKER_CACHE["data"] = list(odoo_workers)
+            _WORKER_CACHE["data"] = list(workers)
             _WORKER_CACHE["ts"] = time.time()
-        return local_workers + odoo_workers
+        return workers
     except Exception as exc:
-        logger.warning(f"生产车间员工同步失败: {exc}")
+        logger.warning(f"后台员工同步失败: {exc}")
         with _WORKER_CACHE_LOCK:
             cached = list(_WORKER_CACHE["data"] or [])
-        return local_workers + cached
+        return cached or db_workers()
 
 
 def load_reports():
@@ -723,7 +808,15 @@ OPERATIONS = [
     {"id": "qc", "code": "qc", "name": "质检", "hostType": None},
     {"id": "packing", "code": "packing", "name": "包装", "hostType": None,
      "workorderNames": ["打包"]},
-    {"id": "debug", "code": "debug", "name": "调试", "hostType": None},
+    {"id": "debug", "code": "debug", "name": "调试", "hostType": None,
+     "productClass": "machine", "workorderNames": ["调试"]},
+    # Stable replacements for the former Odoo-job-derived operation codes.
+    {"id": "worker_assembly", "code": "worker_assembly", "name": "组装", "hostType": None,
+     "productClass": "machine", "workorderNames": ["组装"]},
+    {"id": "worker_electrical", "code": "worker_electrical", "name": "电控", "hostType": None,
+     "productClass": "machine", "workorderNames": ["电控"]},
+    {"id": "worker_packing", "code": "worker_packing", "name": "打包", "hostType": None,
+     "productClass": "machine", "workorderNames": ["打包"]},
     # 主机类使用两个稳定的本地工序编码，分别绑定 Odoo 的组装/打包工单。
     # 编码保持不变，兼容已有本地工人绑定和历史报工记录。
     {"id": "pc_assembly_tape", "code": "pc_assembly_tape", "name": "组装", "hostType": None,
@@ -773,21 +866,6 @@ def get_operations():
         o = dict(op)
         o["meta"] = {"mode": mode, "source": "odoo" if mode == "real" else "mock"}
         ops.append(o)
-    if mode == "real":
-        dynamic = {}
-        for worker in load_workers():
-            for name in worker.get("jobOperationNames", []):
-                code = _job_operation_code(name)
-                dynamic[code] = {
-                    "id": code,
-                    "code": code,
-                    "name": name,
-                    "hostType": None,
-                    "productClass": "machine",
-                    "workorderNames": [name],
-                    "meta": {"mode": mode, "source": "odoo_job"},
-                }
-        ops.extend(dynamic.values())
     return ops
 
 
@@ -817,6 +895,12 @@ def check_auth(handler):
         return True
     logger.warning(f"拒绝来自 {client_ip} 的 POST 请求 (无 API_KEY 且不在白名单)")
     return False
+
+
+def check_report_admin_auth(handler):
+    """Authenticate employee mirror updates from the management service only."""
+    supplied = handler.headers.get("X-Internal-API-Key", "")
+    return bool(REPORT_ADMIN_API_KEY and supplied and hmac.compare_digest(supplied, REPORT_ADMIN_API_KEY))
 
 
 _worker_ids_lock = threading.Lock()
@@ -3022,6 +3106,12 @@ class Handler(SimpleHTTPRequestHandler):
         if length > 65536:
             self.send_error(HTTPStatus.REQUEST_ENTITY_TOO_LARGE, "Body too large")
             return
+        if path == "/api/workers/sync":
+            if not check_report_admin_auth(self):
+                self.write_json({"ok": False, "error": "未授权：无效的后台同步密钥"},
+                                status=HTTPStatus.UNAUTHORIZED)
+                return
+            return self.handle_worker_sync_post()
         if not check_auth(self):
             self.write_json({"ok": False, "error": "未授权：缺少或无效的 API Key"},
                             status=HTTPStatus.UNAUTHORIZED)
@@ -3215,7 +3305,7 @@ class Handler(SimpleHTTPRequestHandler):
                     op_info.get("name") == "组装"
                     and workorder_view["productClass"] in {"machine", "host"}
                 )
-                if worker.get("source") == "odoo" and workorder_view["productClass"] != "machine":
+                if worker.get("source") in {"odoo", "report_admin"} and workorder_view["productClass"] != "machine":
                     self.write_json({
                         "ok": False,
                         "error": "生产车间员工只能选择机器类工单",
@@ -3391,6 +3481,7 @@ class Handler(SimpleHTTPRequestHandler):
                 if db_add_report(report, materials):
                     saved = db_get_report(report["id"]) or report
                     result = _normalize_report(saved) if isinstance(saved, dict) else saved
+                    _push_report_admin(result, db_get_report_materials(report["id"]), final_status=True)
                     self.write_json({
                         "ok": True,
                         "data": result,
@@ -3421,6 +3512,7 @@ class Handler(SimpleHTTPRequestHandler):
                         "error": "重复请求：该幂等键已被使用",
                     }, status=HTTPStatus.CONFLICT)
                     return
+                _push_report_admin(report, materials)
 
             # 调用 Odoo 物料扣减（不依赖工单）
             odoo_result = None
@@ -3586,6 +3678,7 @@ class Handler(SimpleHTTPRequestHandler):
             if saved_ok:
                 saved = db_get_report(report["id"]) or report
                 result = _normalize_report(saved) if isinstance(saved, dict) else saved
+                _push_report_admin(result, db_get_report_materials(report["id"]), final_status=True)
 
                 if report["syncStatus"] == "odoo_synced":
                     msg = "报工成功，Odoo 物料库存与制造订单进度已同步"
@@ -3617,6 +3710,43 @@ class Handler(SimpleHTTPRequestHandler):
             self.write_json({"ok": False, "error": "无效的 JSON 格式"}, status=HTTPStatus.BAD_REQUEST)
         except Exception as exc:
             logger.error(f"handle_report_post 异常: {exc}", exc_info=True)
+            self.write_json({"ok": False, "error": f"服务器错误: {exc}"},
+                            status=HTTPStatus.INTERNAL_SERVER_ERROR)
+
+    def handle_worker_sync_post(self):
+        try:
+            length = int(self.headers.get("Content-Length", 0))
+            body = self.rfile.read(length).decode("utf-8")
+            worker = json.loads(body)
+            if not isinstance(worker, dict):
+                raise ValueError("员工数据必须是对象")
+            wid = str(worker.get("sourceWorkerId", "")).strip()
+            name = str(worker.get("name", "")).strip()
+            team = str(worker.get("departmentName", worker.get("team", ""))).strip()
+            operation_codes = worker.get("operationCodes", [])
+            if not wid or not name or not team:
+                self.write_json({"ok": False, "error": "工人编号、姓名和所属部门不能为空"},
+                                status=HTTPStatus.BAD_REQUEST)
+                return
+            if not isinstance(operation_codes, list) or not operation_codes:
+                self.write_json({"ok": False, "error": "工作岗位未匹配到工序"}, status=HTTPStatus.BAD_REQUEST)
+                return
+            operation_codes = [str(code) for code in operation_codes]
+            if any(code not in VALID_OPERATIONS for code in operation_codes):
+                self.write_json({"ok": False, "error": "包含无效工序绑定"}, status=HTTPStatus.BAD_REQUEST)
+                return
+            db_upsert_worker(wid, name, team, "report_admin", operation_codes)
+            with _WORKER_CACHE_LOCK:
+                _WORKER_CACHE["data"] = None
+                _WORKER_CACHE["ts"] = 0
+            self.write_json({"ok": True, "data": {
+                "id": wid, "name": name, "team": team, "source": "report_admin",
+                "odooEmployeeId": 0, "operationCodes": operation_codes,
+            }})
+        except (ValueError, json.JSONDecodeError) as exc:
+            self.write_json({"ok": False, "error": str(exc)}, status=HTTPStatus.BAD_REQUEST)
+        except Exception as exc:
+            logger.error(f"handle_worker_sync_post 异常: {exc}", exc_info=True)
             self.write_json({"ok": False, "error": f"服务器错误: {exc}"},
                             status=HTTPStatus.INTERNAL_SERVER_ERROR)
 
