@@ -464,6 +464,14 @@ WORKER_OPERATION_BINDINGS = {
     "LOCAL_LWH": ["pc_assembly_tape", "pc_assembly_splitter"],
 }
 
+
+def _effective_worker_source(worker_id, source):
+    """Keep configured local host workers distinct from mirrored employees."""
+    if str(worker_id) in WORKER_OPERATION_BINDINGS:
+        return "local"
+    return source or "local"
+
+
 def _ensure_worker_operation_bindings():
     """Persist the allowed operation codes for configured local workers."""
     with DB_LOCK:
@@ -497,7 +505,9 @@ def db_workers():
         if not isinstance(operation_codes, list):
             operation_codes = []
         w = {"id": r["id"], "name": r["name"], "team": r["team"],
-             "source": r["source"] if "source" in r.keys() else "local",
+             "source": _effective_worker_source(
+                 r["id"], r["source"] if "source" in r.keys() else "local"
+             ),
              "odooEmployeeId": r["odoo_employee_id"] if "odoo_employee_id" in r.keys() else 0,
              "operationCodes": [str(code) for code in operation_codes]}
         results.append(w)
@@ -753,7 +763,7 @@ def _load_report_admin_workers():
             "id": worker_id,
             "name": name,
             "team": str(row.get("departmentName", row.get("team", ""))).strip(),
-            "source": "report_admin",
+            "source": _effective_worker_source(worker_id, "report_admin"),
             "odooEmployeeId": 0,
             "jobTitle": str(row.get("jobTitle", "")).strip(),
             "jobOperationNames": _split_job_operations(row.get("jobTitle", "")),
@@ -3305,7 +3315,9 @@ class Handler(SimpleHTTPRequestHandler):
                     op_info.get("name") == "组装"
                     and workorder_view["productClass"] in {"machine", "host"}
                 )
-                if worker.get("source") in {"odoo", "report_admin"} and workorder_view["productClass"] != "machine":
+                if (_effective_worker_source(worker_id, worker.get("source"))
+                        in {"odoo", "report_admin"}
+                        and workorder_view["productClass"] != "machine"):
                     self.write_json({
                         "ok": False,
                         "error": "生产车间员工只能选择机器类工单",
@@ -3735,12 +3747,13 @@ class Handler(SimpleHTTPRequestHandler):
             if any(code not in VALID_OPERATIONS for code in operation_codes):
                 self.write_json({"ok": False, "error": "包含无效工序绑定"}, status=HTTPStatus.BAD_REQUEST)
                 return
-            db_upsert_worker(wid, name, team, "report_admin", operation_codes)
+            source = _effective_worker_source(wid, "report_admin")
+            db_upsert_worker(wid, name, team, source, operation_codes)
             with _WORKER_CACHE_LOCK:
                 _WORKER_CACHE["data"] = None
                 _WORKER_CACHE["ts"] = 0
             self.write_json({"ok": True, "data": {
-                "id": wid, "name": name, "team": team, "source": "report_admin",
+                "id": wid, "name": name, "team": team, "source": source,
                 "odooEmployeeId": 0, "operationCodes": operation_codes,
             }})
         except (ValueError, json.JSONDecodeError) as exc:
