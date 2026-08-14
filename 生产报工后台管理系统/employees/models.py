@@ -1,3 +1,4 @@
+from django.core.exceptions import ValidationError
 from django.core.validators import RegexValidator
 from django.db import models
 
@@ -23,8 +24,10 @@ class Department(models.Model):
 
 
 class Employee(models.Model):
+    source_worker_id = models.CharField("SOP 工人编号", max_length=64, unique=True, null=True, blank=True)
+    operation_codes = models.JSONField("SOP 工序编码", default=list, blank=True)
     name = models.CharField("员工姓名", max_length=128)
-    email = models.EmailField("工作电子邮件", unique=True)
+    email = models.EmailField("工作电子邮件", unique=True, null=True, blank=True)
     department = models.ForeignKey(
         Department,
         verbose_name="所属部门",
@@ -32,7 +35,7 @@ class Employee(models.Model):
         related_name="employees",
     )
     job_title = models.CharField("工作岗位", max_length=128)
-    phone = models.CharField("电话", max_length=20, validators=[phone_validator])
+    phone = models.CharField("电话", max_length=20, validators=[phone_validator], blank=True)
     created_at = models.DateTimeField("创建时间", auto_now_add=True)
     updated_at = models.DateTimeField("更新时间", auto_now=True)
 
@@ -43,3 +46,10 @@ class Employee(models.Model):
 
     def __str__(self):
         return self.name
+
+    def clean(self):
+        super().clean()
+        from .sop_sync import operation_codes_for_job_title
+
+        if self.job_title and not operation_codes_for_job_title(self.job_title):
+            raise ValidationError({"job_title": "工作岗位必须填写已有工序名称，例如：组装，打包。"})

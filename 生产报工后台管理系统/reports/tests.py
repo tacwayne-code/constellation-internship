@@ -7,6 +7,7 @@ from django.urls import reverse
 
 from .models import WorkReport
 from employees.models import Department, Employee
+from employees.sop_sync import import_sop_workers, operation_codes_for_job_title
 
 
 @override_settings(INTERNAL_REPORT_API_KEY="test-api-key")
@@ -94,7 +95,7 @@ class EmployeeAdministrationTests(TestCase):
     def create_employee(self, **data):
         payload = {
             "name": "张三", "email": "zhangsan@example.com", "department_name": "生产部门",
-            "job_title": "装配员", "phone": "13800138000",
+            "job_title": "组装", "phone": "13800138000",
         }
         payload.update(data)
         return self.client.post(reverse("admin:employees_employee_add"), payload)
@@ -115,3 +116,25 @@ class EmployeeAdministrationTests(TestCase):
         response = self.create_employee(phone="invalid")
         self.assertEqual(response.status_code, 200)
         self.assertEqual(Employee.objects.count(), 0)
+
+    @patch("employees.admin.enqueue_sop_employee_sync")
+    def test_new_employee_receives_a_stable_sop_worker_id(self, sync_employee):
+        response = self.create_employee(job_title="组装，打包")
+        self.assertEqual(response.status_code, 302)
+        employee = Employee.objects.get()
+        self.assertEqual(employee.source_worker_id, f"ADMIN_EMP_{employee.pk}")
+        sync_employee.assert_called_once_with(employee.pk)
+
+
+class SopEmployeeImportTests(TestCase):
+    @patch("employees.sop_sync.fetch_sop_workers")
+    def test_imports_worker_department_and_job_operations(self, fetch_workers):
+        fetch_workers.return_value = [{
+            "id": "LOCAL_LWH", "name": "罗伟华", "team": "组装班",
+            "operationCodes": ["pc_assembly_tape", "pc_assembly_splitter"],
+        }]
+        self.assertEqual(import_sop_workers(), {"fetched": 1, "created": 1, "updated": 0, "skipped": 0})
+        employee = Employee.objects.get()
+        self.assertEqual(employee.department.name, "组装部")
+        self.assertEqual(employee.job_title, "组装，打包")
+        self.assertEqual(employee.operation_codes, ["pc_assembly_tape", "pc_assembly_splitter"])

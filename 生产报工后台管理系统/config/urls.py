@@ -2,6 +2,7 @@ from django.contrib import admin
 from django.shortcuts import redirect
 from django.urls import path
 
+from employees.views import internal_employee_list
 from reports import views
 
 urlpatterns = [
@@ -11,4 +12,5 @@ urlpatterns = [
     path("reports/export.csv", views.export_csv, name="report-export-csv"),
     path("internal/api/v1/work-reports/", views.receive_work_report, name="receive-work-report"),
     path("internal/api/v1/work-reports/sync-status/", views.receive_sync_status, name="receive-sync-status"),
+    path("internal/api/v1/employees/", internal_employee_list, name="internal-employee-list"),
 ]

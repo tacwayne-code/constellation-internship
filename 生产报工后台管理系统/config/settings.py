@@ -113,6 +113,14 @@ SOP_ORDER_SUMMARY_API_URL = os.environ.get(
     "SOP_ORDER_SUMMARY_API_URL",
     "http://192.168.1.100:8093/api/order-summary",
 ).strip()
+SOP_WORKERS_API_URL = os.environ.get(
+    "SOP_WORKERS_API_URL",
+    "http://192.168.1.100:8093/api/workers",
+).strip()
+SOP_EMPLOYEE_SYNC_URL = os.environ.get(
+    "SOP_EMPLOYEE_SYNC_URL",
+    "http://192.168.1.100:8093/api/workers/sync",
+).strip()
 SOP_REPORTS_SYNC_INTERVAL = max(
     10,
     int(os.environ.get("SOP_REPORTS_SYNC_INTERVAL", "30")),
