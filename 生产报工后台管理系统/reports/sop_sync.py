@@ -1,6 +1,7 @@
 import json
 import logging
 import re
+import threading
 import time
 from datetime import datetime
 from decimal import Decimal, InvalidOperation
@@ -16,6 +17,11 @@ from .models import ReportSyncEvent, WorkReport
 
 
 logger = logging.getLogger(__name__)
+
+PRODUCTION_DETAILS_CACHE_TTL = 30
+_production_details_cache = {"data": {}, "updated_at": 0.0}
+_production_details_cache_lock = threading.Lock()
+_production_details_refresh_lock = threading.Lock()
 
 SYNC_STATUS_MAP = {
     "local": WorkReport.SyncStatus.PENDING,
@@ -88,28 +94,59 @@ def _normalize_product_name(value):
     return re.sub(r"^\[[^]]+\]\s*", "", text).strip()
 
 
+def _production_details_cache_snapshot():
+    with _production_details_cache_lock:
+        return dict(_production_details_cache["data"]), _production_details_cache["updated_at"]
+
+
+def get_cached_production_details():
+    return _production_details_cache_snapshot()[0]
+
+
 def fetch_production_details():
-    records = []
-    errors = []
-    for url, label in (
-        (settings.SOP_ORDER_SUMMARY_API_URL, "order summary"),
-        (settings.SOP_WORKORDERS_API_URL, "workorders"),
-    ):
-        try:
-            records.extend(_fetch_sop_data(url, label))
-        except SopSyncError as exc:
-            errors.append(str(exc))
-    details = {
-        str(item.get("productionId")): {
-            "production_name": str(item.get("productionName", "")).strip(),
-            "product_name": _normalize_product_name(item.get("productName", "")),
+    cached_details, cached_at = _production_details_cache_snapshot()
+    now = time.monotonic()
+    if cached_details and now - cached_at < PRODUCTION_DETAILS_CACHE_TTL:
+        return cached_details
+
+    with _production_details_refresh_lock:
+        now = time.monotonic()
+        cached_details, cached_at = _production_details_cache_snapshot()
+        if cached_details and now - cached_at < PRODUCTION_DETAILS_CACHE_TTL:
+            return cached_details
+
+        records = []
+        errors = []
+        for url, label in (
+            (settings.SOP_ORDER_SUMMARY_API_URL, "order summary"),
+            (settings.SOP_WORKORDERS_API_URL, "workorders"),
+        ):
+            try:
+                records.extend(_fetch_sop_data(url, label))
+            except SopSyncError as exc:
+                errors.append(str(exc))
+        details = {
+            str(item.get("productionId")): {
+                "production_name": str(item.get("productionName", "")).strip(),
+                "product_name": _normalize_product_name(item.get("productName", "")),
+            }
+            for item in records
+            if isinstance(item, dict) and item.get("productionId") not in (None, "") and item.get("productionName")
         }
-        for item in records
-        if isinstance(item, dict) and item.get("productionId") not in (None, "") and item.get("productionName")
-    }
-    if not details and errors:
-        raise SopSyncError("; ".join(errors))
-    return details
+        if not details:
+            if cached_details:
+                if errors:
+                    logger.warning("SOP production details refresh failed; continuing with stale cache: %s", "; ".join(errors))
+                with _production_details_cache_lock:
+                    _production_details_cache["updated_at"] = now
+                return dict(cached_details)
+            if errors:
+                raise SopSyncError("; ".join(errors))
+            return {}
+        with _production_details_cache_lock:
+            _production_details_cache["data"] = details
+            _production_details_cache["updated_at"] = now
+        return dict(details)
 
 
 def _report_values(data, production_details=None):

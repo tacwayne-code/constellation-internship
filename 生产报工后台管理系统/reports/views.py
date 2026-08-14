@@ -2,12 +2,13 @@ import csv
 import hmac
 import json
 import logging
+import threading
 from datetime import datetime
 from decimal import Decimal, InvalidOperation
 
 from django.conf import settings
 from django.contrib.auth.decorators import login_required, permission_required
-from django.db import IntegrityError, transaction
+from django.db import IntegrityError, close_old_connections, transaction
 from django.db.models import Count, Sum
 from django.http import HttpResponse, HttpResponseBadRequest, JsonResponse
 from django.utils import timezone
@@ -16,7 +17,7 @@ from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET, require_POST
 
 from .models import AuditLog, ReportMaterialSnapshot, ReportSyncEvent, WorkReport
-from .sop_sync import SopSyncError, fetch_production_details
+from .sop_sync import SopSyncError, fetch_production_details, get_cached_production_details
 
 
 logger = logging.getLogger(__name__)
@@ -63,13 +64,41 @@ def _production_values(data, production_id):
     product_name = str(_value(data, "orderProduct", "order_product", "")).strip()
     if production_name and product_name:
         return production_name, product_name
-    try:
-        detail = fetch_production_details().get(str(production_id), {})
-    except SopSyncError as exc:
-        # The report remains receivable during a temporary SOP read outage.
-        logger.warning("Unable to enrich SOP production %s: %s", production_id, exc)
-        return production_name, product_name
+    detail = get_cached_production_details().get(str(production_id), {})
     return production_name or detail.get("production_name", ""), product_name or detail.get("product_name", "")
+
+
+def _enrich_production_details(report_id):
+    close_old_connections()
+    try:
+        report = WorkReport.objects.filter(pk=report_id).first()
+        if report is None or (report.production_name and report.order_product):
+            return
+        detail = fetch_production_details().get(report.production_id, {})
+        updates = {}
+        if not report.production_name and detail.get("production_name"):
+            updates["production_name"] = detail["production_name"]
+        if not report.order_product and detail.get("product_name"):
+            updates["order_product"] = detail["product_name"]
+        if updates:
+            for field, value in updates.items():
+                setattr(report, field, value)
+            report.save(update_fields=(*updates.keys(), "updated_at"))
+    except SopSyncError as exc:
+        logger.warning("Unable to enrich work report %s from SOP: %s", report_id, exc)
+    except Exception:
+        logger.exception("Unexpected SOP production enrichment failure for work report %s", report_id)
+    finally:
+        close_old_connections()
+
+
+def enqueue_production_enrichment(report_id):
+    threading.Thread(
+        target=_enrich_production_details,
+        args=(report_id,),
+        name=f"sop-production-enrichment-{report_id}",
+        daemon=True,
+    ).start()
 
 
 def _get_report_from_identity(data):
@@ -156,6 +185,8 @@ def receive_work_report(request):
             ReportSyncEvent.objects.bulk_create([ReportSyncEvent(work_report=report, step=str(item.get("step", "report")), status=str(item.get("status", sync_status)), message=str(item.get("message", "")), payload=item.get("payload", {}), occurred_at=parse_datetime(item.get("occurredAt", "")) or timezone.now()) for item in events])
             if not events:
                 ReportSyncEvent.objects.create(work_report=report, step=ReportSyncEvent.Step.REPORT, status=sync_status, message=defaults["error_message"], occurred_at=timezone.now())
+            if not production_name or not product_name:
+                transaction.on_commit(lambda report_id=report.pk: enqueue_production_enrichment(report_id))
     except (IntegrityError, InvalidOperation, ValueError):
         existing = WorkReport.objects.filter(idempotency_key=idempotency_key, source_report_id=source_report_id).first()
         if existing:

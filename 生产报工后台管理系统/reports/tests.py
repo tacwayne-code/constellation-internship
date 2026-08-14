@@ -62,9 +62,9 @@ class ReceiveWorkReportTests(TestCase):
         self.assertEqual(report.material_snapshots.count(), 1)
         self.assertEqual(report.sync_events.count(), 1)
 
-    @patch("reports.views.fetch_production_details")
-    def test_enriches_missing_production_name_and_product_from_sop(self, fetch_production_details):
-        fetch_production_details.return_value = {
+    @patch("reports.views.get_cached_production_details")
+    def test_uses_cached_production_name_and_product(self, get_cached_production_details):
+        get_cached_production_details.return_value = {
             "1001": {"production_name": "MO-01001", "product_name": "Test Product"},
         }
         payload = {key: value for key, value in self.payload.items() if key not in {"productionName", "orderProduct"}}
