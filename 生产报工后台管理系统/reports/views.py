@@ -1,6 +1,7 @@
 import csv
 import hmac
 import json
+import logging
 from datetime import datetime
 from decimal import Decimal, InvalidOperation
 
@@ -15,6 +16,10 @@ from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET, require_POST
 
 from .models import AuditLog, ReportMaterialSnapshot, ReportSyncEvent, WorkReport
+from .sop_sync import SopSyncError, fetch_production_details
+
+
+logger = logging.getLogger(__name__)
 
 
 SYNC_STATUS_MAP = {
@@ -51,6 +56,20 @@ def _parse_reported_at(data):
         return timezone.make_aware(datetime.fromisoformat(f"{date}T{time}"))
     except ValueError as exc:
         raise ValueError("reportedAt 或 date/time 必须是有效时间") from exc
+
+
+def _production_values(data, production_id):
+    production_name = str(_value(data, "productionName", "production_name", "")).strip()
+    product_name = str(_value(data, "orderProduct", "order_product", "")).strip()
+    if production_name and product_name:
+        return production_name, product_name
+    try:
+        detail = fetch_production_details().get(str(production_id), {})
+    except SopSyncError as exc:
+        # The report remains receivable during a temporary SOP read outage.
+        logger.warning("Unable to enrich SOP production %s: %s", production_id, exc)
+        return production_name, product_name
+    return production_name or detail.get("production_name", ""), product_name or detail.get("product_name", "")
 
 
 def _get_report_from_identity(data):
@@ -101,13 +120,15 @@ def receive_work_report(request):
     if not isinstance(materials, list) or not isinstance(events, list):
         return JsonResponse({"detail": "materials and syncEvents must be arrays"}, status=400)
 
+    production_name, product_name = _production_values(data, required["productionId"])
+
     defaults = {
-        "production_id": str(required["productionId"]), "production_name": str(_value(data, "productionName", "production_name", "")),
+        "production_id": str(required["productionId"]), "production_name": production_name,
         "workorder_id": str(required["workorderId"]),
         "worker_id": str(required["workerId"]), "worker_name": str(required["workerName"]),
         "worker_team": str(_value(data, "workerTeam", "worker_team", "")), "operation_code": str(required["operation"]),
         "operation_name": str(required["operationLabel"]), "order_id": str(_value(data, "orderId", "order_id", "")),
-        "order_customer": str(_value(data, "orderCustomer", "order_customer", "")), "order_product": str(_value(data, "orderProduct", "order_product", "")),
+        "order_customer": str(_value(data, "orderCustomer", "order_customer", "")), "order_product": product_name,
         "quantity": quantity, "qualified_quantity": qualified, "hours": hours, "remark": str(data.get("remark", "")),
         "reported_at": reported_at, "sync_status": sync_status, "material_sync_status": str(_value(data, "materialSyncStatus", "material_sync_status", "")),
         "odoo_report_id": str(_value(data, "odooReportId", "odoo_report_id", "")), "odoo_stock_move_ids": _value(data, "odooStockMoveIds", "odoo_stock_move_ids", []),

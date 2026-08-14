@@ -16,6 +16,7 @@ class ReceiveWorkReportTests(TestCase):
     payload = {
         "sourceReportId": "legacy-42", "idempotencyKey": "request-42", "productionId": "1001", "workorderId": "2001",
         "workerId": "EMP-1", "workerName": "张三", "operation": "assembly", "operationLabel": "组装", "qty": 2,
+        "productionName": "MO-01001", "orderProduct": "Test Product",
         "date": "2026-08-12", "time": "10:30", "materials": [{"productId": 1, "bomLineId": 2, "defaultCode": "MAT-1", "actualQty": 1.5, "uomId": 1}],
     }
 
@@ -60,6 +61,20 @@ class ReceiveWorkReportTests(TestCase):
         report = WorkReport.objects.get()
         self.assertEqual(report.material_snapshots.count(), 1)
         self.assertEqual(report.sync_events.count(), 1)
+
+    @patch("reports.views.fetch_production_details")
+    def test_enriches_missing_production_name_and_product_from_sop(self, fetch_production_details):
+        fetch_production_details.return_value = {
+            "1001": {"production_name": "MO-01001", "product_name": "Test Product"},
+        }
+        payload = {key: value for key, value in self.payload.items() if key not in {"productionName", "orderProduct"}}
+
+        response = self.post(payload)
+
+        self.assertEqual(response.status_code, 201)
+        report = WorkReport.objects.get()
+        self.assertEqual(report.production_name, "MO-01001")
+        self.assertEqual(report.order_product, "Test Product")
 
     def test_replay_is_idempotent(self):
         self.post()
