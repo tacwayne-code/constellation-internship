@@ -1,26 +1,12 @@
 from django.contrib import admin
 from django.utils import timezone
 
-from .models import AuditLog, ReportMaterialSnapshot, ReportSyncEvent, WorkReport
+from .models import AuditLog, WorkReport
 
 admin.site.site_header = "生产报工管理"
 admin.site.site_title = "生产报工管理系统"
 admin.site.index_title = "管理工作台"
 admin.site.enable_nav_sidebar = False
-
-
-class MaterialSnapshotInline(admin.TabularInline):
-    model = ReportMaterialSnapshot
-    extra = 0
-    can_delete = False
-    readonly_fields = ("product_id", "bom_line_id", "default_code", "actual_quantity", "uom_id", "created_at")
-
-
-class SyncEventInline(admin.TabularInline):
-    model = ReportSyncEvent
-    extra = 0
-    can_delete = False
-    readonly_fields = ("step", "status", "message", "payload", "occurred_at", "created_at")
 
 
 @admin.register(WorkReport)
@@ -32,13 +18,18 @@ class WorkReportAdmin(admin.ModelAdmin):
     date_hierarchy = "reported_at"
     list_per_page = 50
     actions = ("approve_reports", "void_reports")
-    inlines = (MaterialSnapshotInline, SyncEventInline)
-    readonly_fields = (
-        "source_report_id", "idempotency_key", "production_id", "production_name", "workorder_id", "worker_id", "worker_name", "worker_team",
-        "operation_code", "operation_name", "order_id", "order_customer", "order_product", "quantity", "qualified_quantity",
-        "hours", "remark", "reported_at", "sync_status", "material_sync_status", "odoo_report_id", "odoo_stock_move_ids",
-        "odoo_progress_quantity", "error_message", "review_status", "reviewed_by", "reviewed_at", "created_at", "updated_at",
+    fields = (
+        "production_name", "production_id", "workorder_id",
+        "worker_name", "worker_team", "operation_name",
+        "order_customer", "order_product", "quantity", "qualified_quantity", "reported_at",
+        "sync_status", "odoo_report_id", "review_status",
     )
+    readonly_fields = fields
+
+    def render_change_form(self, request, context, add=False, change=False, form_url="", obj=None):
+        if change:
+            context["title"] = self.opts.verbose_name
+        return super().render_change_form(request, context, add, change, form_url, obj)
 
     def has_delete_permission(self, request, obj=None):
         return False
