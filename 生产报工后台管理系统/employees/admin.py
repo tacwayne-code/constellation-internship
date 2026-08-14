@@ -71,7 +71,7 @@ class EmployeeAdmin(AdministratorOnlyMixin, admin.ModelAdmin):
         return super().get_form(request, obj, **kwargs)
 
     def has_delete_permission(self, request, obj=None):
-        return False
+        return request.user.is_superuser
 
     def save_model(self, request, obj, form, change):
         if change and "job_title" in form.changed_data:

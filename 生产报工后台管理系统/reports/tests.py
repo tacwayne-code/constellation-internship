@@ -7,7 +7,8 @@ from django.urls import reverse
 
 from .models import WorkReport
 from employees.models import Department, Employee
-from employees.sop_sync import import_sop_workers, operation_codes_for_job_title
+from employees.sop_sync import department_name_from_sop_team, import_sop_workers, operation_codes_for_job_title
+from employees.templatetags.employee_menu import department_menu_items
 
 
 @override_settings(INTERNAL_REPORT_API_KEY="test-api-key")
@@ -138,3 +139,33 @@ class SopEmployeeImportTests(TestCase):
         self.assertEqual(employee.department.name, "组装部")
         self.assertEqual(employee.job_title, "组装，打包")
         self.assertEqual(employee.operation_codes, ["pc_assembly_tape", "pc_assembly_splitter"])
+
+    @patch("employees.sop_sync.fetch_sop_workers")
+    def test_reuses_the_legacy_odoo_employee_when_sop_changes_to_admin_id(self, fetch_workers):
+        department = Department.objects.create(name="生产车间")
+        employee = Employee.objects.create(
+            source_worker_id="ODOO_EMP_19",
+            name="周小明",
+            department=department,
+            job_title="组装，打包",
+            operation_codes=["worker_assembly", "worker_packing"],
+        )
+        fetch_workers.return_value = [{
+            "id": "ADMIN_EMP_1", "name": "周小明", "team": "生产车间",
+            "jobTitle": "组装，打包",
+        }]
+        self.assertEqual(import_sop_workers(), {"fetched": 1, "created": 0, "updated": 1, "skipped": 0})
+        employee.refresh_from_db()
+        self.assertEqual(employee.source_worker_id, "ADMIN_EMP_1")
+        self.assertEqual(Employee.objects.count(), 1)
+
+
+class EmployeeMenuTests(TestCase):
+    def test_department_menu_items_link_to_department_filtered_employees(self):
+        department = Department.objects.create(name="组装部")
+        items = json.loads(str(department_menu_items()))
+        self.assertEqual(items[0]["name"], "组装部")
+        self.assertEqual(items[0]["url"], f"/admin/employees/employee/?department__id__exact={department.pk}")
+
+    def test_workshop_name_remains_the_employee_department(self):
+        self.assertEqual(department_name_from_sop_team("生产车间", "组装，打包"), "生产车间")

@@ -1,5 +1,5 @@
 {% extends "admin/index.html" %}
-{% load static %}
+{% load static employee_menu %}
 
 {% block head %}
   <style type="text/css">
@@ -34,6 +34,20 @@
 {% endblock %}
 
 {% block index_js %}
+  <script type="text/javascript">
+    (function () {
+      var departmentItems = {% department_menu_items %};
+      var employeeModule = (window.menus || []).find(function (item) {
+        return item.name === "员工";
+      });
+      if (!employeeModule || !employeeModule.models) return;
+
+      var departmentMenu = employeeModule.models.find(function (item) {
+        return item.name === "部门";
+      });
+      if (departmentMenu) departmentMenu.models = departmentItems;
+    }());
+  </script>
   <script type="text/javascript">
     // SimpleUI opens its header home action with window.open(). Keep only
     // this application's home route in the current browser page.

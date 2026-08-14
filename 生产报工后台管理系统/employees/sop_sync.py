@@ -81,9 +81,7 @@ def department_name_from_sop_team(team, job_title):
     name = str(team or "").strip()
     if name.endswith("班"):
         return f"{name[:-1]}部"
-    if name.endswith("车间"):
-        return f"{name[:-2]}部"
-    if name.endswith("部"):
+    if name:
         return name
     operations = split_job_title(job_title)
     return f"{operations[0]}部" if operations else "未分配部门"
@@ -132,20 +130,38 @@ def import_sop_workers():
         department_name = department_name_from_sop_team(worker.get("team", ""), job_title)
         with transaction.atomic():
             department, _ = Department.objects.get_or_create(name=department_name)
-            employee, created = Employee.objects.get_or_create(
-                source_worker_id=source_worker_id,
-                defaults={"name": name, "department": department, "job_title": job_title, "operation_codes": operation_codes},
-            )
+            employee = Employee.objects.filter(source_worker_id=source_worker_id).first()
+            created = False
+            if employee is None and source_worker_id.startswith("ADMIN_EMP_"):
+                # One-time transition from the former Odoo-derived SOP IDs to
+                # the stable management-system IDs, without duplicating staff.
+                legacy_matches = Employee.objects.filter(
+                    source_worker_id__startswith="ODOO_EMP_",
+                    name=name,
+                )
+                if legacy_matches.count() == 1:
+                    employee = legacy_matches.first()
+                    employee.source_worker_id = source_worker_id
+            if employee is None:
+                employee = Employee(
+                    source_worker_id=source_worker_id,
+                    name=name,
+                    department=department,
+                    job_title=job_title,
+                    operation_codes=operation_codes,
+                )
+                created = True
             if created:
+                employee.save()
                 summary["created"] += 1
             else:
                 changed = False
-                for field, value in (("name", name), ("department", department), ("job_title", job_title), ("operation_codes", operation_codes)):
+                for field, value in (("source_worker_id", source_worker_id), ("name", name), ("department", department), ("job_title", job_title), ("operation_codes", operation_codes)):
                     if getattr(employee, field) != value:
                         setattr(employee, field, value)
                         changed = True
                 if changed:
-                    employee.save(update_fields=("name", "department", "job_title", "operation_codes", "updated_at"))
+                    employee.save(update_fields=("source_worker_id", "name", "department", "job_title", "operation_codes", "updated_at"))
                     summary["updated"] += 1
     return summary
 
