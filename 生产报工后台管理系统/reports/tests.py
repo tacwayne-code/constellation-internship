@@ -2,11 +2,12 @@ import json
 from unittest.mock import patch
 
 from django.test import TestCase, override_settings
+from django.contrib.auth.hashers import check_password
 from django.contrib.auth import get_user_model
 from django.urls import reverse
 
 from .models import WorkReport
-from employees.models import Department, Employee
+from employees.models import Department, Employee, EmployeeReportPanelAccount
 from employees.sop_sync import department_name_from_sop_team, import_sop_workers, operation_codes_for_job_title
 from employees.templatetags.employee_menu import department_menu_items
 
@@ -132,6 +133,26 @@ class EmployeeAdministrationTests(TestCase):
         response = self.create_employee(phone="invalid")
         self.assertEqual(response.status_code, 200)
         self.assertEqual(Employee.objects.count(), 0)
+
+    def test_creating_panel_account_hashes_the_password_and_links_the_employee(self):
+        department = Department.objects.create(name="生产车间")
+        employee = Employee.objects.create(name="张三", department=department, job_title="组装")
+
+        response = self.client.post(
+            reverse("admin:employees_employeereportpanelaccount_add"),
+            {
+                "employee": employee.pk,
+                "username": "zhangsan",
+                "password": "SopPanel123!",
+                "password_confirmation": "SopPanel123!",
+                "is_active": "on",
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        account = EmployeeReportPanelAccount.objects.get()
+        self.assertEqual(account.employee, employee)
+        self.assertTrue(check_password("SopPanel123!", account.password_hash))
 
     @patch("employees.admin.enqueue_sop_employee_sync")
     def test_new_employee_receives_a_stable_sop_worker_id(self, sync_employee):
