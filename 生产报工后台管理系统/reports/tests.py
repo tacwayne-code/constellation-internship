@@ -172,6 +172,49 @@ class EmployeeAdministrationTests(TestCase):
         self.assertEqual(response.status_code, 302)
         self.assertTrue(check_password("密", EmployeeReportPanelAccount.objects.get(username="lisi").password_hash))
 
+    @override_settings(INTERNAL_REPORT_API_KEY="test-api-key")
+    def test_panel_account_auth_returns_only_the_authenticated_employee(self):
+        department = Department.objects.create(name="生产车间")
+        employee = Employee.objects.create(
+            name="周小明",
+            department=department,
+            job_title="组装，打包",
+            source_worker_id="ADMIN_EMP_8",
+            operation_codes=["worker_assembly", "worker_packing"],
+        )
+        account = EmployeeReportPanelAccount(employee=employee, username="zhou")
+        account.set_password("密")
+        account.save()
+
+        response = self.client.post(
+            reverse("internal-employee-panel-auth"),
+            data=json.dumps({"username": "zhou", "password": "密"}),
+            content_type="application/json",
+            headers={"X-Internal-API-Key": "test-api-key"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["data"], {
+            "sourceWorkerId": "ADMIN_EMP_8",
+            "name": "周小明",
+            "team": "生产车间",
+            "departmentName": "生产车间",
+            "jobTitle": "组装，打包",
+            "operationCodes": ["worker_assembly", "worker_packing"],
+            "source": "report_admin",
+        })
+
+    @override_settings(INTERNAL_REPORT_API_KEY="test-api-key")
+    def test_panel_account_auth_rejects_invalid_credentials(self):
+        response = self.client.post(
+            reverse("internal-employee-panel-auth"),
+            data=json.dumps({"username": "missing", "password": "anything"}),
+            content_type="application/json",
+            headers={"X-Internal-API-Key": "test-api-key"},
+        )
+
+        self.assertEqual(response.status_code, 401)
+
     @patch("employees.admin.enqueue_sop_employee_sync")
     def test_new_employee_receives_a_stable_sop_worker_id(self, sync_employee):
         response = self.create_employee(job_title="组装，打包")
