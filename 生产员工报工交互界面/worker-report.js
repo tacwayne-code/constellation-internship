@@ -12,6 +12,10 @@ async function apiGet(path) {
   // response from the browser cache after the reset.
   const r = await fetch(API_BASE + path, { cache: "no-store" });
   const j = await r.json();
+  if (r.status === 401) {
+    window.location.replace("/login.html");
+    throw new Error("登录已失效");
+  }
   if (!j.ok) throw new Error(j.error || "API error");
   return j;
 }
@@ -22,6 +26,10 @@ async function apiPost(path, body) {
     body: JSON.stringify(body),
   });
   const j = await r.json();
+  if (r.status === 401) {
+    window.location.replace("/login.html");
+    throw new Error("登录已失效");
+  }
   if (!j.ok) throw new Error(j.error || "API error");
   return j;
 }
@@ -181,7 +189,12 @@ async function loadAll() {
     }));
     if (workersResp.meta && workersResp.meta.mode) S.runtimeMode = workersResp.meta.mode;
   } else {
-    S.workers = defaultWorkers();
+    S.workers = [];
+  }
+
+  if (!S.selWorker && S.workers.length === 1) {
+    S.selWorkerIdx = 0;
+    S.selWorker = S.workers[0];
   }
 
   // Keep the current form selection attached to the refreshed records. If a
@@ -886,6 +899,11 @@ function setupBomEvents() {
 
 // ====== 事件绑定 ======
 function setupEvents() {
+  $("#logoutBtn")?.addEventListener("click", async () => {
+    try { await fetch("/api/logout", { method: "POST", credentials: "same-origin" }); }
+    finally { window.location.replace("/login.html"); }
+  });
+
   $("#workerChips")?.addEventListener("click", (e) => {
     const chip = e.target.closest(".chip");
     if (!chip || chip.dataset.wi === undefined) return;

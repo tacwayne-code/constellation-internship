@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>员工报工登录</title>
+  <link rel="stylesheet" href="./login.css" />
+</head>
+<body>
+  <main class="login-shell">
+    <section class="login-card" aria-labelledby="loginTitle">
+      <div class="brand-mark" aria-hidden="true"><span></span><span></span><span></span></div>
+      <p class="eyebrow">PRODUCTION WORKER REPORTING</p>
+      <h1 id="loginTitle">员工报工登录</h1>
+      <p class="login-subtitle">使用后台分配的员工账号登录</p>
+      <form id="loginForm" novalidate>
+        <label for="username">登录账号</label>
+        <input id="username" name="username" autocomplete="username" required autofocus />
+        <label for="password">密码</label>
+        <input id="password" name="password" type="password" autocomplete="current-password" required />
+        <p class="login-error" id="loginError" role="alert" hidden></p>
+        <button type="submit" id="loginButton">登录</button>
+      </form>
+    </section>
+  </main>
+  <script src="./login.js"></script>
+</body>
+</html>

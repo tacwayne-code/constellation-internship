@@ -1,0 +1,85 @@
+:root {
+  color-scheme: light;
+  --ink: #17324d;
+  --muted: #6c7f92;
+  --line: #d7e1ea;
+  --accent: #1769aa;
+  --accent-dark: #125789;
+  --surface: #ffffff;
+  --canvas: #eef3f7;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  font-family: "Microsoft YaHei", "Segoe UI", sans-serif;
+  color: var(--ink);
+  background: var(--canvas);
+}
+
+.login-shell {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+}
+
+.login-card {
+  width: min(100%, 400px);
+  padding: 38px 36px 34px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  box-shadow: 0 18px 50px rgba(27, 59, 88, .12);
+}
+
+.brand-mark { display: flex; gap: 4px; height: 24px; align-items: end; }
+.brand-mark span { display: block; width: 7px; border-radius: 3px; background: var(--accent); }
+.brand-mark span:nth-child(1) { height: 12px; }
+.brand-mark span:nth-child(2) { height: 20px; }
+.brand-mark span:nth-child(3) { height: 16px; }
+
+.eyebrow {
+  margin: 18px 0 7px;
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 1.5px;
+}
+
+h1 { margin: 0; font-size: 28px; letter-spacing: 0; }
+.login-subtitle { margin: 9px 0 28px; color: var(--muted); font-size: 14px; }
+label { display: block; margin: 16px 0 7px; font-size: 13px; font-weight: 700; }
+input {
+  width: 100%;
+  height: 44px;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: var(--ink);
+  background: #fbfcfd;
+  font: inherit;
+}
+input:focus { outline: 2px solid rgba(23, 105, 170, .2); border-color: var(--accent); }
+button {
+  width: 100%;
+  height: 44px;
+  margin-top: 22px;
+  border: 0;
+  border-radius: 6px;
+  color: #fff;
+  background: var(--accent);
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+button:hover { background: var(--accent-dark); }
+button:disabled { opacity: .65; cursor: wait; }
+.login-error { margin: 14px 0 -4px; color: #b42318; font-size: 13px; line-height: 1.5; }
+
+@media (max-width: 480px) {
+  .login-shell { padding: 14px; }
+  .login-card { padding: 30px 24px 26px; }
+}

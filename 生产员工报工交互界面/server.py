@@ -1,3 +1,6 @@
+import base64
+import binascii
+import hashlib
 import json
 import hmac
 import logging
@@ -12,6 +15,7 @@ import uuid
 import xmlrpc.client
 from datetime import datetime, timedelta, timezone
 from http import HTTPStatus
+from http.cookies import CookieError, SimpleCookie
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlparse
@@ -49,6 +53,12 @@ LOCAL_TZ = timezone(timedelta(hours=8))
 API_KEY = os.getenv("API_KEY", "").strip()
 REPORT_ADMIN_API_URL = os.getenv("REPORT_ADMIN_API_URL", "").strip().rstrip("/")
 REPORT_ADMIN_API_KEY = os.getenv("REPORT_ADMIN_API_KEY", "").strip()
+PANEL_SESSION_COOKIE = "sop_panel_session"
+PANEL_SESSION_SECRET = os.getenv("SOP_PANEL_SESSION_SECRET", "").strip() or REPORT_ADMIN_API_KEY
+try:
+    PANEL_SESSION_TTL_SECONDS = max(300, int(os.getenv("SOP_PANEL_SESSION_TTL_SECONDS", "43200")))
+except ValueError:
+    PANEL_SESSION_TTL_SECONDS = 43200
 DB_FILE = BASE_DIR / ("data.mock.db" if MOCK_MODE else "data.db")
 RESET_MARKER_FILE = BASE_DIR / ".reset.marker"
 WHITE_EXT = {".html", ".css", ".js", ".svg", ".ico", ".png"}
@@ -86,6 +96,101 @@ else:
 
 def _report_admin_configured():
     return bool(REPORT_ADMIN_API_URL and REPORT_ADMIN_API_KEY)
+
+
+def _panel_worker_from_identity(identity):
+    """Normalize the safe identity returned by the management service."""
+    if not isinstance(identity, dict):
+        return None
+    worker_id = str(identity.get("sourceWorkerId", "")).strip()
+    name = str(identity.get("name", "")).strip()
+    team = str(identity.get("departmentName", identity.get("team", ""))).strip()
+    raw_codes = identity.get("operationCodes", [])
+    if not worker_id or not name or not isinstance(raw_codes, list):
+        return None
+    operation_codes = [str(code) for code in raw_codes if str(code) in VALID_OPERATIONS]
+    if not operation_codes:
+        return None
+    return {
+        "id": worker_id,
+        "name": name,
+        "team": team,
+        "source": "report_admin",
+        "odooEmployeeId": 0,
+        "operationCodes": operation_codes,
+    }
+
+
+def authenticate_panel_account(username, password):
+    """Authenticate an SOP worker against the management service over HTTP."""
+    if not _report_admin_configured():
+        return None, "后台账号认证服务尚未配置", HTTPStatus.SERVICE_UNAVAILABLE
+    body = json.dumps({"username": username, "password": password}, ensure_ascii=False).encode("utf-8")
+    request = Request(
+        f"{REPORT_ADMIN_API_URL}/internal/api/v1/employee-panel-auth/",
+        body,
+        headers={"Content-Type": "application/json", "X-Internal-API-Key": REPORT_ADMIN_API_KEY},
+        method="POST",
+    )
+    try:
+        with urlopen(request, timeout=5) as response:
+            payload = json.load(response)
+    except HTTPError as exc:
+        if exc.code in (HTTPStatus.UNAUTHORIZED, HTTPStatus.FORBIDDEN):
+            return None, "账号或密码错误", HTTPStatus.UNAUTHORIZED
+        logger.warning("后台账号认证请求失败: HTTP %s", exc.code)
+        return None, "后台账号认证服务暂时不可用", HTTPStatus.SERVICE_UNAVAILABLE
+    except (URLError, TimeoutError, OSError, json.JSONDecodeError) as exc:
+        logger.warning("后台账号认证请求失败: %s", exc)
+        return None, "后台账号认证服务暂时不可用", HTTPStatus.SERVICE_UNAVAILABLE
+
+    worker = _panel_worker_from_identity(payload.get("data") if isinstance(payload, dict) else None)
+    if worker is None:
+        return None, "该账号尚未配置可报工工序", HTTPStatus.FORBIDDEN
+    return worker, "", HTTPStatus.OK
+
+
+def _panel_session_token(worker):
+    if not PANEL_SESSION_SECRET:
+        raise RuntimeError("未配置 SOP_PANEL_SESSION_SECRET 或 REPORT_ADMIN_API_KEY")
+    payload = {
+        "workerId": worker["id"],
+        "name": worker["name"],
+        "team": worker.get("team", ""),
+        "operationCodes": worker.get("operationCodes", []),
+        "expiresAt": int(time.time()) + PANEL_SESSION_TTL_SECONDS,
+    }
+    encoded = base64.urlsafe_b64encode(
+        json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+    ).decode("ascii").rstrip("=")
+    signature = hmac.new(
+        PANEL_SESSION_SECRET.encode("utf-8"), encoded.encode("ascii"), hashlib.sha256
+    ).hexdigest()
+    return f"{encoded}.{signature}"
+
+
+def _panel_session_worker(token):
+    if not PANEL_SESSION_SECRET or not token or "." not in token:
+        return None
+    encoded, signature = token.rsplit(".", 1)
+    expected = hmac.new(
+        PANEL_SESSION_SECRET.encode("utf-8"), encoded.encode("ascii"), hashlib.sha256
+    ).hexdigest()
+    if not hmac.compare_digest(signature, expected):
+        return None
+    try:
+        padded = encoded + "=" * (-len(encoded) % 4)
+        payload = json.loads(base64.urlsafe_b64decode(padded.encode("ascii")).decode("utf-8"))
+        if int(payload.get("expiresAt", 0)) < int(time.time()):
+            return None
+    except (ValueError, TypeError, UnicodeDecodeError, json.JSONDecodeError, binascii.Error):
+        return None
+    return _panel_worker_from_identity({
+        "sourceWorkerId": payload.get("workerId", ""),
+        "name": payload.get("name", ""),
+        "departmentName": payload.get("team", ""),
+        "operationCodes": payload.get("operationCodes", []),
+    })
 
 
 def _report_admin_payload(report, materials):
@@ -929,6 +1034,37 @@ def get_worker_by_id(worker_id):
 def worker_allows_operation(worker_id, operation_code):
     worker = get_worker_by_id(worker_id)
     return bool(worker and operation_code in set(worker.get("operationCodes") or []))
+
+
+def panel_worker_allows_workorder(worker, workorder):
+    """Apply the same operation and product-class rules before data is shown."""
+    if not worker or not workorder:
+        return False
+    if (get_odoo_mode() == "real"
+            and _effective_worker_source(worker.get("id"), worker.get("source"))
+            in {"odoo", "report_admin"}
+            and workorder.get("productClass") != "machine"):
+        return False
+    operation_map = get_operation_map()
+    return any(
+        operation_matches_workorder(operation_map[code], workorder)
+        for code in worker.get("operationCodes", [])
+        if code in operation_map
+    )
+
+
+def panel_accessible_workorders(worker):
+    return [
+        workorder for workorder in get_workorders_data()
+        if panel_worker_allows_workorder(worker, workorder)
+    ]
+
+
+def panel_worker_can_access_workorder(worker, workorder_id):
+    return any(
+        str(workorder.get("workorderId")) == str(workorder_id)
+        for workorder in panel_accessible_workorders(worker)
+    )
 
 
 _order_ids_cache = {"ids": set(), "ts": 0, "marker": 0}
@@ -2883,6 +3019,26 @@ class Handler(SimpleHTTPRequestHandler):
         self.send_header("Access-Control-Allow-Headers", "Content-Type, X-API-Key")
         self.end_headers()
 
+    def panel_worker(self):
+        cookies = SimpleCookie()
+        try:
+            cookies.load(self.headers.get("Cookie", ""))
+        except (ValueError, CookieError):
+            return None
+        morsel = cookies.get(PANEL_SESSION_COOKIE)
+        return _panel_session_worker(morsel.value if morsel else "")
+
+    def require_panel_worker(self):
+        worker = self.panel_worker()
+        if worker is None:
+            self.write_json({"ok": False, "error": "请先登录员工账号"}, status=HTTPStatus.UNAUTHORIZED)
+        return worker
+
+    def redirect_to_login(self):
+        self.send_response(HTTPStatus.FOUND)
+        self.send_header("Location", "/login.html")
+        self.end_headers()
+
     def do_GET(self):
         path = urlparse(self.path).path
         qs = urlparse(self.path).query
@@ -2894,38 +3050,69 @@ class Handler(SimpleHTTPRequestHandler):
                     params[k] = v
 
         if path.startswith("/api/"):
-            return self._route_get_api(path, params)
+            if path == "/api/health":
+                return self._route_get_api(path, params, None)
+            worker = self.require_panel_worker()
+            if worker is None:
+                return
+            return self._route_get_api(path, params, worker)
         ext = os.path.splitext(path)[1].lower()
         if path == "/":
-            self.send_response(301)
+            if self.panel_worker() is None:
+                return self.redirect_to_login()
+            self.send_response(HTTPStatus.FOUND)
             self.send_header("Location", "/worker-report.html")
             self.end_headers()
             return
+        if path == "/login":
+            self.send_response(HTTPStatus.FOUND)
+            self.send_header("Location", "/login.html")
+            self.end_headers()
+            return
+        if path == "/login.html" and self.panel_worker() is not None:
+            self.send_response(HTTPStatus.FOUND)
+            self.send_header("Location", "/worker-report.html")
+            self.end_headers()
+            return
+        if path == "/worker-report.html" and self.panel_worker() is None:
+            return self.redirect_to_login()
+        if path == "/worker-report.html":
+            return super().do_GET()
+        if path == "/login.html":
+            return super().do_GET()
         if ext in WHITE_EXT:
             return super().do_GET()
         self.send_error(HTTPStatus.NOT_FOUND)
 
-    def _route_get_api(self, path, params):
+    def _route_get_api(self, path, params, panel_worker=None):
         if path == "/api/health":
             self.write_json({"ok": True, "mode": get_odoo_mode()})
+        elif path == "/api/session":
+            if panel_worker is None:
+                self.write_json({"ok": False, "error": "请先登录员工账号"}, status=HTTPStatus.UNAUTHORIZED)
+                return
+            self.write_json({"ok": True, "data": panel_worker})
         elif path == "/api/workers":
-            workers = load_workers()
-            self.write_json({"ok": True, "data": workers,
-                             "meta": {"mode": get_odoo_mode(), "count": len(workers)}})
+            self.write_json({"ok": True, "data": [panel_worker],
+                             "meta": {"mode": get_odoo_mode(), "count": 1}})
         elif path == "/api/reports":
-            reports = load_reports()
+            reports = [
+                report for report in load_reports()
+                if str(report.get("worker_id", "")) == str(panel_worker["id"])
+            ]
             self.write_json({"ok": True, "data": [_normalize_report(r) for r in reports]})
         elif path == "/api/report-stats":
-            payload = self.report_stats_payload()
+            payload = self.report_stats_payload(panel_worker)
             status = HTTPStatus.OK if payload.get("ok") else HTTPStatus.INTERNAL_SERVER_ERROR
             self.write_json(payload, status=status)
         elif path == "/api/operations":
-            ops = get_operations()
+            allowed = set(panel_worker.get("operationCodes", []))
+            ops = [op for op in get_operations() if op["code"] in allowed]
             self.write_json({"ok": True, "data": ops,
                              "meta": {"mode": get_odoo_mode(), "count": len(ops)}})
         elif path == "/api/workorders":
             try:
-                wos = get_workorders_data()
+                wos = panel_accessible_workorders(panel_worker)
                 self.write_json({"ok": True, "data": wos,
                                  "meta": {"mode": get_odoo_mode(), "count": len(wos)}})
             except Exception as e:
@@ -2935,6 +3122,10 @@ class Handler(SimpleHTTPRequestHandler):
             host_type = params.get("hostType", params.get("host_type", ""))
             workorder_id = params.get("workorderId", params.get("workorder_id", ""))
             nocache = params.get("nocache", "0") in ("1", "true", "yes")
+            if not workorder_id or not panel_worker_can_access_workorder(panel_worker, workorder_id):
+                self.write_json({"ok": False, "error": "该工单不属于当前员工允许的工序"},
+                                status=HTTPStatus.FORBIDDEN)
+                return
             if workorder_id:
                 try:
                     context = get_workorder_bom_data(workorder_id)
@@ -2994,10 +3185,14 @@ class Handler(SimpleHTTPRequestHandler):
                                 status=HTTPStatus.INTERNAL_SERVER_ERROR)
 
         elif path == "/api/dashboard":
-            self.write_json(self.dashboard_payload())
+            self.write_json(self.dashboard_payload(panel_worker))
         elif path == "/api/order-summary":
             # 订单进度摘要（从工单汇总 MO 进度）
             try:
+                allowed_workorder_ids = {
+                    str(workorder.get("workorderId"))
+                    for workorder in panel_accessible_workorders(panel_worker)
+                }
                 client = get_odoo()
                 mo_domain = [("state", "not in", ["done", "cancel"])]
                 mo_ids = client.call("mrp.production", "search", [mo_domain])
@@ -3034,7 +3229,12 @@ class Handler(SimpleHTTPRequestHandler):
                 for mo in mos:
                     mo_id = mo["id"]
                     pid = rel_id(mo.get("product_id"))
-                    wos = wo_by_mo.get(mo_id, [])
+                    wos = [
+                        workorder for workorder in wo_by_mo.get(mo_id, [])
+                        if str(workorder.get("workorderId")) in allowed_workorder_ids
+                    ]
+                    if not wos:
+                        continue
                     # MO 实际进度 = 已完成工单的 qty_produced 之和 / qty_production 之和
                     total_done = sum(w["qtyProduced"] for w in wos)
                     total_target = sum(w["qtyProduction"] for w in wos) or float(mo.get("product_qty", 1))
@@ -3065,6 +3265,10 @@ class Handler(SimpleHTTPRequestHandler):
                 self.write_json({"ok": False, "error": "缺少 workorderId 参数"},
                                 status=HTTPStatus.BAD_REQUEST)
                 return
+            if not panel_worker_can_access_workorder(panel_worker, wo_id_str):
+                self.write_json({"ok": False, "error": "该工单不属于当前员工允许的工序"},
+                                status=HTTPStatus.FORBIDDEN)
+                return
             try:
                 wo_id = int(wo_id_str)
                 sop_list = get_sop_for_workorder(wo_id)
@@ -3078,6 +3282,9 @@ class Handler(SimpleHTTPRequestHandler):
             kind = params.get("type", "worksheet")
             if not wo_id_str:
                 self.send_error(HTTPStatus.BAD_REQUEST, "缺少 workorderId")
+                return
+            if not panel_worker_can_access_workorder(panel_worker, wo_id_str):
+                self.send_error(HTTPStatus.FORBIDDEN, "该工单不属于当前员工允许的工序")
                 return
             try:
                 wo_id = int(wo_id_str)
@@ -3116,19 +3323,47 @@ class Handler(SimpleHTTPRequestHandler):
         if length > 65536:
             self.send_error(HTTPStatus.REQUEST_ENTITY_TOO_LARGE, "Body too large")
             return
+        if path == "/api/login":
+            return self.handle_panel_login(length)
+        if path == "/api/logout":
+            self.handle_panel_logout()
+            return
         if path == "/api/workers/sync":
             if not check_report_admin_auth(self):
                 self.write_json({"ok": False, "error": "未授权：无效的后台同步密钥"},
                                 status=HTTPStatus.UNAUTHORIZED)
                 return
             return self.handle_worker_sync_post()
+        if path == "/api/reports":
+            panel_worker = self.require_panel_worker()
+            if panel_worker is None:
+                return
+            self.handle_report_post(panel_worker)
+            return
+        if path == "/api/sop/view-log":
+            panel_worker = self.require_panel_worker()
+            if panel_worker is None:
+                return
+            try:
+                raw = self.rfile.read(length)
+                body = json.loads(raw) if raw else {}
+                if not isinstance(body, dict):
+                    raise ValueError("日志数据必须为对象")
+                log_sop_view(
+                    body.get("attachmentId", ""),
+                    panel_worker["id"],
+                    panel_worker["name"],
+                    body.get("workorderId", ""),
+                )
+                self.write_json({"ok": True})
+            except Exception as exc:
+                self.write_json({"ok": False, "error": str(exc)}, status=HTTPStatus.BAD_REQUEST)
+            return
         if not check_auth(self):
             self.write_json({"ok": False, "error": "未授权：缺少或无效的 API Key"},
                             status=HTTPStatus.UNAUTHORIZED)
             return
-        if path == "/api/reports":
-            self.handle_report_post()
-        elif path == "/api/workers":
+        if path == "/api/workers":
             self.handle_worker_post()
         elif path == "/api/reset":
             # 远程触发：清空本地 SQLite + Odoo 库存/MO/WO 重置
@@ -3167,6 +3402,44 @@ class Handler(SimpleHTTPRequestHandler):
         else:
             self.send_error(HTTPStatus.NOT_FOUND)
 
+    def handle_panel_login(self, length):
+        try:
+            raw = self.rfile.read(length)
+            payload = json.loads(raw) if raw else {}
+            if not isinstance(payload, dict):
+                raise ValueError("登录数据必须为对象")
+            username = str(payload.get("username", "")).strip()
+            password = payload.get("password")
+            if not username or not isinstance(password, str):
+                self.write_json({"ok": False, "error": "请输入账号和密码"}, status=HTTPStatus.BAD_REQUEST)
+                return
+            worker, error, status = authenticate_panel_account(username, password)
+            if worker is None:
+                self.write_json({"ok": False, "error": error}, status=status)
+                return
+            token = _panel_session_token(worker)
+            self.write_json(
+                {"ok": True, "data": worker},
+                headers={
+                    "Set-Cookie": (
+                        f"{PANEL_SESSION_COOKIE}={token}; Max-Age={PANEL_SESSION_TTL_SECONDS}; "
+                        "Path=/; HttpOnly; SameSite=Lax"
+                    )
+                },
+            )
+        except (json.JSONDecodeError, ValueError) as exc:
+            self.write_json({"ok": False, "error": str(exc)}, status=HTTPStatus.BAD_REQUEST)
+        except RuntimeError as exc:
+            self.write_json({"ok": False, "error": str(exc)}, status=HTTPStatus.SERVICE_UNAVAILABLE)
+
+    def handle_panel_logout(self):
+        self.write_json(
+            {"ok": True},
+            headers={
+                "Set-Cookie": f"{PANEL_SESSION_COOKIE}=; Max-Age=0; Path=/; HttpOnly; SameSite=Lax"
+            },
+        )
+
     def log_message(self, format, *args):
         logger.info("%s - %s", self.client_address[0], format % args)
 
@@ -3196,11 +3469,20 @@ class Handler(SimpleHTTPRequestHandler):
         except Exception as exc:
             return {"ok": False, "error": f"{type(exc).__name__}: {exc}"}
 
-    def handle_report_post(self):
+    def handle_report_post(self, panel_worker):
         try:
             length = int(self.headers.get("Content-Length", 0))
             body = self.rfile.read(length).decode("utf-8")
             report = json.loads(body)
+
+            if not isinstance(report, dict):
+                raise ValueError("报工数据必须为对象")
+            # The authenticated session is authoritative. Ignore any worker
+            # identity supplied by the browser.
+            report["workerId"] = panel_worker["id"]
+            report["workerName"] = panel_worker["name"]
+            report["workerTeam"] = panel_worker.get("team", "")
+            report["odooEmployeeId"] = panel_worker.get("odooEmployeeId", 0)
 
             mode = get_odoo_mode()
 
@@ -3209,6 +3491,11 @@ class Handler(SimpleHTTPRequestHandler):
             existing_idempotent_report = None
             if idempotency_key:
                 existing_idempotent_report = db_get_report_by_idempotency(idempotency_key)
+                if (existing_idempotent_report
+                        and str(existing_idempotent_report.get("worker_id", "")) != panel_worker["id"]):
+                    self.write_json({"ok": False, "error": "幂等键与当前员工不匹配"},
+                                    status=HTTPStatus.CONFLICT)
+                    return
                 existing_status = (
                     existing_idempotent_report.get("sync_status")
                     if existing_idempotent_report else ""
@@ -3239,17 +3526,8 @@ class Handler(SimpleHTTPRequestHandler):
                                     status=HTTPStatus.BAD_REQUEST)
                     return
 
-            worker_id = str(report["workerId"])
-            worker = get_worker_by_id(worker_id)
-            if not worker:
-                self.write_json({"ok": False, "error": f"工人 {worker_id} 不存在"},
-                                status=HTTPStatus.BAD_REQUEST)
-                return
-            # Worker identity and Odoo relation always come from the server-side
-            # department snapshot, never from user-controlled request fields.
-            report["workerName"] = worker["name"]
-            report["workerTeam"] = worker.get("team", "")
-            report["odooEmployeeId"] = worker.get("odooEmployeeId", 0)
+            worker_id = panel_worker["id"]
+            worker = panel_worker
 
             # 新字段: 工单ID
             workorder_id = str(report.get("workorderId", report.get("orderId", "")))
@@ -3262,6 +3540,11 @@ class Handler(SimpleHTTPRequestHandler):
                     or not production_id.isdigit() or int(production_id) <= 0):
                 self.write_json({"ok": False, "error": "请先选择有效的工单后再报工"},
                                 status=HTTPStatus.BAD_REQUEST)
+                return
+
+            if not panel_worker_can_access_workorder(worker, workorder_id):
+                self.write_json({"ok": False, "error": "该工单不属于当前员工允许的工序"},
+                                status=HTTPStatus.FORBIDDEN)
                 return
 
             if mode == "real":
@@ -3799,16 +4082,23 @@ class Handler(SimpleHTTPRequestHandler):
             self.write_json({"ok": False, "error": f"服务器错误: {exc}"},
                             status=HTTPStatus.INTERNAL_SERVER_ERROR)
 
-    def dashboard_payload(self):
+    def dashboard_payload(self, panel_worker=None):
         try:
-            return {"ok": True, "data": load_dashboard()}
+            # The legacy dashboard is not employee-scoped. Keep its shape for
+            # the existing client while avoiding cross-worker order leakage.
+            return {"ok": True, "data": {"deliveryRows": []}}
         except Exception as exc:
             return {"ok": False, "error": f"{type(exc).__name__}: {exc}"}
 
-    def report_stats_payload(self):
+    def report_stats_payload(self, panel_worker=None):
         try:
             today = datetime.now(LOCAL_TZ).strftime("%Y-%m-%d")
             reports = db_reports(date_filter=today)
+            if panel_worker is not None:
+                reports = [
+                    report for report in reports
+                    if str(report.get("worker_id", "")) == str(panel_worker["id"])
+                ]
             total_qty = sum(int(r.get("qty", 0)) for r in reports)
             total_hours = sum(float(r.get("hours", 0)) for r in reports)
             unique_workers = len({r.get("worker_name") for r in reports})
@@ -3816,7 +4106,7 @@ class Handler(SimpleHTTPRequestHandler):
             completed_qty = 0
             display_reports = reports
             if mode == "real":
-                completed_qty = completed_machine_qty_for_reports(db_reports(limit=5000))
+                completed_qty = completed_machine_qty_for_reports(reports)
                 display_reports = reports + odoo_today_progress_snapshots(reports)
             return {
                 "ok": True,
@@ -3837,7 +4127,7 @@ class Handler(SimpleHTTPRequestHandler):
         except Exception as exc:
             return {"ok": False, "error": str(exc)}
 
-    def write_json(self, payload, status=HTTPStatus.OK):
+    def write_json(self, payload, status=HTTPStatus.OK, headers=None):
         body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
@@ -3847,6 +4137,8 @@ class Handler(SimpleHTTPRequestHandler):
         self.send_header("Pragma", "no-cache")
         self.send_header("Expires", "0")
         self.send_header("Content-Length", str(len(body)))
+        for name, value in (headers or {}).items():
+            self.send_header(name, value)
         self.end_headers()
         self.wfile.write(body)
 
