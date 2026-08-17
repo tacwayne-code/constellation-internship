@@ -1,5 +1,4 @@
 from django import forms
-from django.contrib.auth.password_validation import validate_password
 from django.db import transaction
 
 from .models import Department, Employee, EmployeeReportPanelAccount
@@ -60,8 +59,6 @@ class EmployeeReportPanelAccountForm(forms.ModelForm):
         if password or confirmation:
             if password != confirmation:
                 self.add_error("password_confirmation", "两次输入的密码不一致。")
-            else:
-                validate_password(password)
         return cleaned_data
 
     def save(self, commit=True):

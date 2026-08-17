@@ -154,6 +154,24 @@ class EmployeeAdministrationTests(TestCase):
         self.assertEqual(account.employee, employee)
         self.assertTrue(check_password("SopPanel123!", account.password_hash))
 
+    def test_creating_panel_account_accepts_a_short_password(self):
+        department = Department.objects.create(name="生产车间")
+        employee = Employee.objects.create(name="李四", department=department, job_title="组装")
+
+        response = self.client.post(
+            reverse("admin:employees_employeereportpanelaccount_add"),
+            {
+                "employee": employee.pk,
+                "username": "lisi",
+                "password": "密",
+                "password_confirmation": "密",
+                "is_active": "on",
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertTrue(check_password("密", EmployeeReportPanelAccount.objects.get(username="lisi").password_hash))
+
     @patch("employees.admin.enqueue_sop_employee_sync")
     def test_new_employee_receives_a_stable_sop_worker_id(self, sync_employee):
         response = self.create_employee(job_title="组装，打包")
