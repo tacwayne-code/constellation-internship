@@ -12,7 +12,7 @@ Vue.component('sub-menu', {
                     <i :class="'menu-icon '+item.icon"></i>
                     <span v-show="!fold">{{item.name}}</span>
                 </el-menu-item>
-                <el-submenu :index="item.eid" v-else>
+                <el-submenu :index="item.eid" v-else :class="{'employee-menu-module': item.name === '员工' || item.name === '部门'}">
                     <template slot="title">
                         <i :class="'menu-icon '+item.icon"></i>
                         <span v-show="!fold">{{item.name}}</span>

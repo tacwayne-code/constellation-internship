@@ -25,6 +25,11 @@
     .menu .el-menu-item.report-panel-account-menu-item:hover {
       background-color: #304156 !important;
     }
+    .menu .el-submenu.employee-menu-module > .el-submenu__title,
+    .menu .el-submenu.employee-menu-module > .el-submenu__title:hover,
+    .menu .el-submenu.employee-menu-module.is-opened > .el-submenu__title {
+      background-color: #304156 !important;
+    }
   </style>
 {% endblock %}
 
@@ -65,6 +70,6 @@
       };
     }(window.open));
   </script>
-  <script type="text/javascript" src="{% static 'admin/simpleui-menu.js' %}?v=3"></script>
+  <script type="text/javascript" src="{% static 'admin/simpleui-menu.js' %}?v=4"></script>
   <script type="text/javascript" src="{% static 'admin/simpleui-x/js/index.js' %}"></script>
 {% endblock %}
