@@ -39,6 +39,27 @@ class PanelAuthTests(unittest.TestCase):
             ["worker_assembly"],
         )
 
+    def test_custom_assembly_binding_survives_session_and_exposes_bom_metadata(self):
+        identity = {
+            "sourceWorkerId": "ADMIN_EMP_8",
+            "name": "周小明",
+            "departmentName": "生产车间",
+            "operationCodes": ["worker_assembly_custom_0123456789abcdef"],
+            "operationBindings": [{
+                "code": "worker_assembly_custom_0123456789abcdef",
+                "name": "定位结构组装",
+                "workorderNames": ["定位结构组装"],
+                "productClass": "machine",
+                "requiresBom": True,
+            }],
+        }
+        worker = server._panel_worker_from_identity(identity)
+        with patch.object(server, "PANEL_SESSION_SECRET", "test-session-secret"):
+            round_trip = server._panel_session_worker(server._panel_session_token(worker))
+        self.assertEqual(round_trip["operationCodes"], identity["operationCodes"])
+        self.assertEqual(round_trip["operationBindings"][0]["name"], "定位结构组装")
+        self.assertTrue(round_trip["operationBindings"][0]["requiresBom"])
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -106,9 +106,51 @@ def _panel_worker_from_identity(identity):
     name = str(identity.get("name", "")).strip()
     team = str(identity.get("departmentName", identity.get("team", ""))).strip()
     raw_codes = identity.get("operationCodes", [])
+    raw_bindings = identity.get("operationBindings", [])
     if not worker_id or not name or not isinstance(raw_codes, list):
         return None
-    operation_codes = [str(code) for code in raw_codes if str(code) in VALID_OPERATIONS]
+    bindings = []
+    include_bindings = isinstance(raw_bindings, list) and bool(raw_bindings)
+    if isinstance(raw_bindings, list):
+        for raw in raw_bindings:
+            if not isinstance(raw, dict):
+                continue
+            code = str(raw.get("code", "")).strip()
+            binding_name = str(raw.get("name", "")).strip()
+            if not code or not binding_name:
+                continue
+            if code not in VALID_OPERATIONS and not code.startswith("worker_assembly_custom_"):
+                continue
+            names = raw.get("workorderNames", [binding_name])
+            if not isinstance(names, list):
+                names = [binding_name]
+            bindings.append({
+                "code": code,
+                "name": binding_name,
+                "workorderNames": [str(value) for value in names if str(value).strip()],
+                "productClass": raw.get("productClass") or None,
+                "requiresBom": bool(raw.get("requiresBom")),
+            })
+    binding_by_code = {binding["code"]: binding for binding in bindings}
+    operation_codes = [
+        str(code) for code in raw_codes
+        if str(code) in VALID_OPERATIONS or str(code) in binding_by_code
+    ]
+    # Older management deployments do not send operationBindings. Preserve
+    # their static operation behavior while still accepting custom bindings
+    # from newer deployments.
+    for code in operation_codes:
+        if code not in binding_by_code and code in OPERATION_MAP:
+            op = OPERATION_MAP[code]
+            binding_by_code[code] = {
+                "code": code,
+                "name": op.get("name", code),
+                "workorderNames": list(op.get("workorderNames") or []),
+                "productClass": op.get("productClass"),
+                "requiresBom": bool(op.get("name") == "组装" and op.get("productClass") in {"machine", "host"}),
+            }
+    bindings = [binding_by_code[code] for code in operation_codes if code in binding_by_code]
+    operation_codes = [binding["code"] for binding in bindings]
     if not operation_codes:
         return None
     return {
@@ -118,6 +160,7 @@ def _panel_worker_from_identity(identity):
         "source": "report_admin",
         "odooEmployeeId": 0,
         "operationCodes": operation_codes,
+        **({"operationBindings": bindings} if include_bindings else {}),
     }
 
 
@@ -158,6 +201,7 @@ def _panel_session_token(worker):
         "name": worker["name"],
         "team": worker.get("team", ""),
         "operationCodes": worker.get("operationCodes", []),
+        "operationBindings": worker.get("operationBindings", []),
         "expiresAt": int(time.time()) + PANEL_SESSION_TTL_SECONDS,
     }
     encoded = base64.urlsafe_b64encode(
@@ -190,6 +234,7 @@ def _panel_session_worker(token):
         "name": payload.get("name", ""),
         "departmentName": payload.get("team", ""),
         "operationCodes": payload.get("operationCodes", []),
+        "operationBindings": payload.get("operationBindings", []),
     })
 
 
@@ -199,6 +244,7 @@ def _report_admin_payload(report, materials):
         "sourceReportId": str(report["id"]),
         "idempotencyKey": str(report["idempotencyKey"]),
         "productionId": str(report.get("productionId", "")),
+        "productionName": str(report.get("productionName", "")),
         "workorderId": str(report.get("workorderId", "")),
         "workerId": str(report["workerId"]),
         "workerName": str(report["workerName"]),
@@ -251,10 +297,16 @@ def _push_report_admin(report, materials, final_status=False):
         if not _post_report_admin("/internal/api/v1/work-reports/", payload):
             return
         if final_status:
+            event_fingerprint = hashlib.sha256(json.dumps({
+                "syncStatus": payload["syncStatus"],
+                "materialSyncStatus": payload["materialSyncStatus"],
+                "odooProgressQty": payload["odooProgressQty"],
+                "errorMessage": payload["errorMessage"],
+            }, ensure_ascii=False, sort_keys=True).encode("utf-8")).hexdigest()[:24]
             _post_report_admin("/internal/api/v1/work-reports/sync-status/", {
                 "sourceReportId": payload["sourceReportId"],
                 "idempotencyKey": payload["idempotencyKey"],
-                "eventKey": f"{payload['sourceReportId']}:final:{payload['syncStatus']}:{payload['materialSyncStatus']}",
+                "eventKey": f"{payload['sourceReportId']}:final:{event_fingerprint}",
                 "syncStatus": payload["syncStatus"],
                 "materialSyncStatus": payload["materialSyncStatus"],
                 "odooReportId": payload["odooReportId"],
@@ -864,6 +916,11 @@ def _load_report_admin_workers():
         operation_codes = row.get("operationCodes", [])
         if not worker_id or not name or not isinstance(operation_codes, list):
             continue
+        operation_bindings = row.get("operationBindings", [])
+        valid_binding_codes = {
+            str(binding.get("code", "")) for binding in operation_bindings
+            if isinstance(binding, dict)
+        }
         workers.append({
             "id": worker_id,
             "name": name,
@@ -872,7 +929,11 @@ def _load_report_admin_workers():
             "odooEmployeeId": 0,
             "jobTitle": str(row.get("jobTitle", "")).strip(),
             "jobOperationNames": _split_job_operations(row.get("jobTitle", "")),
-            "operationCodes": [str(code) for code in operation_codes if str(code) in VALID_OPERATIONS],
+            "operationCodes": [
+                str(code) for code in operation_codes
+                if str(code) in VALID_OPERATIONS or str(code) in valid_binding_codes
+            ],
+            "operationBindings": operation_bindings if isinstance(operation_bindings, list) else [],
         })
     return workers
 
@@ -984,6 +1045,32 @@ def get_operations():
     return ops
 
 
+def get_operations_for_worker(worker):
+    """Return static operations plus trusted job-specific bindings."""
+    static = {op["code"]: op for op in get_operations()}
+    result = []
+    for binding in worker.get("operationBindings", []) if worker else []:
+        code = str(binding.get("code", ""))
+        if not code or code in static:
+            continue
+        result.append({
+            "id": code,
+            "code": code,
+            "name": str(binding.get("name", code)),
+            "hostType": binding.get("hostType"),
+            "productClass": binding.get("productClass"),
+            "workorderNames": list(binding.get("workorderNames") or []),
+            "requiresBom": bool(binding.get("requiresBom")),
+            "meta": {"mode": get_odoo_mode(), "source": "report_admin"},
+        })
+    return list(static.values()) + result
+
+
+def operation_for_worker(worker, code):
+    code = str(code or "")
+    return next((op for op in get_operations_for_worker(worker) if op["code"] == code), None)
+
+
 def get_operation_map():
     return {op["code"]: op for op in get_operations()}
 
@@ -1045,7 +1132,7 @@ def panel_worker_allows_workorder(worker, workorder):
             in {"odoo", "report_admin"}
             and workorder.get("productClass") != "machine"):
         return False
-    operation_map = get_operation_map()
+    operation_map = {op["code"]: op for op in get_operations_for_worker(worker)}
     return any(
         operation_matches_workorder(operation_map[code], workorder)
         for code in worker.get("operationCodes", [])
@@ -1990,15 +2077,24 @@ def get_bom_data(host_type):
     return items
 
 
-def get_workorder_bom_data(workorder_id):
-    """Read the selected work order's own Odoo BOM and source stock."""
+def get_workorder_bom_data(workorder_id, operation=None):
+    """Read the selected work order's own Odoo BOM and source stock.
+
+    Custom component-assembly operations only receive the BOM lines assigned
+    to the selected routing operation. This keeps both the confirmation list
+    and the one-time inventory deduction scoped to that component.
+    """
     if not workorder_id:
         raise ValueError("缺少工单 ID")
     client = get_odoo()
-    wo_rows = client.read(
-        "mrp.workorder", [int(workorder_id)],
-        ["id", "production_id", "product_id", "name"],
-    )
+    wo_fields = ["id", "production_id", "product_id", "name"]
+    try:
+        wo_rows = client.read("mrp.workorder", [int(workorder_id)], wo_fields + ["operation_id"])
+    except Exception:
+        # Keep existing deployments working when their Odoo customization does
+        # not expose operation_id. Custom assembly then fails closed below
+        # instead of accidentally displaying the whole BOM.
+        wo_rows = client.read("mrp.workorder", [int(workorder_id)], wo_fields)
     if not wo_rows:
         raise ValueError(f"工单 #{workorder_id} 不存在")
     wo = wo_rows[0]
@@ -2021,11 +2117,33 @@ def get_workorder_bom_data(workorder_id):
             f"制造订单原料库位不是 WH/生产前（实际库位 ID: {source_location_id}）"
         )
 
-    lines = client.search_read(
-        "mrp.bom.line", [("bom_id", "=", bom_id)],
-        ["id", "product_id", "product_qty", "product_uom_id", "sequence"],
-        limit=500, order="sequence asc, id asc",
+    line_fields = ["id", "product_id", "product_qty", "product_uom_id", "sequence"]
+    try:
+        lines = client.search_read(
+            "mrp.bom.line", [("bom_id", "=", bom_id)], line_fields + ["operation_id"],
+            limit=500, order="sequence asc, id asc",
+        )
+    except Exception:
+        lines = client.search_read(
+            "mrp.bom.line", [("bom_id", "=", bom_id)], line_fields,
+            limit=500, order="sequence asc, id asc",
+        )
+
+    operation_requires_bom = bool(operation and operation.get("requiresBom"))
+    operation_filter_id = rel_id(wo.get("operation_id")) if operation_requires_bom else None
+    line_operation_ids = [rel_id(line.get("operation_id")) for line in lines]
+    operation_name_fallback = operation_requires_bom and (
+        not operation_filter_id or not any(line_operation_ids)
     )
+    if operation_requires_bom and operation_filter_id:
+        operation_lines = [
+            line for line in lines
+            if rel_id(line.get("operation_id")) == operation_filter_id
+        ]
+        if operation_lines:
+            lines = operation_lines
+        elif any(rel_id(line.get("operation_id")) for line in lines):
+            raise ValueError("该组装工序在 BOM 中未配置对应物料")
     product_ids = sorted({rel_id(line.get("product_id")) for line in lines if rel_id(line.get("product_id"))})
     products = {}
     if product_ids:
@@ -2034,6 +2152,20 @@ def get_workorder_bom_data(workorder_id):
             ["id", "default_code", "name", "product_tmpl_id", "categ_id", "uom_id"],
         ):
             products[product["id"]] = product
+
+    if operation_name_fallback:
+        operation_name = str(operation.get("name", "")).strip()
+        keyword = operation_name[:-2].strip() if operation_name.endswith("组装") else operation_name
+        if not keyword:
+            raise ValueError("该组装工序缺少物料匹配名称")
+        keyword = keyword.casefold()
+        lines = [
+            line for line in lines
+            if keyword in clean_name(products.get(rel_id(line.get("product_id")), {}).get("name", "")).casefold()
+            or keyword in str(products.get(rel_id(line.get("product_id")), {}).get("default_code", "")).casefold()
+        ]
+        if not lines:
+            raise ValueError("该组装工序在 BOM 中未找到对应物料")
 
     template_ids = sorted({rel_id(p.get("product_tmpl_id")) for p in products.values() if rel_id(p.get("product_tmpl_id"))})
     specifications = {}
@@ -2091,6 +2223,7 @@ def get_workorder_bom_data(workorder_id):
         "bomId": bom_id,
         "sourceLocationId": source_location_id,
         "sourceLocationName": rel_name(mo.get("location_src_id"), ""),
+        "operationId": rel_id(wo.get("operation_id")) or 0,
     }
 
 
@@ -3026,7 +3159,18 @@ class Handler(SimpleHTTPRequestHandler):
         except (ValueError, CookieError):
             return None
         morsel = cookies.get(PANEL_SESSION_COOKIE)
-        return _panel_session_worker(morsel.value if morsel else "")
+        session_worker = _panel_session_worker(morsel.value if morsel else "")
+        if not session_worker:
+            return None
+        # A manager may alter an employee's jobs while the panel remains open.
+        # Resolve the signed identity against the management service so the
+        # next API request observes the new allowed operations. If that
+        # service is briefly unavailable, the signed session remains usable.
+        if session_worker.get("source") == "report_admin":
+            current_worker = get_worker_by_id(session_worker["id"])
+            if current_worker:
+                return current_worker
+        return session_worker
 
     def require_panel_worker(self):
         worker = self.panel_worker()
@@ -3107,7 +3251,7 @@ class Handler(SimpleHTTPRequestHandler):
             self.write_json(payload, status=status)
         elif path == "/api/operations":
             allowed = set(panel_worker.get("operationCodes", []))
-            ops = [op for op in get_operations() if op["code"] in allowed]
+            ops = [op for op in get_operations_for_worker(panel_worker) if op["code"] in allowed]
             self.write_json({"ok": True, "data": ops,
                              "meta": {"mode": get_odoo_mode(), "count": len(ops)}})
         elif path == "/api/workorders":
@@ -3121,6 +3265,7 @@ class Handler(SimpleHTTPRequestHandler):
         elif path == "/api/bom":
             host_type = params.get("hostType", params.get("host_type", ""))
             workorder_id = params.get("workorderId", params.get("workorder_id", ""))
+            operation_code = params.get("operationCode", params.get("operation_code", ""))
             nocache = params.get("nocache", "0") in ("1", "true", "yes")
             if not workorder_id or not panel_worker_can_access_workorder(panel_worker, workorder_id):
                 self.write_json({"ok": False, "error": "该工单不属于当前员工允许的工序"},
@@ -3128,7 +3273,10 @@ class Handler(SimpleHTTPRequestHandler):
                 return
             if workorder_id:
                 try:
-                    context = get_workorder_bom_data(workorder_id)
+                    operation = operation_for_worker(panel_worker, operation_code)
+                    if not operation:
+                        raise ValueError("当前员工未绑定所选工序")
+                    context = get_workorder_bom_data(workorder_id, operation)
                     if context.get("productClass") == "machine":
                         items = context.pop("items")
                         self.write_json({
@@ -3567,7 +3715,7 @@ class Handler(SimpleHTTPRequestHandler):
                     return
 
             operation = str(report["operation"])
-            op_info = get_operation_map().get(operation)
+            op_info = operation_for_worker(worker, operation)
             if not op_info:
                 self.write_json({"ok": False, "error": f"无效工序: {operation}"},
                                 status=HTTPStatus.BAD_REQUEST)
@@ -3583,6 +3731,7 @@ class Handler(SimpleHTTPRequestHandler):
                 }, status=HTTPStatus.FORBIDDEN)
                 return
             machine_operation = False
+            assembly_operation = bool(op_info.get("requiresBom"))
             machine_assembly = False
             if mode == "real":
                 workorder_view = {
@@ -3594,7 +3743,7 @@ class Handler(SimpleHTTPRequestHandler):
                     "productClass": workorder_product_class(check_rows[0].get("product_id")),
                 }
                 machine_operation = workorder_view["productClass"] == "machine"
-                assembly_operation = (
+                assembly_operation = assembly_operation or (
                     op_info.get("name") == "组装"
                     and workorder_view["productClass"] in {"machine", "host"}
                 )
@@ -3650,7 +3799,7 @@ class Handler(SimpleHTTPRequestHandler):
                     }, status=HTTPStatus.BAD_REQUEST)
                     return
                 try:
-                    bom_context = get_workorder_bom_data(workorder_id)
+                    bom_context = get_workorder_bom_data(workorder_id, op_info)
                     expected_items = bom_context.get("items", [])
                     # Component identities remain authoritative from Odoo, while
                     # the operator-confirmed actual usage may exceed the default.
@@ -3664,7 +3813,7 @@ class Handler(SimpleHTTPRequestHandler):
                     return
             elif materials:
                 try:
-                    bom_context = get_workorder_bom_data(workorder_id)
+                    bom_context = get_workorder_bom_data(workorder_id, op_info)
                     expected_items = bom_context.get("items", [])
                     # Any routing step may consume materials.  Confirmation of
                     # the selected MO's BOM, not the operation name, authorizes
@@ -4019,6 +4168,7 @@ class Handler(SimpleHTTPRequestHandler):
             name = str(worker.get("name", "")).strip()
             team = str(worker.get("departmentName", worker.get("team", ""))).strip()
             operation_codes = worker.get("operationCodes", [])
+            operation_bindings = worker.get("operationBindings", [])
             if not wid or not name or not team:
                 self.write_json({"ok": False, "error": "工人编号、姓名和所属部门不能为空"},
                                 status=HTTPStatus.BAD_REQUEST)
@@ -4027,7 +4177,11 @@ class Handler(SimpleHTTPRequestHandler):
                 self.write_json({"ok": False, "error": "工作岗位未匹配到工序"}, status=HTTPStatus.BAD_REQUEST)
                 return
             operation_codes = [str(code) for code in operation_codes]
-            if any(code not in VALID_OPERATIONS for code in operation_codes):
+            binding_codes = {
+                str(binding.get("code", "")) for binding in operation_bindings
+                if isinstance(binding, dict)
+            }
+            if any(code not in VALID_OPERATIONS and code not in binding_codes for code in operation_codes):
                 self.write_json({"ok": False, "error": "包含无效工序绑定"}, status=HTTPStatus.BAD_REQUEST)
                 return
             source = _effective_worker_source(wid, "report_admin")
@@ -4038,6 +4192,7 @@ class Handler(SimpleHTTPRequestHandler):
             self.write_json({"ok": True, "data": {
                 "id": wid, "name": name, "team": team, "source": source,
                 "odooEmployeeId": 0, "operationCodes": operation_codes,
+                "operationBindings": operation_bindings if isinstance(operation_bindings, list) else [],
             }})
         except (ValueError, json.JSONDecodeError) as exc:
             self.write_json({"ok": False, "error": str(exc)}, status=HTTPStatus.BAD_REQUEST)

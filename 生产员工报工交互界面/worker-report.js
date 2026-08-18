@@ -525,6 +525,7 @@ function workorderMatchesSelectedOperation(workorder) {
 
 function operationRequiresBom(operation = S.selectedOperation) {
   return !!(operation && (
+    operation.requiresBom ||
     ((operation.productClass === "machine" || operation.productClass === "host") &&
       operation.name === "组装")
   ));
@@ -712,7 +713,8 @@ async function openBomModal(nocache = false) {
   try {
     const woId = S.selectedWorkorder ? S.selectedWorkorder.workorderId : "";
     const cacheParam = nocache ? "&nocache=1" : "";
-    const resp = await apiGet(`/api/bom?hostType=${encodeURIComponent(ht || "")}&workorderId=${encodeURIComponent(woId)}${cacheParam}`);
+    const operationCode = S.selectedOperation?.code || S.selOperation || "";
+    const resp = await apiGet(`/api/bom?hostType=${encodeURIComponent(ht || "")}&workorderId=${encodeURIComponent(woId)}&operationCode=${encodeURIComponent(operationCode)}${cacheParam}`);
     S.bomItems = (resp.data || []).map((item) => ({
       ...item,
       selected: true,
