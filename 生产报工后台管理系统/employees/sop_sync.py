@@ -125,13 +125,19 @@ def employee_source_worker_id(employee):
 
 def employee_payload(employee):
     bindings = operation_bindings_for_job_title(employee.job_title)
+    derived_codes = [binding["code"] for binding in bindings]
+    operation_codes = []
+    for code in [*derived_codes, *(employee.operation_codes or [])]:
+        code = str(code).strip()
+        if code and code not in operation_codes:
+            operation_codes.append(code)
     payload = {
         "sourceWorkerId": employee_source_worker_id(employee),
         "name": employee.name,
         "team": employee.department.name,
         "departmentName": employee.department.name,
         "jobTitle": employee.job_title,
-        "operationCodes": employee.operation_codes or [binding["code"] for binding in bindings],
+        "operationCodes": operation_codes,
         "source": "report_admin",
     }
     static_codes = {code for codes in OPERATION_CODES_BY_NAME.values() for code in codes}

@@ -235,6 +235,22 @@ class EmployeeAdministrationTests(TestCase):
         self.assertEqual(binding["workorderNames"], ["定位结构组装"])
         self.assertTrue(binding["requiresBom"])
 
+    def test_panel_payload_merges_job_title_operations_with_legacy_codes(self):
+        department = Department.objects.create(name="生产车间")
+        employee = Employee.objects.create(
+            name="周小明",
+            department=department,
+            job_title="定位结构组装，打包",
+            source_worker_id="ADMIN_EMP_10",
+            operation_codes=["worker_packing", "legacy_operation"],
+        )
+        payload = employee_payload(employee)
+        self.assertEqual(payload["operationCodes"], [
+            "worker_assembly_custom_0f0cb3b8592d0eef",
+            "worker_packing",
+            "legacy_operation",
+        ])
+
     @patch("employees.admin.enqueue_sop_employee_sync")
     def test_new_employee_receives_a_stable_sop_worker_id(self, sync_employee):
         response = self.create_employee(job_title="组装，打包")
