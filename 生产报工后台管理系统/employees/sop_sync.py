@@ -35,6 +35,12 @@ OPERATION_NAMES_BY_CODE.update({
     "pc_assembly_splitter": "打包",
 })
 
+HOST_DEPARTMENT_SUFFIX = "组装部"
+HOST_OPERATION_CODE_ALIASES = {
+    "worker_assembly": "pc_assembly_tape",
+    "worker_packing": "pc_assembly_splitter",
+}
+
 
 def operation_bindings_for_job_title(value):
     """Return stable, descriptive SOP bindings for every assigned job name.
@@ -126,8 +132,21 @@ def employee_source_worker_id(employee):
 def employee_payload(employee):
     bindings = operation_bindings_for_job_title(employee.job_title)
     derived_codes = [binding["code"] for binding in bindings]
+    is_host_department = str(employee.department.name or "").strip().endswith(HOST_DEPARTMENT_SUFFIX)
+    if is_host_department:
+        # Legacy host workers were stored with pc_assembly_* codes, while the
+        # newer generic job-title mapping produces worker_* codes. Normalize
+        # both names to the host routes so the panel cannot show duplicates or
+        # expose machine-only work orders for this department.
+        derived_codes = [HOST_OPERATION_CODE_ALIASES.get(code, code) for code in derived_codes]
+        stored_codes = [
+            HOST_OPERATION_CODE_ALIASES.get(str(code).strip(), str(code).strip())
+            for code in (employee.operation_codes or [])
+        ]
+    else:
+        stored_codes = [str(code).strip() for code in (employee.operation_codes or [])]
     operation_codes = []
-    for code in [*derived_codes, *(employee.operation_codes or [])]:
+    for code in [*derived_codes, *stored_codes]:
         code = str(code).strip()
         if code and code not in operation_codes:
             operation_codes.append(code)
@@ -142,6 +161,11 @@ def employee_payload(employee):
     }
     static_codes = {code for codes in OPERATION_CODES_BY_NAME.values() for code in codes}
     custom_bindings = [binding for binding in bindings if binding["code"] not in static_codes]
+    if is_host_department:
+        custom_bindings = [
+            {**binding, "productClass": "host"}
+            for binding in custom_bindings
+        ]
     if custom_bindings:
         payload["operationBindings"] = custom_bindings
     return payload

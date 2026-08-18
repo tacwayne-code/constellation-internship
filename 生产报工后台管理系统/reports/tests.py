@@ -251,6 +251,23 @@ class EmployeeAdministrationTests(TestCase):
             "legacy_operation",
         ])
 
+    def test_assembly_department_normalizes_legacy_and_generic_codes_to_host_routes(self):
+        department = Department.objects.create(name="组装部")
+        employee = Employee.objects.create(
+            name="罗伟华",
+            department=department,
+            job_title="组装，打包",
+            source_worker_id="ADMIN_EMP_11",
+            operation_codes=[
+                "worker_assembly", "worker_packing",
+                "pc_assembly_tape", "pc_assembly_splitter",
+            ],
+        )
+        self.assertEqual(employee_payload(employee)["operationCodes"], [
+            "pc_assembly_tape",
+            "pc_assembly_splitter",
+        ])
+
     @patch("employees.admin.enqueue_sop_employee_sync")
     def test_new_employee_receives_a_stable_sop_worker_id(self, sync_employee):
         response = self.create_employee(job_title="组装，打包")
