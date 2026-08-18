@@ -1,4 +1,5 @@
 import json
+import hashlib
 import logging
 import re
 import threading
@@ -35,6 +36,38 @@ OPERATION_NAMES_BY_CODE.update({
 })
 
 
+def operation_bindings_for_job_title(value):
+    """Return stable, descriptive SOP bindings for every assigned job name.
+
+    The management system previously had codes only for the generic jobs.  A
+    BOM-routed assembly job is named after its component (for example,
+    ``定位结构组装``), so it needs its own stable code and work-order match.
+    """
+    bindings = []
+    for name in split_job_title(value):
+        static_codes = OPERATION_CODES_BY_NAME.get(name, ())
+        if static_codes:
+            for code in static_codes:
+                bindings.append({
+                    "code": code,
+                    "name": name,
+                    "workorderNames": [name],
+                    "productClass": "machine" if code.startswith("worker_") else None,
+                    "requiresBom": False,
+                })
+            continue
+        if name.endswith("组装"):
+            digest = hashlib.sha256(name.encode("utf-8")).hexdigest()[:16]
+            bindings.append({
+                "code": f"worker_assembly_custom_{digest}",
+                "name": name,
+                "workorderNames": [name],
+                "productClass": "machine",
+                "requiresBom": True,
+            })
+    return bindings
+
+
 class SopEmployeeSyncError(RuntimeError):
     pass
 
@@ -45,10 +78,9 @@ def split_job_title(value):
 
 def operation_codes_for_job_title(value):
     codes = []
-    for name in split_job_title(value):
-        for code in OPERATION_CODES_BY_NAME.get(name, ()):
-            if code not in codes:
-                codes.append(code)
+    for binding in operation_bindings_for_job_title(value):
+        if binding["code"] not in codes:
+            codes.append(binding["code"])
     return codes
 
 
@@ -92,15 +124,21 @@ def employee_source_worker_id(employee):
 
 
 def employee_payload(employee):
-    return {
+    bindings = operation_bindings_for_job_title(employee.job_title)
+    payload = {
         "sourceWorkerId": employee_source_worker_id(employee),
         "name": employee.name,
         "team": employee.department.name,
         "departmentName": employee.department.name,
         "jobTitle": employee.job_title,
-        "operationCodes": employee.operation_codes or operation_codes_for_job_title(employee.job_title),
+        "operationCodes": employee.operation_codes or [binding["code"] for binding in bindings],
         "source": "report_admin",
     }
+    static_codes = {code for codes in OPERATION_CODES_BY_NAME.values() for code in codes}
+    custom_bindings = [binding for binding in bindings if binding["code"] not in static_codes]
+    if custom_bindings:
+        payload["operationBindings"] = custom_bindings
+    return payload
 
 
 def fetch_sop_workers():

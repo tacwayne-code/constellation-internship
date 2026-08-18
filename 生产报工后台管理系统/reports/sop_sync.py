@@ -1,4 +1,5 @@
 import json
+import hashlib
 import logging
 import re
 import threading
@@ -244,6 +245,13 @@ def sync_report(data, production_details=None):
                 occurred_at=timezone.now(),
             )
             return "created"
+        previous_sync_values = {
+            field: getattr(report, field)
+            for field in (
+                "sync_status", "material_sync_status", "odoo_report_id",
+                "odoo_stock_move_ids", "odoo_progress_quantity", "error_message",
+            )
+        }
         if not values["production_name"]:
             values["production_name"] = report.production_name
         if not values["order_product"]:
@@ -253,6 +261,22 @@ def sync_report(data, production_details=None):
             for field, value in values.items():
                 setattr(report, field, value)
             report.save(update_fields=(*values.keys(), "updated_at"))
+            current_sync_values = {field: values[field] for field in previous_sync_values}
+            if current_sync_values != previous_sync_values:
+                fingerprint = hashlib.sha256(
+                    json.dumps(current_sync_values, ensure_ascii=False, default=str, sort_keys=True).encode("utf-8")
+                ).hexdigest()[:24]
+                ReportSyncEvent.objects.get_or_create(
+                    event_key=f"sop-pull:{source_id}:state:{fingerprint}",
+                    defaults={
+                        "work_report": report,
+                        "step": ReportSyncEvent.Step.PROGRESS,
+                        "status": values["sync_status"],
+                        "message": values["error_message"],
+                        "payload": {"source": "sop_http_pull", "syncStatus": values["sync_status"]},
+                        "occurred_at": timezone.now(),
+                    },
+                )
             return "updated"
     return "unchanged"
 

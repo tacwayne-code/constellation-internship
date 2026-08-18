@@ -8,7 +8,12 @@ from django.urls import reverse
 
 from .models import WorkReport
 from employees.models import Department, Employee, EmployeeReportPanelAccount
-from employees.sop_sync import department_name_from_sop_team, import_sop_workers, operation_codes_for_job_title
+from employees.sop_sync import (
+    department_name_from_sop_team,
+    employee_payload,
+    import_sop_workers,
+    operation_codes_for_job_title,
+)
 from employees.templatetags.employee_menu import department_menu_items
 
 
@@ -214,6 +219,21 @@ class EmployeeAdministrationTests(TestCase):
         )
 
         self.assertEqual(response.status_code, 401)
+
+    def test_custom_assembly_job_payload_contains_named_bom_binding(self):
+        department = Department.objects.create(name="生产车间")
+        employee = Employee.objects.create(
+            name="周小明",
+            department=department,
+            job_title="定位结构组装，打包",
+            source_worker_id="ADMIN_EMP_9",
+            operation_codes=operation_codes_for_job_title("定位结构组装，打包"),
+        )
+        payload = employee_payload(employee)
+        self.assertIn("operationBindings", payload)
+        binding = next(item for item in payload["operationBindings"] if item["name"] == "定位结构组装")
+        self.assertEqual(binding["workorderNames"], ["定位结构组装"])
+        self.assertTrue(binding["requiresBom"])
 
     @patch("employees.admin.enqueue_sop_employee_sync")
     def test_new_employee_receives_a_stable_sop_worker_id(self, sync_employee):
