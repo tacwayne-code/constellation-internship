@@ -1123,14 +1123,26 @@ def worker_allows_operation(worker_id, operation_code):
     return bool(worker and operation_code in set(worker.get("operationCodes") or []))
 
 
+def worker_required_product_class(worker):
+    """Return the finished-product class allowed for this worker."""
+    if not worker:
+        return None
+    if str(worker.get("id", "")) == "LOCAL_LWH":
+        return "host"
+    if str(worker.get("team", "")).strip().endswith("组装部"):
+        return "host"
+    if _effective_worker_source(worker.get("id"), worker.get("source")) in {"odoo", "report_admin"}:
+        return "machine"
+    return None
+
+
 def panel_worker_allows_workorder(worker, workorder):
     """Apply the same operation and product-class rules before data is shown."""
     if not worker or not workorder:
         return False
-    if (get_odoo_mode() == "real"
-            and _effective_worker_source(worker.get("id"), worker.get("source"))
-            in {"odoo", "report_admin"}
-            and workorder.get("productClass") != "machine"):
+    required_product_class = worker_required_product_class(worker)
+    if (get_odoo_mode() == "real" and required_product_class
+            and workorder.get("productClass") != required_product_class):
         return False
     operation_map = {op["code"]: op for op in get_operations_for_worker(worker)}
     return any(
@@ -3747,18 +3759,16 @@ class Handler(SimpleHTTPRequestHandler):
                     op_info.get("name") == "组装"
                     and workorder_view["productClass"] in {"machine", "host"}
                 )
-                if (_effective_worker_source(worker_id, worker.get("source"))
-                        in {"odoo", "report_admin"}
-                        and workorder_view["productClass"] != "machine"):
+                required_product_class = worker_required_product_class(worker)
+                if (required_product_class
+                        and workorder_view["productClass"] != required_product_class):
                     self.write_json({
                         "ok": False,
-                        "error": "生产车间员工只能选择机器类工单",
-                    }, status=HTTPStatus.FORBIDDEN)
-                    return
-                if worker_id == "LOCAL_LWH" and workorder_view["productClass"] != "host":
-                    self.write_json({
-                        "ok": False,
-                        "error": "罗伟华只能选择主机类工单",
+                        "error": (
+                            "组装部员工只能选择主机类工单"
+                            if required_product_class == "host"
+                            else "生产车间员工只能选择机器类工单"
+                        ),
                     }, status=HTTPStatus.FORBIDDEN)
                     return
                 if not operation_matches_workorder(op_info, workorder_view):

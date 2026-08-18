@@ -60,6 +60,15 @@ class PanelAuthTests(unittest.TestCase):
         self.assertEqual(round_trip["operationBindings"][0]["name"], "定位结构组装")
         self.assertTrue(round_trip["operationBindings"][0]["requiresBom"])
 
+    def test_assembly_department_requires_host_workorders(self):
+        worker = {
+            "id": "ADMIN_EMP_9",
+            "team": "组装部",
+            "source": "report_admin",
+            "operationCodes": ["pc_assembly_tape", "pc_assembly_splitter"],
+        }
+        self.assertEqual(server.worker_required_product_class(worker), "host")
+
 
 if __name__ == "__main__":
     unittest.main()
