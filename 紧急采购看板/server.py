@@ -65,6 +65,9 @@ def load_env_file(path=None):
 load_env_file()
 
 ODOO_URL = os.getenv("ODOO_URL", "http://x.inspiri.cn").rstrip("/")
+# 供前端「在 Odoo 打开」跳转使用的浏览器侧地址；未配置时回退 ODOO_URL。
+# 用于生成深链 <ODOO_WEB_URL>/odoo/purchase.order/{id}，跳到对应采购单表单。
+ODOO_WEB_URL = os.getenv("ODOO_WEB_URL", "").strip().rstrip("/") or ODOO_URL
 ODOO_DB = os.getenv("ODOO_DB", "inspiri_erp")
 ODOO_USER = os.getenv("ODOO_USER", "")
 ODOO_PASSWORD = os.getenv("ODOO_PASSWORD", "")
@@ -382,7 +385,7 @@ def build_urgent_orders(client):
         line_rows = client.search_read_all(
             "purchase.order.line",
             ["order_id", "product_id", "name", "product_qty", "qty_received",
-             "price_unit", "product_uom", "state"],
+             "price_unit", "product_uom", "state", "note"],
             [["order_id", "in", order_ids]],
             order="id asc",
             max_rows=DASHBOARD_MAX_ORDERS * 8,
@@ -424,6 +427,7 @@ def build_urgent_orders(client):
                 "price": float(row.get("price_unit") or 0),
                 "uom": first_text(row.get("product_uom")),
                 "state": str(row.get("state") or ""),
+                "note": str(row.get("note") or "").strip(),
             })
 
         material_names = []
@@ -545,6 +549,8 @@ def build_dashboard(nocache=False):
         data["meta"] = {
             "source": "odoo",
             "updatedAt": datetime.now().isoformat(timespec="seconds"),
+            # 只暴露 Odoo 的访问地址（用于跳转到对应采购单），不暴露数据库名/账号等内部信息
+            "odooWebUrl": ODOO_WEB_URL,
         }
         _CACHE["data"] = data
         _CACHE["ts"] = time.time()

@@ -967,6 +967,44 @@ button {
   border-color: rgba(56, 189, 248, 0.55);
 }
 
+/* 「在 Odoo 打开」按钮 —— 跳转到对应采购单表单 */
+.odoo-open-btn {
+  height: 30px;
+  padding: 0 12px;
+  border: 1px solid rgba(56, 189, 248, 0.42);
+  border-radius: 5px;
+  color: #dff6ff;
+  background: linear-gradient(135deg, rgba(56, 189, 248, 0.18), rgba(34, 197, 94, 0.1)), rgba(15, 23, 42, 0.88);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.odoo-open-btn:hover {
+  border-color: rgba(56, 189, 248, 0.75);
+  background: linear-gradient(135deg, rgba(56, 189, 248, 0.28), rgba(34, 197, 94, 0.16)), rgba(30, 41, 59, 0.95);
+}
+
+/* 色块悬停快捷入口 */
+.risk-tile .tile-odoo-open {
+  position: absolute;
+  top: 42px;
+  right: 12px;
+  z-index: 3;
+  height: 24px;
+  padding: 0 9px;
+  border-radius: 999px;
+  font-size: 10px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.16s ease;
+}
+
+.risk-tile:hover .tile-odoo-open,
+.risk-tile:focus-within .tile-odoo-open {
+  opacity: 1;
+  pointer-events: auto;
+}
+
 .expand-row td {
   padding: 0 12px 12px;
   background: rgba(2, 6, 23, 0.22);
@@ -981,6 +1019,13 @@ button {
 
 .evidence-box b {
   color: var(--text);
+}
+
+.evidence-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
 }
 
 .evidence-box ul {
@@ -1237,6 +1282,18 @@ button {
   font-size: 13px;
   line-height: 1.6;
   color: var(--soft);
+}
+
+.detail-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.detail-actions-hint {
+  color: var(--muted);
+  font-size: 11px;
 }
 
 .detail-fields {

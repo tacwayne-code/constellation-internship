@@ -185,6 +185,23 @@ function escapeHTML(value) {
     .replace(/'/g, "&#39;");
 }
 
+// 生成「在 Odoo 打开该采购单」的深链地址（Odoo 18 表单深链格式）
+function odooOrderUrl(orderId) {
+  const base = (rawData.meta && rawData.meta.odooWebUrl) || "";
+  if (!base) return "";
+  return `${base.replace(/\/+$/, "")}/odoo/purchase.order/${encodeURIComponent(orderId)}`;
+}
+
+// 新标签打开 Odoo 对应采购单表单（登录后自动回到该单）
+function openOdooOrder(orderId) {
+  const url = odooOrderUrl(orderId);
+  if (!url) {
+    showToast("未配置 Odoo 地址，无法跳转");
+    return;
+  }
+  window.open(url, "_blank", "noopener");
+}
+
 function numberText(value, digits = 0) {
   const number = Number(value || 0);
   if (!Number.isFinite(number)) return "-";
@@ -251,7 +268,8 @@ function orderEvidenceItems(order) {
   (order.lines || []).forEach((line) => {
     const uom = line.uom && line.uom !== "-" ? ` ${line.uom}` : "";
     const price = line.price ? `，单价 ${moneyText(line.price)}` : "";
-    items.push(`物料：${line.product}，数量 ${numberText(line.qty, 2)}${uom}${price}`);
+    const note = line.note ? `，备注 ${line.note}` : "";
+    items.push(`物料：${line.product}，数量 ${numberText(line.qty, 2)}${uom}${price}${note}`);
   });
   return items;
 }
@@ -358,6 +376,7 @@ function RiskTile(order, index) {
     <article class="risk-tile level-${order.level.toLowerCase()} ${selected ? "selected" : ""}" data-order-id="${escapeHTML(order.id)}" role="button" tabindex="0" style="--tile-color:${meta.color}">
       <span class="tile-level">${order.level}</span>
       <span class="tile-rank">#${String(index + 1).padStart(2, "0")}</span>
+      <button type="button" class="odoo-open-btn tile-odoo-open" data-order-id="${escapeHTML(order.id)}" title="在 Odoo 中打开该采购单">在 Odoo 打开 ↗</button>
       <strong>${escapeHTML(order.name)}</strong>
       <em class="tile-subject-note">${escapeHTML(shortText(order.supplier, 30))}</em>
       <p>${escapeHTML(order.stateText)} · 未转采购订单</p>
@@ -472,7 +491,10 @@ function RiskTopTable(orders) {
 function evidenceDetails(order) {
   return `
     <div class="evidence-box">
-      <b>Odoo 依据</b>
+      <div class="evidence-head">
+        <b>Odoo 依据</b>
+        <button type="button" class="odoo-open-btn" data-order-id="${escapeHTML(order.id)}">在 Odoo 打开 ↗</button>
+      </div>
       <ul>${orderEvidenceItems(order).map((item) => `<li>${escapeHTML(item)}</li>`).join("")}</ul>
     </div>
   `;
@@ -700,10 +722,15 @@ function orderDetailHTML(order) {
         <td>${escapeHTML(numberText(line.remaining, 2))}</td>
         <td>${escapeHTML(line.price ? moneyText(line.price) : "-")}</td>
         <td>${escapeHTML(LINE_STATE_TEXT[line.state] || line.state || "-")}</td>
+        <td>${escapeHTML(line.note || "-")}</td>
       </tr>`).join("")
-    : `<tr><td colspan="6" style="text-align:center;color:var(--muted)">无物料明细</td></tr>`;
+    : `<tr><td colspan="7" style="text-align:center;color:var(--muted)">无物料明细</td></tr>`;
 
   return `
+    <div class="detail-actions">
+      <button type="button" class="odoo-open-btn" data-order-id="${escapeHTML(order.id)}">在 Odoo 中打开该采购单 ↗</button>
+      <span class="detail-actions-hint">新标签打开，可直接填写 / 修改 / 确认订单</span>
+    </div>
     <dl class="detail-fields">
       ${fields.map(([k, v]) => `
         <div class="detail-field">
@@ -721,6 +748,7 @@ function orderDetailHTML(order) {
           <th>未收</th>
           <th>单价</th>
           <th>状态</th>
+          <th>备注</th>
         </tr>
       </thead>
       <tbody>${lineRows}</tbody>
@@ -781,6 +809,13 @@ function bindControls() {
   });
 
   document.addEventListener("click", (event) => {
+    const odooBtn = event.target.closest(".odoo-open-btn");
+    if (odooBtn) {
+      event.stopPropagation();
+      openOdooOrder(odooBtn.dataset.orderId);
+      return;
+    }
+
     const showMore = event.target.closest(".show-more-tiles");
     if (showMore) {
       displayLimit += 20;
