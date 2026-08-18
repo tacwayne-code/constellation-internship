@@ -77,6 +77,9 @@ M12X100化学螺栓,24`
 // 「直接使用清单名称」的哨兵值：型号选择里没有清单配件时，直接按清单原始名称建单（不匹配产品）
 const RAW_ID = -1
 
+// 兜底供应商：无确定供应商时默认使用（与后端 import_matching.FALLBACK_PARTNER_NAME 保持一致）
+const FALLBACK_VENDOR_NAME = '淘宝电商公司'
+
 // 统一风格变量（对齐 tokens.css）
 const T = {
   surface: 'var(--surface)',
@@ -322,20 +325,21 @@ export function ListImportDrawer({ onClose, onCreated }: { onClose: () => void; 
         { method: 'POST', body: JSON.stringify({ product_ids: productIds }) },
       ).then((r) => r.data)
       setSuppliers(rec.suppliers ?? {})
-      // 只有清单里识别到供应商才自动填充；否则留空，让用户自己选
-      const vs: Record<number, number> = {}
-      m.rows.forEach((_row, idx) => {
-        if (namePartners[idx]) {
-          vs[idx] = namePartners[idx].partner_id
-        }
-      })
-      setVendorSel(vs)
-    } else if (Object.keys(namePartners).length) {
-      // 没有已识别产品（如全是 create），但名称探测到供应商
-      const vs: Record<number, number> = {}
-      Object.entries(namePartners).forEach(([k, v]) => { vs[Number(k)] = v.partner_id })
-      setVendorSel(vs)
     }
+
+    // 供应商以清单为准：清单探测供应商 > 清单供应商名 > 默认「淘宝电商公司」
+    const vs: Record<number, number> = {}
+    const fallbackVt: Record<number, string> = {}
+    m.rows.forEach((_row, idx) => {
+      if (namePartners[idx]) {
+        vs[idx] = namePartners[idx].partner_id
+        return
+      }
+      if (vt[idx]) return  // 清单自带供应商名（未匹配 Odoo），保持文本
+      fallbackVt[idx] = FALLBACK_VENDOR_NAME
+    })
+    setVendorSel(vs)
+    if (Object.keys(fallbackVt).length) setVendorText((prev) => ({ ...prev, ...fallbackVt }))
   }
 
   const onRecognize = async () => {
@@ -393,12 +397,7 @@ export function ListImportDrawer({ onClose, onCreated }: { onClose: () => void; 
 
   const onPickProduct = async (idx: number, pid: number) => {
     setPicked((prev) => ({ ...prev, [idx]: pid }))
-    setVendorSel((prev) => {
-      const next = { ...prev }
-      delete next[idx]
-      return next
-    })
-    // 选择「直接使用清单名称」→ 无需按产品推荐供应商
+    // 供应商以清单为准：选择产品不改变供应商（清单供应商 / 淘宝兜底已由 doMatch 确定）
     if (pid === RAW_ID) return
     try {
       const rec = await apiFetch<{ ok: boolean; suppliers: Record<number, Supplier[]> }>(
@@ -406,8 +405,6 @@ export function ListImportDrawer({ onClose, onCreated }: { onClose: () => void; 
         { method: 'POST', body: JSON.stringify({ product_ids: [pid] }) },
       ).then((r) => r.data)
       setSuppliers((prev) => ({ ...prev, ...(rec.suppliers ?? {}) }))
-      const list = rec.suppliers?.[pid] ?? []
-      if (list.length) setVendorSel((prev) => ({ ...prev, [idx]: list[0].partner_id }))
     } catch {
       /* 推荐失败不阻断 */
     }
@@ -441,20 +438,14 @@ export function ListImportDrawer({ onClose, onCreated }: { onClose: () => void; 
       return
     }
     const lines: Array<{ product_id?: number | null; name: string; qty: number; partner_id: number | null; supplier_name?: string | null; remark?: string }> = []
-    const needVendor: string[] = []
     rows.forEach((row, idx) => {
       if (selected[idx] === false) return
       const qty = row.qty
       const pid = vendorSel[idx] ?? null
-      // 未匹配的清单供应商名 → 作为 supplier_name 传给后端（自动建供应商）
-      const sname = pid ? null : (vendorText[idx] || null)
+      // 未匹配的清单供应商名 → 作为 supplier_name 传给后端；无供应商时兜底「淘宝电商公司」
+      const sname = pid ? null : (vendorText[idx] || FALLBACK_VENDOR_NAME)
       const remark = row.list_remark || ''
-      // 直接用清单名称（不建料）时，与 create 一样要求有供应商
       const pushRaw = () => {
-        if (!pid && !sname) {
-          needVendor.push(row.name)
-          return
-        }
         lines.push({ name: row.name, qty, partner_id: pid, supplier_name: sname, remark })
       }
       if (row.action === 'auto') {
@@ -468,10 +459,6 @@ export function ListImportDrawer({ onClose, onCreated }: { onClose: () => void; 
         pushRaw()
       }
     })
-    if (needVendor.length) {
-      toast(`以下物料请先选择供应商：${needVendor.slice(0, 3).join('、')}${needVendor.length > 3 ? ` 等 ${needVendor.length} 项` : ''}`, 'warning')
-      return
-    }
     if (!lines.length) {
       toast('没有可生成的采购行', 'warning')
       return

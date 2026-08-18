@@ -30,6 +30,32 @@ from app.services.odoo.models import (
 
 logger = logging.getLogger(__name__)
 
+# 兜底供应商：清单导入识别后无确定供应商时，默认使用该供应商
+FALLBACK_PARTNER_NAME = "淘宝电商公司"
+
+
+async def _ensure_fallback_partner(client: OdooClient) -> int | None:
+    """查找兜底供应商「淘宝电商公司」（按名称精确匹配），不存在则创建。
+
+    返回 partner_id；失败返回 None。
+    """
+    records = await client.search_read(
+        MODEL_PARTNER, [["name", "=", FALLBACK_PARTNER_NAME]], ["id"], limit=1,
+    )
+    if records:
+        return records[0]["id"]
+    try:
+        pid = await client.create(MODEL_PARTNER, {"name": FALLBACK_PARTNER_NAME, "is_company": True})
+        try:
+            await client.write(MODEL_PARTNER, [pid], {"supplier_rank": 1})
+        except Exception:  # noqa: BLE001
+            pass
+        return pid
+    except Exception as e:  # noqa: BLE001
+        logger.warning("创建兜底供应商失败: %s", e)
+        return None
+
+
 # 标准件类型词库：按长度降序，匹配时取最长命中（避免「内六角」误截「内六角圆柱头螺钉」）
 TYPE_WORDS = [
     "内六角圆柱头螺钉", "内六角平头螺钉", "内六角圆头螺钉", "内六角沉头螺钉",
@@ -215,9 +241,13 @@ def _infer_code(name: str, matched_partner: dict | None = None) -> str:
 
 
 async def _match_supplier_text(client: OdooClient, text: str) -> dict | None:
-    """按清单「供应商」列的文本匹配 Odoo 供应商（ilike 模糊 + rank 优先）。
+    """按清单「供应商」列的文本匹配 Odoo 供应商（精确匹配，忠于清单原文）。
 
     返回 {partner_id, name, matched_part} 或 None。
+
+    只用 name == text 精确匹配：避免简称被 ilike 模糊替换成错误的全称
+    （如清单「中研」被误配成「中研减速机TEST」）。精确无命中则返回 None，
+    由调用方保留清单原文作为 supplier_name，建单时按名自动找/建供应商。
     """
     t = (text or "").strip()
     if len(t) < 2:
@@ -225,7 +255,7 @@ async def _match_supplier_text(client: OdooClient, text: str) -> dict | None:
     try:
         rows = await client.search_read(
             "res.partner",
-            ["&", ["supplier_rank", ">", 0], ["name", "ilike", t]],
+            ["&", ["supplier_rank", ">", 0], ["name", "=", t]],
             ["id", "name", "supplier_rank"], limit=8,
         )
     except Exception:  # noqa: BLE001
@@ -234,7 +264,6 @@ async def _match_supplier_text(client: OdooClient, text: str) -> dict | None:
         return None
     best = max(rows, key=lambda r: (
         (r.get("supplier_rank") or 0),
-        1 if r.get("name") == t else 0,
         -r["id"],
     ))
     return {"partner_id": best["id"], "name": best.get("name") or "", "matched_part": t}
@@ -688,25 +717,17 @@ async def batch_create_purchase_orders(
             else:
                 skipped.append({"name": l.get("display_name"), "reason": f"供应商创建失败：{l['supplier_name']}"})
 
-    # 3. 缺省供应商补全（推荐 Top1；占位产品无推荐则跳过，需前端指定）
-    need_reco = [l for l in resolved if not l.get("partner_id") and not l["placeholder"]]
-    reco_map: dict[int, list[dict]] = {}
-    if need_reco:
-        reco_map = await recommend_suppliers(client, [l["tmpl_id"] for l in need_reco])
+    # 3. 缺省供应商补全：供应商以清单为准，清单无供应商 → 兜底「淘宝电商公司」
+    fallback_pid: int | None = None
     for l in resolved:
-        if not l.get("partner_id"):
-            if l["placeholder"]:
-                skipped.append({"name": l.get("display_name"), "reason": "无供应商（未指定；清单导入件需手工选择供应商）"})
-                continue
-            top = reco_map.get(l["tmpl_id"], [])[0] if reco_map.get(l["tmpl_id"]) else None
-            if top:
-                l["partner_id"] = top["partner_id"]
-                if not l.get("price"):
-                    l["price"] = top.get("price") or 0
-                if not l.get("delay"):
-                    l["delay"] = top.get("delay") or 0
-            else:
-                skipped.append({"name": l.get("display_name"), "reason": "无供应商（supplierinfo 与历史均无）"})
+        if l.get("partner_id"):
+            continue
+        if fallback_pid is None:
+            fallback_pid = await _ensure_fallback_partner(client)
+        if fallback_pid:
+            l["partner_id"] = fallback_pid
+        else:
+            skipped.append({"name": l.get("display_name"), "reason": "无供应商（兜底供应商不可用）"})
 
     # 3. 按供应商聚合（带 partner_id 的走建单流程）
     by_partner: dict[int, list[dict]] = defaultdict(list)
