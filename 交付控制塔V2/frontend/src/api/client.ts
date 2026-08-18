@@ -32,9 +32,13 @@ export async function apiFetch<T>(path: string, init?: RequestInit): Promise<Api
   // 时间戳参数：绕过所有 HTTP 缓存层（浏览器磁盘缓存 / workbuddy 预览代理 / CDN）
   const sep = path.includes('?') ? '&' : '?'
   const cacheBusted = `${BASE}${path}${sep}_t=${Date.now()}`
+  // FormData 上传时不强制 Content-Type（让浏览器自动带 multipart boundary）
+  const isFormData = init?.body instanceof FormData
   const res = await fetch(cacheBusted, {
     ...init,
-    headers: { 'Content-Type': 'application/json', ...init?.headers },
+    headers: isFormData
+      ? { ...init?.headers }
+      : { 'Content-Type': 'application/json', ...init?.headers },
   })
   if (!res.ok) {
     let detail = res.statusText
@@ -59,6 +63,7 @@ export interface HealthResponse {
   odoo: {
     ok: boolean
     configured: boolean
+    url?: string
     server_version?: string
     server_serie?: string
     db?: string

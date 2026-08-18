@@ -124,6 +124,7 @@ FIELDS_MRP_PRODUCTION = [
 FIELDS_PRODUCT = [
     "id", "name", "default_code", "categ_id", "list_price", "standard_price",
     "type", "qty_available", "virtual_available", "active", "sale_ok", "purchase_ok",
+    "spec_info",
 ]
 
 # 车间工单（B 组）：mrp.workorder

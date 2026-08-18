@@ -18,6 +18,7 @@ import { EmptyState } from '../common/EmptyState'
 import { Pagination } from '../common/Pagination'
 import { toast } from '../../store/uiStore'
 import { getModule } from '../../config/modules'
+import { ListImportDrawer } from './ListImportDrawer'
 import type { SRow, Tone } from '../../types/contract'
 
 /* ====================================================================
@@ -484,7 +485,14 @@ function PoDrawer({ po, onClose }: { po: PoItem; onClose: () => void }) {
     queryFn: () => apiFetch<SRow[]>(`/modules/procurement/order/${po.id}/lines`).then((r) => r.data),
     staleTime: 60_000,
   })
+  // Odoo 访问地址（脱敏 health 返回），用于跳转采购单详情页
+  const hq = useQuery({
+    queryKey: ['health'],
+    queryFn: () => apiFetch<{ odoo: { url?: string } }>('/health').then((r) => r.data),
+    staleTime: 300_000,
+  })
   const [label] = st(PO_STATE, po.state)
+  const odooUrl = hq.data?.odoo?.url
 
   return (
     <Drawer
@@ -502,6 +510,15 @@ function PoDrawer({ po, onClose }: { po: PoItem; onClose: () => void }) {
       ]}
       extra={
         <div className="drawer-section">
+          {odooUrl && (
+            <button
+              className="ghost-btn"
+              style={{ marginBottom: 10 }}
+              onClick={() => window.open(`${odooUrl}/odoo/purchase.order/${po.id}`, '_blank')}
+            >
+              <Icon name="arrow" size={14} /> 在 Odoo 中打开
+            </button>
+          )}
           <h4>订单行明细</h4>
           <QueryView query={q} empty={<div className="muted" style={{ fontSize: 12, padding: '6px 2px' }}>暂无行数据</div>}>
             {(rows) => (
@@ -1168,6 +1185,7 @@ export function DeliveryTowerView() {
   const [soSearching, setSoSearching] = useState(false)
   const [salesPage, setSalesPage] = useState(1)
   const [moPage, setMoPage] = useState(1)
+  const [listImportOpen, setListImportOpen] = useState(false)
   const SALES_PAGE_SIZE = 10
   const MO_PAGE_SIZE = 10
 
@@ -1416,6 +1434,22 @@ export function DeliveryTowerView() {
               </div>
               {overview && <ProcurementBoard overview={overview} onOpenPo={setSelectedPo} />}
               {overview && <ProcurementTable items={overview.items} onOpenPo={setSelectedPo} />}
+
+              {/* 清单导入 · 智能采购 */}
+              <div className="panel module-table-panel">
+                <div className="panel-header">
+                  <span className="panel-title">清单导入 · 智能采购</span>
+                  <span className="muted" style={{ fontSize: 12 }}>粘贴外购件清单 → 自动识别配件 + 推荐供应商 → 批量生成采购单</span>
+                </div>
+                <div style={{ padding: '16px 20px', display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <button className="ghost-btn" onClick={() => setListImportOpen(true)}>
+                    <Icon name="upload" size={14} /> 打开清单导入
+                  </button>
+                  <span className="muted" style={{ fontSize: 12 }}>
+                    支持平垫圈 / 六角螺母 / 内六角螺钉 / 滑触线等标准件，自动匹配编码与规格
+                  </span>
+                </div>
+              </div>
             </>
           )}
 
@@ -1537,6 +1571,14 @@ export function DeliveryTowerView() {
           {selectedSo != null && <OrderDrawer soId={selectedSo} onClose={() => setSelectedSo(null)} />}
           {selectedPo != null && <PoDrawer po={selectedPo} onClose={() => setSelectedPo(null)} />}
           {selectedMo != null && <MoDrawer mo={selectedMo} onClose={() => setSelectedMo(null)} />}
+          {listImportOpen && (
+            <ListImportDrawer
+              onClose={() => setListImportOpen(false)}
+              onCreated={() => {
+                queryClient.invalidateQueries({ queryKey: ['delivery-tower-procurement'] })
+              }}
+            />
+          )}
         </div>
       )}
     </QueryView>

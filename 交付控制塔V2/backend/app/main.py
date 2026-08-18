@@ -15,6 +15,7 @@ from app.routers import plm as plm_router
 from app.routers import portfolio as portfolio_router
 from app.routers import delivery_tower as delivery_tower_router
 from app.routers import procurement as procurement_router
+from app.routers import list_import as list_import_router
 from app.services.cache import get_cache
 from app.services.odoo.client import OdooClient
 
@@ -89,9 +90,10 @@ async def shutdown():
 async def health():
     """健康检查：返回后端 + Odoo + 缓存状态"""
     client = OdooClient.get_instance(settings)
-    odoo = {"ok": False, "configured": client.is_configured()}
-    if not settings.USE_MOCK and client.is_configured():
-        odoo = await client.health()
+    odoo = await client.health() if (not settings.USE_MOCK and client.is_configured()) else {"ok": False}
+    # 暴露 Odoo 访问地址（脱敏：仅 URL，不含账号/密码），供前端跳转采购单等详情页
+    odoo["url"] = settings.ODOO_URL.rstrip("/")
+    odoo["configured"] = client.is_configured()
 
     return {
         "status": "ok",
@@ -147,6 +149,7 @@ app.include_router(modules_router.router)
 app.include_router(plm_router.router)
 app.include_router(delivery_tower_router.router)
 app.include_router(procurement_router.router)
+app.include_router(list_import_router.router)
 
 # ---- 前端静态资源（生产部署：后端单端口 serve dist） ----
 try:

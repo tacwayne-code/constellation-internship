@@ -5,7 +5,7 @@ import {
   LayoutGrid, Layers, FileText, Truck, Route, Box, Users, Handshake, Zap,
   Shield, Code2, CheckCircle2, FileBarChart, Search, Bell, Plus, Filter,
   Download, MoreHorizontal, BarChart3, ChevronRight, ArrowRight, Clock,
-  Pin, AlertTriangle, X, Factory, Radar, RefreshCw,
+  Pin, AlertTriangle, X, Factory, Radar, RefreshCw, Upload,
   type LucideIcon,
 } from 'lucide-react'
 
@@ -39,6 +39,7 @@ const MAP: Record<string, LucideIcon> = {
   factory: Factory,
   radar: Radar,
   sync: RefreshCw,
+  upload: Upload,
 }
 
 interface IconProps {
