@@ -653,7 +653,7 @@ async def batch_create_purchase_orders(
 ) -> dict[str, Any]:
     """按供应商聚合批量建采购单（date_planned + 回写 supplierinfo）。
 
-    lines: [{product_id?, name?, qty, partner_id?, price?, delay?, spec?}]
+    lines: [{product_id?, name?, qty, partner_id?, price?, delay?, spec?, code?}]
     - urgent=True（默认）→ priority=1 紧急（进紧急采购看板）；urgent=False → 普通采购单
     - product_id 命中（match 已识别）→ 直接用现有产品
     - 无 product_id：
@@ -661,6 +661,7 @@ async def batch_create_purchase_orders(
       · auto_create_product=False（默认）→ 不建料，挂到「临时外购件」占位产品，
         采购行描述（name 字段）写实际物料名称，采购单直接进入后续环节
     - partner_id 缺省时取该产品推荐供应商 Top1（不建料模式无推荐则需前端指定）
+    - code（可选）：清单「编号」列，会拼到采购行 name（name + code），保证与清单内容一致
     """
     if not lines:
         return {"created": [], "skipped": [], "note": "无采购行"}
@@ -675,6 +676,10 @@ async def batch_create_purchase_orders(
     skipped: list[dict] = []
     for l in lines:
         display_name = str(l.get("name") or "").strip()
+        code = str(l.get("code") or "").strip()
+        # 兜底拼接：清单「编号 + 名称」写入采购行 name；code 已在 display_name 中则不再拼
+        if code and code not in display_name:
+            display_name = f"{display_name} {code}".strip()
         if l.get("product_id"):
             # 已有产品（match 命中）
             tmpl_id, product_product_id = await _ensure_product(client, l, products_index)

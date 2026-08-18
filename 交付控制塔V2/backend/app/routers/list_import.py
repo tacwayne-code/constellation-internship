@@ -62,6 +62,7 @@ class CreatePoLine(BaseModel):
     price: float | None = None
     delay: int | None = None
     remark: str | None = Field(None, description="可选，清单备注（写入采购行 note）")
+    code: str | None = Field(None, description="可选，清单「编号」列；与 name 拼接写入采购行 name")
 
 
 class CreatePoRequest(BaseModel):

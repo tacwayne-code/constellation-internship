@@ -288,6 +288,9 @@ function OrderDrawer({ soId, onClose }: { soId: number; onClose: () => void }) {
             ]}
             extra={
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+                <div style={{ gridColumn: '1 / -1' }}>
+                  <OdooOpenButton model="sale.order" id={soId} />
+                </div>
                 {/* ── 业务链路（横跨） ── */}
                 <div style={{ gridColumn: '1 / -1' }}>
                   <ChainSteps chain={data.chain} />
@@ -477,6 +480,34 @@ function OrderDrawer({ soId, onClose }: { soId: number; onClose: () => void }) {
 }
 
 /* ====================================================================
+ *  通用「在 Odoo 中打开」按钮（销售/采购/生产订单详情跳转）
+ * ==================================================================== */
+function OdooOpenButton({ model, id }: { model: string; id: number }) {
+  const hq = useQuery({
+    queryKey: ['health'],
+    queryFn: () => apiFetch<{ odoo: { url?: string } }>('/health').then((r) => r.data),
+    staleTime: 300_000,
+  })
+  const odooUrl = hq.data?.odoo?.url
+  if (!odooUrl) return null
+  // 用 <a target="_blank"> 而非 button + window.open：
+  // 浏览器会按 href 打开真实 Odoo 地址，避免被弹窗拦截或预览框架改写为当前 origin
+  const fullUrl = `${odooUrl}/odoo/${model}/${id}`
+  return (
+    <a
+      className="ghost-btn"
+      href={fullUrl}
+      target="_blank"
+      rel="noopener noreferrer"
+      title={fullUrl}
+      style={{ marginBottom: 10, textDecoration: 'none' }}
+    >
+      <Icon name="arrow" size={14} /> 在 Odoo 中打开
+    </a>
+  )
+}
+
+/* ====================================================================
  *  采购单详情抽屉（基本信息 + 订单行明细）
  * ==================================================================== */
 function PoDrawer({ po, onClose }: { po: PoItem; onClose: () => void }) {
@@ -485,14 +516,7 @@ function PoDrawer({ po, onClose }: { po: PoItem; onClose: () => void }) {
     queryFn: () => apiFetch<SRow[]>(`/modules/procurement/order/${po.id}/lines`).then((r) => r.data),
     staleTime: 60_000,
   })
-  // Odoo 访问地址（脱敏 health 返回），用于跳转采购单详情页
-  const hq = useQuery({
-    queryKey: ['health'],
-    queryFn: () => apiFetch<{ odoo: { url?: string } }>('/health').then((r) => r.data),
-    staleTime: 300_000,
-  })
   const [label] = st(PO_STATE, po.state)
-  const odooUrl = hq.data?.odoo?.url
 
   return (
     <Drawer
@@ -510,15 +534,7 @@ function PoDrawer({ po, onClose }: { po: PoItem; onClose: () => void }) {
       ]}
       extra={
         <div className="drawer-section">
-          {odooUrl && (
-            <button
-              className="ghost-btn"
-              style={{ marginBottom: 10 }}
-              onClick={() => window.open(`${odooUrl}/odoo/purchase.order/${po.id}`, '_blank')}
-            >
-              <Icon name="arrow" size={14} /> 在 Odoo 中打开
-            </button>
-          )}
+          <OdooOpenButton model="purchase.order" id={po.id} />
           <h4>订单行明细</h4>
           <QueryView query={q} empty={<div className="muted" style={{ fontSize: 12, padding: '6px 2px' }}>暂无行数据</div>}>
             {(rows) => (
@@ -936,6 +952,7 @@ function MoDrawer({ mo, onClose }: { mo: ProductionItem; onClose: () => void }) 
       ]}
       extra={
         <div className="drawer-section">
+          <OdooOpenButton model="mrp.production" id={mo.id} />
           <h4>生产加工工序</h4>
           <QueryView query={q} empty={<div className="muted" style={{ fontSize: 12, padding: '6px 2px' }}>暂无工序数据</div>}>
             {(rows) => (

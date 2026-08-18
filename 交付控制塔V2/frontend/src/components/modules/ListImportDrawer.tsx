@@ -437,7 +437,7 @@ export function ListImportDrawer({ onClose, onCreated }: { onClose: () => void; 
       toast('请先勾选要采购的物料行', 'warning')
       return
     }
-    const lines: Array<{ product_id?: number | null; name: string; qty: number; partner_id: number | null; supplier_name?: string | null; remark?: string }> = []
+    const lines: Array<{ product_id?: number | null; name: string; qty: number; partner_id: number | null; supplier_name?: string | null; remark?: string; code?: string | null }> = []
     rows.forEach((row, idx) => {
       if (selected[idx] === false) return
       const qty = row.qty
@@ -445,15 +445,18 @@ export function ListImportDrawer({ onClose, onCreated }: { onClose: () => void; 
       // 未匹配的清单供应商名 → 作为 supplier_name 传给后端；无供应商时兜底「淘宝电商公司」
       const sname = pid ? null : (vendorText[idx] || FALLBACK_VENDOR_NAME)
       const remark = row.list_remark || ''
+      // 采购行描述：清单「名称 + 编号」（名称在前；如清单错位 name=编号 code=名称，结果就是「编号 名称」）
+      const code = (row.list_code || '').trim()
+      const lineName = code && code !== row.name ? `${row.name} ${code}` : row.name
       const pushRaw = () => {
-        lines.push({ name: row.name, qty, partner_id: pid, supplier_name: sname, remark })
+        lines.push({ name: lineName, code, qty, partner_id: pid, supplier_name: sname, remark })
       }
       if (row.action === 'auto') {
         if (autoRaw[idx]) pushRaw()
-        else lines.push({ product_id: row.product_id, name: row.name, qty, partner_id: pid, supplier_name: sname, remark })
+        else lines.push({ product_id: row.product_id, name: lineName, code, qty, partner_id: pid, supplier_name: sname, remark })
       } else if (row.action === 'choose') {
         const p = picked[idx]
-        if (p && p !== RAW_ID) lines.push({ product_id: p, name: row.name, qty, partner_id: pid, supplier_name: sname, remark })
+        if (p && p !== RAW_ID) lines.push({ product_id: p, name: lineName, code, qty, partner_id: pid, supplier_name: sname, remark })
         else pushRaw()
       } else {
         pushRaw()
