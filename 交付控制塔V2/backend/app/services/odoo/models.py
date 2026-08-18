@@ -121,10 +121,11 @@ FIELDS_MRP_PRODUCTION = [
 ]
 
 # 产品主数据（B 组）：product.template
+# 注意：不含 spec_info —— 该字段由第三方模块 product_ux 提供，真实库可能没有；
+# ProductAdapter.to_row 实际也不读它，去掉以避免真实库降级 Mock。
 FIELDS_PRODUCT = [
     "id", "name", "default_code", "categ_id", "list_price", "standard_price",
     "type", "qty_available", "virtual_available", "active", "sale_ok", "purchase_ok",
-    "spec_info",
 ]
 
 # 车间工单（B 组）：mrp.workorder

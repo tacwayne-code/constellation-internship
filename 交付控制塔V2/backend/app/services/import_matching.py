@@ -211,12 +211,26 @@ def _match_candidates(
 
 
 async def load_product_index(client: OdooClient) -> list[dict]:
-    """一次性加载 product.template 索引（id/name/default_code/spec_info/purchase_ok）"""
-    return await client.search_read(
-        MODEL_PRODUCT, [["active", "=", True]],
-        ["id", "name", "default_code", "spec_info", "purchase_ok"],
-        limit=10000,
-    )
+    """一次性加载 product.template 索引（id/name/default_code/spec_info/purchase_ok）。
+
+    注意：spec_info 由第三方模块 product_ux（好易管软件）提供，真实库可能未安装该模块。
+    因此先探测：spec_info 不存在时降级为仅标准字段（name/default_code），
+    避免 search_read 直接抛「Field spec_info does not exist」导致清单导入崩溃。
+    """
+    base_fields = ["id", "name", "default_code", "purchase_ok"]
+    try:
+        products = await client.search_read(
+            MODEL_PRODUCT, [["active", "=", True]],
+            base_fields + ["spec_info"], limit=10000,
+        )
+    except Exception as e:  # noqa: BLE001
+        logger.warning("product.template.spec_info 不存在（未安装 product_ux），降级为 name/default_code 匹配：%s", e)
+        products = await client.search_read(
+            MODEL_PRODUCT, [["active", "=", True]], base_fields, limit=10000,
+        )
+        for p in products:
+            p["spec_info"] = ""
+    return products
 
 
 def _infer_code(name: str, matched_partner: dict | None = None) -> str:
