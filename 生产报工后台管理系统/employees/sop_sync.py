@@ -172,7 +172,14 @@ def employee_payload(employee):
 
 
 def fetch_sop_workers():
-    request = Request(settings.SOP_WORKERS_API_URL, headers={"Accept": "application/json"}, method="GET")
+    request = Request(
+        settings.SOP_WORKERS_API_URL,
+        headers={
+            "Accept": "application/json",
+            "X-Internal-API-Key": settings.INTERNAL_REPORT_API_KEY,
+        },
+        method="GET",
+    )
     try:
         with urlopen(request, timeout=10) as response:
             payload = json.load(response)
