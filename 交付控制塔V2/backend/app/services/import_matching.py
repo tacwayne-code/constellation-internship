@@ -542,6 +542,19 @@ def _eta_plus_delay(delay_days: Any) -> str:
     return (date.today() + timedelta(days=max(int(delay_days or 0), 1))).isoformat()
 
 
+def _norm_dt(s: str | None) -> str | None:
+    """时间字段规范化：兼容 'YYYY-MM-DD' / 'YYYY-MM-DD HH:MM' / 'YYYY-MM-DDTHH:MM' → Odoo Datetime 字符串。
+
+    前端 datetime-local 控件提交的是 'YYYY-MM-DDTHH:MM'，Odoo Datetime 字段需要 'YYYY-MM-DD HH:MM:SS'。
+    """
+    if not s:
+        return None
+    s = str(s).strip().replace("T", " ").replace("/", "-")
+    if re.match(r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$", s):
+        s += ":00"
+    return s
+
+
 async def _ensure_partner(client: OdooClient, name: str) -> int | None:
     """按名称找/建供应商（res.partner），返回 partner_id 或 None。
 
@@ -664,11 +677,15 @@ async def batch_create_purchase_orders(
     lines: list[dict],
     auto_create_product: bool = False,
     urgent: bool = True,
+    purchase_date: str | None = None,
+    delivery_date: str | None = None,
 ) -> dict[str, Any]:
     """按供应商聚合批量建采购单（date_planned + 回写 supplierinfo）。
 
     lines: [{product_id?, name?, qty, partner_id?, price?, delay?, spec?, code?}]
     - urgent=True（默认）→ priority=1 紧急（进紧急采购看板）；urgent=False → 普通采购单
+    - purchase_date（可选）：订单日期，写入 purchase.order.date_order（缺省 Odoo 当前时间）
+    - delivery_date（可选）：计划到货日期，写入订单行 date_planned（缺省按供应商交期 今天+delay）
     - product_id 命中（match 已识别）→ 直接用现有产品
     - 无 product_id：
       · auto_create_product=True  → 按 name 自动创建产品主数据
@@ -679,6 +696,10 @@ async def batch_create_purchase_orders(
     """
     if not lines:
         return {"created": [], "skipped": [], "note": "无采购行"}
+
+    # 时间字段规范化（前端 datetime-local 提交 'YYYY-MM-DDTHH:MM'）
+    purchase_date = _norm_dt(purchase_date)
+    delivery_date = _norm_dt(delivery_date)
 
     products_index = await load_product_index(client)
     placeholder: tuple[int, int] | None = None
@@ -764,7 +785,8 @@ async def batch_create_purchase_orders(
                 "product_id": l["product_product_id"],
                 "product_qty": l.get("qty") or 1,
                 "price_unit": l.get("price") or 0,
-                "date_planned": l.get("date_planned") or _eta_plus_delay(l.get("delay", 0)),
+                # 交货日期：接口指定 > 行内 date_planned > 供应商交期（今天+delay）
+                "date_planned": delivery_date or l.get("date_planned") or _eta_plus_delay(l.get("delay", 0)),
             }
             # 采购行描述：占位产品或已建料时写明实际物料名称
             if l.get("display_name"):
@@ -773,13 +795,17 @@ async def batch_create_purchase_orders(
             if l.get("remark"):
                 line_vals["note"] = l["remark"]
             order_lines.append((0, 0, line_vals))
+        po_vals = {
+            "partner_id": partner_id,
+            "priority": PRIORITY_URGENT if urgent else PRIORITY_NORMAL,  # 紧急标记（衔接看板）
+            "origin": "清单导入",
+            "order_line": order_lines,
+        }
+        # 采购日期：接口指定则写入 date_order（缺省 Odoo 当前时间）
+        if purchase_date:
+            po_vals["date_order"] = purchase_date
         try:
-            po_id = await client.create(MODEL_PURCHASE, {
-                "partner_id": partner_id,
-                "priority": PRIORITY_URGENT if urgent else PRIORITY_NORMAL,  # 紧急标记（衔接看板）
-                "origin": "清单导入",
-                "order_line": order_lines,
-            })
+            po_id = await client.create(MODEL_PURCHASE, po_vals)
             po = await client.search_read(MODEL_PURCHASE, [["id", "=", po_id]], ["name", "state"], limit=1)
             po_name = po[0]["name"] if po else f"PO{po_id}"
             created.append({

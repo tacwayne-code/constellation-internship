@@ -13,10 +13,85 @@
  * 供应商选择：可搜索下拉——输入关键词过滤相似供应商；无匹配时可直接新建。
  */
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent } from 'react'
+import DatePicker, { registerLocale } from 'react-datepicker'
+import { zhCN } from 'date-fns/locale/zh-CN'
+import 'react-datepicker/dist/react-datepicker.css'
 import { apiFetch } from '../../api/client'
 import { Icon } from '../common/Icon'
 import { StatusDot } from '../common/Status'
 import { Drawer } from '../common/Drawer'
+
+registerLocale('zh-CN', zhCN)
+
+/** 自定义 react-datepicker 外观：淡橙色调（比 --orange 更柔和的 #f3a366，边框=1px 浅灰） */
+const DATEPICKER_CSS = `
+.dp-input {
+  font-size: 12px;
+  padding: 6px 10px;
+  background: var(--surface);
+  color: var(--ink);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-family: inherit;
+  outline: none;
+  cursor: pointer;
+  min-width: 176px;
+  transition: border-color 0.15s ease;
+}
+.dp-input:hover { border-color: #c9d1dc; }
+.dp-input:focus { border-color: #f3a366; }
+.react-datepicker {
+  border: 1px solid var(--border) !important;
+  border-radius: 12px;
+  box-shadow: var(--shadow);
+  background: var(--surface);
+  font-family: inherit;
+  color: var(--ink);
+  overflow: hidden;
+}
+.react-datepicker__header {
+  background: #f3a366;
+  border-bottom: none;
+  border-top-left-radius: 11px;
+  border-top-right-radius: 11px;
+  padding-top: 8px;
+}
+.react-datepicker__current-month,
+.react-datepicker__day-name,
+.react-datepicker-time__header {
+  color: #fff !important;
+  font-weight: 500;
+}
+.react-datepicker__day-name { color: rgba(255,255,255,0.92) !important; font-weight: 400; }
+.react-datepicker__navigation-icon::before,
+.react-datepicker__month-read-view--down-arrow,
+.react-datepicker__year-read-view--down-arrow { border-color: #fff !important; }
+.react-datepicker__day { border-radius: 6px; }
+.react-datepicker__day:hover,
+.react-datepicker__time-list-item:hover {
+  background: var(--orange-soft) !important;
+  border-radius: 6px;
+}
+.react-datepicker__day--selected,
+.react-datepicker__day--keyboard-selected,
+.react-datepicker__time-list-item--selected {
+  background: #f3a366 !important;
+  color: #fff !important;
+  font-weight: 600;
+  border-radius: 6px;
+}
+.react-datepicker__day--today {
+  border: 1px solid #f3a366;
+  border-radius: 6px;
+}
+.react-datepicker__time-container {
+  border-left: 1px solid var(--border);
+}
+.react-datepicker__time-list-item {
+  padding: 4px 10px !important;
+}
+.react-datepicker__triangle { display: none; }
+`
 import { toast } from '../../store/uiStore'
 import type { Tone } from '../../types/contract'
 
@@ -260,6 +335,10 @@ export function ListImportDrawer({ onClose, onCreated }: { onClose: () => void; 
   const [loading, setLoading] = useState(false)
   const [creating, setCreating] = useState(false)
   const [urgent, setUrgent] = useState(true)
+  // 采购时间 / 交货时间（react-datepicker Date 对象；onCreate 时再格式化为 'YYYY-MM-DDTHH:MM'）
+  const _today = new Date()
+  const [purchaseDate, setPurchaseDate] = useState<Date | null>(_today)
+  const [deliveryDate, setDeliveryDate] = useState<Date | null>(new Date(_today.getTime() + 86400000))
   const [result, setResult] = useState<CreatePoResult | null>(null)
   const [stats, setStats] = useState<{ total: number; auto: number; choose: number; create: number } | null>(null)
   const [dragOver, setDragOver] = useState(false)
@@ -468,9 +547,21 @@ export function ListImportDrawer({ onClose, onCreated }: { onClose: () => void; 
     }
     setCreating(true)
     try {
+      const fmtForApi = (d: Date | null): string => {
+        if (!d) return ''
+        const p = (n: number) => String(n).padStart(2, '0')
+        // 用 UTC 分量：Odoo Datetime 字段按 UTC 存储，用户时区 Asia/Shanghai(+8) 显示。
+        // 本地选 09:30 → 转 UTC 01:30 写入 → Odoo 界面按 +8 显示回 09:30，保持一致。
+        return `${d.getUTCFullYear()}-${p(d.getUTCMonth() + 1)}-${p(d.getUTCDate())}T${p(d.getUTCHours())}:${p(d.getUTCMinutes())}`
+      }
       const res = await apiFetch<CreatePoResult>('/procurement/list/create-po', {
         method: 'POST',
-        body: JSON.stringify({ lines, urgent }),
+        body: JSON.stringify({
+          lines,
+          urgent,
+          purchase_date: fmtForApi(purchaseDate),
+          delivery_date: fmtForApi(deliveryDate),
+        }),
       })
       setResult(res.data)
       toast(res.data.note, res.data.created.length ? 'success' : 'warning')
@@ -492,7 +583,9 @@ export function ListImportDrawer({ onClose, onCreated }: { onClose: () => void; 
   const fmtQty = (n: number) => Number(n ?? 0).toLocaleString()
 
   return (
-    <Drawer
+    <>
+      <style>{DATEPICKER_CSS}</style>
+      <Drawer
       title="清单导入 · 智能采购"
       subtitle="上传 Excel 或粘贴外购件清单，自动识别配件并推荐供应商"
       tone="blue"
@@ -534,7 +627,7 @@ export function ListImportDrawer({ onClose, onCreated }: { onClose: () => void; 
           <div className="drawer-section">
             <h4>或粘贴清单文本</h4>
             <div style={{ fontSize: 11, marginBottom: 6, color: T.muted }}>
-              每行一条「名称,数量」：
+              每行一条「名称,数量」，支持中英文逗号：
             </div>
             <textarea
               style={{
@@ -572,6 +665,37 @@ export function ListImportDrawer({ onClose, onCreated }: { onClose: () => void; 
                 />
                 标记为紧急采购单（priority=1，将进入紧急采购看板）
               </label>
+            )}
+            {rows.length > 0 && (
+              <div style={{ display: 'flex', gap: 10, marginTop: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+                <label style={{ fontSize: 12, color: T.ink, display: 'flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap' }}>
+                  采购时间
+                  <DatePicker
+                    selected={purchaseDate}
+                    onChange={(d: Date | null) => setPurchaseDate(d)}
+                    showTimeSelect
+                    timeFormat="HH:mm"
+                    timeIntervals={1}
+                    dateFormat="yyyy-MM-dd HH:mm"
+                    locale="zh-CN"
+                    className="dp-input"
+                  />
+                </label>
+                <label style={{ fontSize: 12, color: T.ink, display: 'flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap' }}>
+                  交货时间
+                  <DatePicker
+                    selected={deliveryDate}
+                    onChange={(d: Date | null) => setDeliveryDate(d)}
+                    showTimeSelect
+                    timeFormat="HH:mm"
+                    timeIntervals={1}
+                    dateFormat="yyyy-MM-dd HH:mm"
+                    locale="zh-CN"
+                    className="dp-input"
+                    minDate={purchaseDate ?? undefined}
+                  />
+                </label>
+              </div>
             )}
           </div>
 
@@ -768,5 +892,6 @@ export function ListImportDrawer({ onClose, onCreated }: { onClose: () => void; 
       }
       onClose={onClose}
     />
+    </>
   )
 }

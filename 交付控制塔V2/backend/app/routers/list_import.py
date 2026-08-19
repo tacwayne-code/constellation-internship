@@ -75,6 +75,14 @@ class CreatePoRequest(BaseModel):
         True,
         description="True=标记为紧急采购单（priority=1，进紧急采购看板）；False=普通采购单",
     )
+    purchase_date: str | None = Field(
+        None,
+        description="采购时间（订单时间），写入 purchase.order.date_order；支持 'YYYY-MM-DD' 或 'YYYY-MM-DD HH:MM'；缺省用 Odoo 当前时间",
+    )
+    delivery_date: str | None = Field(
+        None,
+        description="交货时间（计划到货时间），写入订单行 date_planned；支持 'YYYY-MM-DD' 或 'YYYY-MM-DD HH:MM'；缺省按供应商交期（今天+delay）",
+    )
 
 
 # ---- 接口 ----
@@ -84,14 +92,20 @@ async def parse_list(req: ParseRequest):
     """粘贴清单文本 → 解析出行（名称 + 数量）。
 
     支持逗号 / 制表符 / 空格分隔，最后一列若为数字则当作数量。
+    兼容全角逗号「，」与全角制表符（中文输入法默认输出全角）。
     """
     rows: list[dict] = []
     for raw_line in req.text.splitlines():
         line = raw_line.strip()
         if not line or line.startswith("#"):
             continue
-        # 判定分隔符
-        delim = "\t" if "\t" in line else ("," if "," in line else None)
+        # 判定分隔符（兼容全角逗号 / 全角制表符）
+        if "\t" in line or "\u3000" in line:
+            delim = "\t" if "\t" in line else "\u3000"
+        elif "," in line or "，" in line:
+            delim = "," if "," in line else "，"
+        else:
+            delim = None
         if delim:
             parts = [p.strip() for p in line.split(delim) if p.strip()]
         else:
@@ -362,6 +376,8 @@ async def create_po_list(
             [l.model_dump() for l in req.lines],
             auto_create_product=req.auto_create_product,
             urgent=req.urgent,
+            purchase_date=req.purchase_date,
+            delivery_date=req.delivery_date,
         )
     except Exception as e:  # noqa: BLE001
         logger.exception("create_po_list failed")
