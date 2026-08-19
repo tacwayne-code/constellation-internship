@@ -92,7 +92,8 @@ async def health():
     client = OdooClient.get_instance(settings)
     odoo = await client.health() if (not settings.USE_MOCK and client.is_configured()) else {"ok": False}
     # 暴露 Odoo 访问地址（脱敏：仅 URL，不含账号/密码），供前端跳转采购单等详情页
-    odoo["url"] = settings.ODOO_URL.rstrip("/")
+    # 优先用 ODOO_WEB_URL（客户端可达地址），留空回退 ODOO_URL —— 避免服务器 127.0.0.1 被错误下发到浏览器
+    odoo["url"] = (settings.ODOO_WEB_URL or settings.ODOO_URL).rstrip("/")
     odoo["configured"] = client.is_configured()
 
     return {

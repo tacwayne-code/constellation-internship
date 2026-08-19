@@ -12,7 +12,8 @@ class Settings(BaseSettings):
     )
 
     # ---- Odoo ----
-    ODOO_URL: str = "http://192.168.1.100:8018"
+    ODOO_URL: str = "http://192.168.1.100:8018"      # 后端 XML-RPC 连接地址（服务器视角，同机可用 127.0.0.1）
+    ODOO_WEB_URL: str = ""                            # 前端「在 Odoo 打开」跳转地址（客户端浏览器可达地址；留空则回退 ODOO_URL）
     ODOO_DB: str = "inspiri_erp_test"
     ODOO_USER: str = "admin"
     ODOO_PASSWORD: str = ""
