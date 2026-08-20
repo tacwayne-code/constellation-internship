@@ -70,5 +70,64 @@ class PanelAuthTests(unittest.TestCase):
         self.assertEqual(server.worker_required_product_class(worker), "host")
 
 
+class WorkorderProgressTests(unittest.TestCase):
+    def test_partial_route_completion_does_not_complete_the_manufacturing_order(self):
+        class Client:
+            def __init__(self):
+                self.workorder_qty = 0.0
+                self.finished_move = {
+                    "id": 900,
+                    "product_id": [500, "测试机器"],
+                    "quantity": 0.0,
+                    "state": "assigned",
+                    "location_id": [15, "生产"],
+                }
+                self.stock_move_writes = []
+
+            def read(self, model, ids, fields):
+                if model == "mrp.workorder":
+                    return [{
+                        "id": 100,
+                        "production_id": [200, "MO/200"],
+                        "qty_produced": self.workorder_qty,
+                        "qty_production": 20.0,
+                        "state": "progress",
+                    }]
+                if model == "mrp.production":
+                    return [{
+                        "id": 200,
+                        "product_id": [500, "测试机器"],
+                        "move_finished_ids": [900],
+                        "state": "progress",
+                        "product_qty": 20.0,
+                        "qty_produced": 0.0,
+                    }]
+                if model == "stock.move":
+                    return [dict(self.finished_move)]
+                return []
+
+            def call(self, model, method, args, kwargs=None):
+                if model == "mrp.workorder" and method == "write":
+                    self.workorder_qty = args[1]["qty_produced"]
+                if model == "mrp.workorder" and method == "search_read":
+                    return [
+                        {"id": 100, "qty_produced": self.workorder_qty, "state": "progress"},
+                        {"id": 101, "qty_produced": 1.0, "state": "progress"},
+                    ]
+                if model == "stock.move" and method == "write":
+                    values = args[1]
+                    self.stock_move_writes.append(values)
+                    self.finished_move.update(values)
+                return True
+
+        client = Client()
+        with patch.object(server, "requires_all_route_steps", return_value=True):
+            result = server.odoo_update_workorder_progress(client, 100, 1, 200)
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(client.finished_move["state"], "assigned")
+        self.assertNotIn({"state": "done"}, client.stock_move_writes)
+
+
 if __name__ == "__main__":
     unittest.main()

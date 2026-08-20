@@ -2612,6 +2612,9 @@ def odoo_update_workorder_progress(client, workorder_id: int, qty: float, produc
             product_qty = number(mo.get("product_qty"))
             if product_qty > 0:
                 completed_qty = min(completed_qty, product_qty)
+            is_final_production_qty = (
+                product_qty > 0 and completed_qty >= product_qty - 1e-6
+            )
 
             if completed_qty > current_mo_qty + 1e-6:
                 finished_product_id = rel_id(mo.get("product_id"))
@@ -2628,8 +2631,10 @@ def odoo_update_workorder_progress(client, workorder_id: int, qty: float, produc
                 move = primary_moves[0]
                 move_id = move["id"]
                 if move.get("state") != "done":
-                    # Writing quantity and state together made Odoo validate the
-                    # original reserved demand (20) instead of the actual output.
+                    # Keep a partially reported MO open.  Marking the finished
+                    # move done for the first completed unit makes Odoo close
+                    # the entire MO and automatically consume every remaining
+                    # component, even when this MO still has pending units.
                     client.call("stock.move", "write", [[move_id], {
                         "quantity": completed_qty, "picked": True,
                     }])
@@ -2638,11 +2643,12 @@ def odoo_update_workorder_progress(client, workorder_id: int, qty: float, produc
                             abs(number(move_check[0].get("quantity")) - completed_qty) > 1e-6):
                         return {"ok": False, "error": "成品移动实际数量写入后不一致",
                                 "new_qty": new_wo_qty}
-                    source_location_id = rel_id(move.get("location_id"))
-                    _ensure_location_stock(
-                        client, finished_product_id, source_location_id, completed_qty
-                    )
-                    client.call("stock.move", "write", [[move_id], {"state": "done"}])
+                    if is_final_production_qty:
+                        source_location_id = rel_id(move.get("location_id"))
+                        _ensure_location_stock(
+                            client, finished_product_id, source_location_id, completed_qty
+                        )
+                        client.call("stock.move", "write", [[move_id], {"state": "done"}])
                 else:
                     delta = completed_qty - current_mo_qty
                     source_location_id = rel_id(move.get("location_id"))
@@ -2663,7 +2669,11 @@ def odoo_update_workorder_progress(client, workorder_id: int, qty: float, produc
                 return {"ok": False, "error": "生产订单写入后无法回读",
                         "new_qty": new_wo_qty}
             mo_qty = float(mo_check[0].get("qty_produced", 0) or 0)
-            if abs(mo_qty - completed_qty) > 1e-6:
+            # Odoo calculates the MO's final produced quantity from a done
+            # finished move. For a partial report the move intentionally stays
+            # open, so do not turn that expected intermediate state into a
+            # failed report or force-complete the production order.
+            if is_final_production_qty and abs(mo_qty - completed_qty) > 1e-6:
                 return {"ok": False,
                         "error": f"生产订单已写入但回读产量不一致（期望 {completed_qty:g}，实际 {mo_qty:g}）",
                         "new_qty": new_wo_qty,
