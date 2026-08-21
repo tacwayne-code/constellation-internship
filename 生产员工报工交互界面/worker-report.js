@@ -520,7 +520,9 @@ function workorderMatchesSelectedOperation(workorder) {
   if (operation.hostType && workorder.hostType !== operation.hostType) return false;
   if (operation.productClass && workorder.productClass !== operation.productClass) return false;
   const names = operation.workorderNames || [];
-  if (!names.length || names.includes(workorder.workorderName)) return true;
+  const normalizedWorkorderName = materialMatchText(workorder.workorderName);
+  const normalizedNames = new Set(names.map(materialMatchText).filter(Boolean));
+  if (!names.length || normalizedNames.has(normalizedWorkorderName)) return true;
   const customAssembly = !!operation.requiresBom ||
     String(operation.code || "").startsWith("worker_assembly_custom_");
   if (!customAssembly) return false;
@@ -536,6 +538,7 @@ function workorderMatchesSelectedOperation(workorder) {
 
 function materialMatchText(value) {
   return String(value || "")
+    .normalize("NFKC")
     .replace(/^\[[^\]]+\]\s*/, "")
     .toLocaleLowerCase()
     .replace(/[\s_\-./\\,，。:：()（）[\]【】]+/g, "");
@@ -561,11 +564,16 @@ function materialMatchesOperation(operationName, materialName) {
   return left.some((a) => right.some((b) => {
     if (a.includes(b) || b.includes(a)) return true;
     if (Math.min(a.length, b.length) < 4) return false;
-    let same = 0;
-    const length = Math.min(a.length, b.length);
-    for (let i = 0; i < length; i++) if (a[i] === b[i]) same++;
-    return same / Math.max(a.length, b.length) >= 0.72;
+    return positionAlignedSimilarity(a, b) >= 0.72;
   }));
+}
+
+function positionAlignedSimilarity(left, right) {
+  if (!left || !right) return left === right ? 1 : 0;
+  let shared = 0;
+  const length = Math.min(left.length, right.length);
+  for (let i = 0; i < length; i++) if (left[i] === right[i]) shared++;
+  return shared / Math.max(left.length, right.length);
 }
 
 function namesShareComponentAnchor(operationName, workorderName) {

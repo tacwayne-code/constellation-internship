@@ -144,8 +144,87 @@ class WorkorderProgressTests(unittest.TestCase):
         self.assertEqual(client.finished_move["state"], "assigned")
         self.assertNotIn({"state": "done"}, client.stock_move_writes)
 
+    def test_added_unreported_workorder_reverses_reversible_machine_progress(self):
+        class Client:
+            def __init__(self):
+                self.workorder_qty = 1.0
+                self.move = {
+                    "id": 900,
+                    "product_id": [500, "测试机器"],
+                    "quantity": 1.0,
+                    "state": "confirmed",
+                    "location_id": [15, "生产"],
+                }
+                self.mo_qty = 1.0
+                self.stock_move_writes = []
+
+            def read(self, model, ids, fields):
+                if model == "mrp.workorder":
+                    return [{
+                        "id": 100,
+                        "production_id": [200, "MO/200"],
+                        "qty_produced": self.workorder_qty,
+                        "qty_production": 20.0,
+                        "state": "progress",
+                    }]
+                if model == "mrp.production":
+                    return [{
+                        "id": 200,
+                        "product_id": [500, "测试机器"],
+                        "move_finished_ids": [900],
+                        "state": "progress",
+                        "product_qty": 20.0,
+                        "qty_produced": self.mo_qty,
+                    }]
+                if model == "stock.move":
+                    return [dict(self.move)]
+                return []
+
+            def call(self, model, method, args, kwargs=None):
+                if model == "mrp.workorder" and method == "write":
+                    self.workorder_qty = args[1]["qty_produced"]
+                if model == "mrp.workorder" and method == "search_read":
+                    return [
+                        {"id": 100, "qty_produced": self.workorder_qty, "state": "progress"},
+                        # A manually added WO may not have an operation_id,
+                        # but it still prevents a finished machine receipt.
+                        {"id": 171, "qty_produced": 0.0, "state": "progress"},
+                    ]
+                if model == "stock.move" and method == "write":
+                    values = args[1]
+                    self.stock_move_writes.append(values)
+                    self.move.update(values)
+                    self.mo_qty = values.get("quantity", self.mo_qty)
+                return True
+
+        client = Client()
+        with patch.object(server, "requires_all_route_steps", return_value=True):
+            result = server.odoo_update_workorder_progress(client, 100, 1, 200)
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["completed_qty"], 0.0)
+        self.assertIn({"quantity": 0.0, "picked": False}, client.stock_move_writes)
+
 
 class WorkorderBomTests(unittest.TestCase):
+    def test_workorder_name_matching_normalizes_spacing_and_width(self):
+        operation = {
+            "code": "worker_assembly_custom_rack",
+            "name": "编带机机架结构组装",
+            "workorderNames": ["编带机机架结构组装"],
+            "productClass": "machine",
+            "requiresBom": True,
+        }
+        workorder = {
+            "workorderName": " 编带机机架结构组装　",
+            "productClass": "machine",
+        }
+        self.assertTrue(server.operation_matches_workorder(operation, workorder))
+
+    def test_similarity_ratio_is_position_aligned(self):
+        self.assertEqual(server._similarity_ratio("abcd", "abXd"), 0.75)
+        self.assertEqual(server._similarity_ratio("abcd", "Xabc"), 0.0)
+
     def test_custom_assembly_matches_bom_component_name_when_workorder_name_differs(self):
         operation = {
             "code": "worker_assembly_custom_ng",

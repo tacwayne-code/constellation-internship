@@ -1,6 +1,5 @@
 import base64
 import binascii
-import difflib
 import hashlib
 import json
 import hmac
@@ -1262,7 +1261,10 @@ def operation_matches_workorder(operation, workorder):
     if expected_product_class and workorder.get("productClass") != expected_product_class:
         return False
     names = operation.get("workorderNames") or []
-    if names and workorder.get("workorderName") not in names:
+    workorder_name = workorder.get("workorderName", "")
+    normalized_workorder_name = _match_text(workorder_name)
+    normalized_names = {_match_text(name) for name in names if _match_text(name)}
+    if names and normalized_workorder_name not in normalized_names:
         # Component assembly work orders are named by the routing operation,
         # while the employee binding is named by the material.  Odoo data can
         # use slightly different material wording (for example 杯/环), so
@@ -1286,8 +1288,22 @@ def operation_matches_workorder(operation, workorder):
 
 def _match_text(value):
     """Normalize Odoo/worker material names for semantic comparisons."""
-    text = clean_name(value).casefold()
+    text = clean_name(value)
+    try:
+        import unicodedata
+        text = unicodedata.normalize("NFKC", text)
+    except (TypeError, ValueError):
+        pass
+    text = text.casefold()
     return re.sub(r"[\s_\-./\\,，。:：()（）[\]【】]+", "", text)
+
+
+def _similarity_ratio(left, right):
+    """Return the same position-aligned ratio used by worker-report.js."""
+    if not left or not right:
+        return 1.0 if left == right else 0.0
+    shared = sum(a == b for a, b in zip(left, right))
+    return shared / max(len(left), len(right))
 
 
 def _operation_material_variants(value):
@@ -1315,10 +1331,7 @@ def _material_matches_operation(operation_name, material_name):
                 return True
             if min(len(operation_text), len(material_text)) < 4:
                 continue
-            similarity = difflib.SequenceMatcher(
-                None, operation_text, material_text, autojunk=False
-            ).ratio()
-            if similarity >= 0.72:
+            if _similarity_ratio(operation_text, material_text) >= 0.72:
                 return True
     return False
 
@@ -1375,8 +1388,8 @@ def completed_machine_qty_for_reports(reports):
 
     ``odoo_progress_qty`` is the cumulative WO quantity read back immediately
     after a successful panel report.  A finished unit requires a synchronized
-    receipt for every non-cancelled routing WO; the minimum confirmed progress
-    across those WOs is the finished output.  This deliberately excludes raw
+    receipt for every non-cancelled WO in the manufacturing order; the minimum
+    confirmed progress across those WOs is the finished output. This deliberately excludes raw
     Odoo cumulative changes that have no local audit receipt.
     """
     confirmed_qty_by_production = {}
@@ -1403,8 +1416,12 @@ def completed_machine_qty_for_reports(reports):
     for mo in mos:
         if not requires_all_route_steps(mo.get("product_id")):
             continue
-        workorders = client.read(
-            "mrp.workorder", mo.get("workorder_ids") or [], ["id", "state"]
+        # Query by production instead of relying on the routing relation. A
+        # manually added WO can have no operation_id but must still block
+        # finished-product output until that operation is reported.
+        workorders = client.search_read(
+            "mrp.workorder", [("production_id", "=", mo["id"])], ["id", "state"],
+            limit=5000,
         )
         quantities = [
             confirmed_qty_by_production[mo["id"]].get(workorder["id"], 0.0)
@@ -2463,7 +2480,6 @@ def get_workorders_data():
         wo_rows = client.search_read(
             "mrp.workorder",
             [("production_id", "in", list(valid_mo_ids)),
-             ("operation_id", "!=", False),
              ("workcenter_id", "!=", False),
              ("state", "not in", ["done", "cancel"])],
             wo_fields, limit=50, order="id desc"
@@ -2754,7 +2770,8 @@ def odoo_update_workorder_progress(client, workorder_id: int, qty: float, produc
                     "new_qty": new_wo_qty}
 
         # 2) A machine, including a host computer, is complete only when every
-        # active routing step reaches the same cumulative quantity.
+        # active WO in its MO reaches the same cumulative quantity. This also
+        # includes manually added WOs whose operation_id is not populated.
         if production_id:
             all_wos = client.call("mrp.workorder", "search_read",
                 [[("production_id", "=", production_id)]],
@@ -2774,7 +2791,15 @@ def odoo_update_workorder_progress(client, workorder_id: int, qty: float, produc
                 else max(quantities)
             ) if quantities else 0.0
             current_mo_qty = number(mo.get("qty_produced"))
-            completed_qty = max(current_mo_qty, route_completed)
+            # Non-machine products retain the established one-step behavior.
+            # Machine/host output is the minimum across every active WO, so a
+            # newly added, unreported WO can correctly reduce a reversible
+            # intermediate MO quantity back to zero.
+            completed_qty = (
+                route_completed
+                if requires_all_route_steps(mo.get("product_id"))
+                else max(current_mo_qty, route_completed)
+            )
             product_qty = number(mo.get("product_qty"))
             if product_qty > 0:
                 completed_qty = min(completed_qty, product_qty)
@@ -2782,7 +2807,7 @@ def odoo_update_workorder_progress(client, workorder_id: int, qty: float, produc
                 product_qty > 0 and completed_qty >= product_qty - 1e-6
             )
 
-            if completed_qty > current_mo_qty + 1e-6:
+            if abs(completed_qty - current_mo_qty) > 1e-6:
                 finished_product_id = rel_id(mo.get("product_id"))
                 finished_moves = client.read(
                     "stock.move", mo.get("move_finished_ids") or [],
@@ -2796,13 +2821,19 @@ def odoo_update_workorder_progress(client, workorder_id: int, qty: float, produc
                     return {"ok": False, "error": "制造订单没有成品移动", "new_qty": new_wo_qty}
                 move = primary_moves[0]
                 move_id = move["id"]
+                if completed_qty < current_mo_qty - 1e-6 and move.get("state") == "done":
+                    # A done move has already posted inventory. Never reverse
+                    # that stock movement implicitly when a WO is later added.
+                    return {"ok": False,
+                            "error": "新增工单后发现已完成成品移动，需先在 Odoo 更正已入库成品",
+                            "new_qty": new_wo_qty, "completed_qty": current_mo_qty}
                 if move.get("state") != "done":
                     # Keep a partially reported MO open.  Marking the finished
                     # move done for the first completed unit makes Odoo close
                     # the entire MO and automatically consume every remaining
                     # component, even when this MO still has pending units.
                     client.call("stock.move", "write", [[move_id], {
-                        "quantity": completed_qty, "picked": True,
+                        "quantity": completed_qty, "picked": completed_qty > 0,
                     }])
                     move_check = client.read("stock.move", [move_id], ["quantity", "state"])
                     if (not move_check or
