@@ -13,7 +13,7 @@ import { useMemo, useState, type ReactNode } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { apiFetch } from '../../api/client'
 import { Icon } from '../common/Icon'
-import { ProgressBar, StatusDot } from '../common/Status'
+import { StatusDot } from '../common/Status'
 import { QueryView } from '../common/QueryView'
 import { Drawer } from '../common/Drawer'
 import { EmptyState } from '../common/EmptyState'
@@ -1187,8 +1187,6 @@ export function LogisticsTable({ title, items }: { title: string; items: Logisti
             <th>状态</th>
             <th>预计到达</th>
             <th>预计到达状态</th>
-            <th>承诺期</th>
-            <th>承运商</th>
           </tr>
         </thead>
         <tbody>
@@ -1213,9 +1211,6 @@ export function LogisticsTable({ title, items }: { title: string; items: Logisti
                 <td style={{ whiteSpace: 'nowrap' }}>
                   <StatusDot tone={etaTone} />
                   <span style={{ fontSize: 11, color: etaTone === 'red' ? 'var(--red)' : 'var(--muted)' }}>{etaLabel}</span>
-                </td>
-                <td style={{ whiteSpace: 'nowrap' }}>
-                  {p.carrier !== '—' ? `${p.carrier}${p.tracking_ref ? ` · ${p.tracking_ref}` : ''}` : '—'}
                 </td>
               </tr>
             )
@@ -1318,28 +1313,12 @@ export function DeliveryTowerView() {
                   <div className="panel">
                     <div className="panel-header">
                       <span className="panel-title">
-                        <Icon name="alert" size={16} style={{ color: 'var(--red)' } as React.CSSProperties} /> 交付风险总览
+                        <Icon name="alert" size={16} style={{ color: 'var(--red)' } as React.CSSProperties} /> 交付风险 · 逾期订单
                       </span>
-                      <span className="muted" style={{ fontSize: 12 }}>共 {ov.stats.total} 单</span>
-                    </div>
-                    <div style={{ display: 'flex', gap: 12, marginBottom: 14 }}>
-                      {[
-                        { label: '逾期订单', value: ov.stats.overdue, tone: 'red', icon: 'clock' },
-                        { label: '紧急订单', value: ov.stats.urgent, tone: 'orange', icon: 'alert' },
-                        { label: '未完成', value: ov.stats.unfinished, tone: 'blue', icon: 'factory' },
-                      ].map((k) => (
-                        <div className="kpi-card" key={k.label} style={{ flex: 1 }}>
-                          <div className={`kpi-icon ${k.tone}`}><Icon name={k.icon} size={16} /></div>
-                          <div className="kpi-copy">
-                            <div className="num" style={{ color: `var(--${k.tone})` }}>{k.value}</div>
-                            <div className="label">{k.label}</div>
-                          </div>
-                        </div>
-                      ))}
+                      <span className="muted" style={{ fontSize: 12 }}>{ov.stats.overdue} 单逾期</span>
                     </div>
                     {ov.overdue_orders.length > 0 && (
                       <div>
-                        <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--red)', marginBottom: 8 }}>逾期订单 · 点击查看详情</div>
                         {ov.overdue_orders.slice(0, 5).map((o) => (
                           <div key={o.id} className="chain-item" style={{ cursor: 'pointer' }} onClick={() => setSelectedSo(o.id)}>
                             <div className="chain-item-head">

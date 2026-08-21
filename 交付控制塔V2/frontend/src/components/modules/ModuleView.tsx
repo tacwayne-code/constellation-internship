@@ -14,29 +14,20 @@ import { SearchInput } from '../common/SearchInput'
 import { ModuleShell } from './ModuleShell'
 import {
   DeliveryTowerView,
-  ProcurementBoard,
   ProcurementTable,
   LogisticsTable,
   PoDrawer,
-  MoDrawer,
-  PO_STATE,
-  MO_STATE,
 } from './DeliveryTowerView'
 import type {
   ProcurementOverview,
   PoItem,
   LogisticsOverview,
-  ProductionOverview,
-  ProductionItem,
 } from './DeliveryTowerView'
 import { ListImportDrawer } from './ListImportDrawer'
-import { useGantt, useModuleRows } from '../../api/modules/useData'
+import { useGantt, useModuleRows, useModuleConfig } from '../../api/modules/useData'
 import type { GanttTask, SRow, Tone } from '../../types/contract'
 
 const PAGE_SIZE = 10
-
-const st = (map: Record<string, [string, Tone]>, key?: string | null): [string, Tone] =>
-  map[key ?? ''] ?? [key || '—', 'neutral']
 
 /* ====================================================================
  *  通用：分页表格 + 抽屉
@@ -177,59 +168,6 @@ function BomDetail({ row }: { row: SRow }) {
   )
 }
 
-/** 采购订单行下钻（采购与交期） */
-function PurchaseDetail({ row }: { row: SRow }) {
-  const id = String(row.id).replace('EQ-', '')
-  const q = useQuery({
-    queryKey: ['purchase-lines', id],
-    queryFn: () => apiFetch<SRow[]>(`/modules/procurement/order/${id}/lines`).then((r) => r.data),
-    enabled: !!id && id !== row.id,
-    staleTime: 60_000,
-  })
-  return (
-    <QueryView query={q} empty={<div className="subtitle" style={{ padding: '6px 2px' }}>暂无订单行数据</div>}>
-      {(lines) => <DrillList title="订单行明细" rows={lines} />}
-    </QueryView>
-  )
-}
-
-/** 模块内的独立数据面板（表格区块，无搜索分页） */
-function PanelSection({ title, rows, max = 12 }: { title: string; rows: SRow[]; max?: number }) {
-  const list = rows.slice(0, max)
-  return (
-    <div className="panel">
-      <div className="panel-header">
-        <span className="panel-title">{title}</span>
-        <span className="subtitle" style={{ margin: 0 }}>{rows.length} 条</span>
-      </div>
-      {list.length === 0 ? (
-        <div className="state-block">暂无数据</div>
-      ) : (
-        <div style={{ overflowX: 'auto' }}>
-          <table className="data-table">
-            <tbody>
-              {list.map((r) => (
-                <tr key={r.id}>
-                  <td style={{ whiteSpace: 'nowrap', color: 'var(--muted)' }}>{r.id}</td>
-                  <td>
-                    <div className="cell-name">{r.name}</div>
-                    {r.cells && r.cells.length > 2 && (
-                      <div className="cell-sub">{r.cells.slice(1, 6).join(' · ')}</div>
-                    )}
-                  </td>
-                  <td style={{ width: 90 }}>
-                    <span className="drawer-status"><StatusDot tone={r.tone} /> {r.status ?? '—'}</span>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-    </div>
-  )
-}
-
 /* ====================================================================
  *  DesignView：设计与图纸（Odoo BOM + 子件下钻）
  * ==================================================================== */
@@ -246,22 +184,30 @@ function DesignView() {
  *  InventoryView：现场库存（物料 + 库位分布 + 收发流水）
  * ==================================================================== */
 function InventoryView() {
-  const rowsQ = useModuleRows('inventory')
+  const configQ = useModuleConfig('inventory')
+  const [view, setView] = useState<'overview' | 'products' | 'locations' | 'moves'>('overview')
+  // 全量数据懒加载：仅进入对应明细才拉，避免概要层拉全量拖慢
+  const rowsQ = useModuleRows('inventory', view === 'products')
   const locQ = useQuery({
     queryKey: ['inv-locations'],
     queryFn: () => apiFetch<SRow[]>('/modules/inventory/locations').then((r) => r.data),
     staleTime: 60_000,
+    enabled: view === 'locations',
   })
   const movesQ = useQuery({
     queryKey: ['inv-moves'],
     queryFn: () => apiFetch<SRow[]>('/modules/inventory/moves').then((r) => r.data),
     staleTime: 60_000,
+    enabled: view === 'moves',
   })
-  const [view, setView] = useState<'overview' | 'products' | 'locations' | 'moves'>('overview')
 
   const rows = rowsQ.data ?? []
-  const locCount = (locQ.data ?? []).length
-  const moveCount = (movesQ.data ?? []).length
+  // 分类卡 count 用 config 轻量统计（不再依赖全量 rows/locations/moves）
+  const statMap: Record<string, string> = {}
+  for (const [k, v] of (configQ.data?.stats ?? [])) statMap[k] = v
+  const productCount = Number(statMap['产品种类']) || rows.length
+  const locCount = Number(statMap['库位']) || 0
+  const moveCount = Number(statMap['收发流水']) || 0
 
   return (
     <div className="module-view">
@@ -273,7 +219,7 @@ function InventoryView() {
             </div>
             <div className="category-grid">
               {[
-                { key: 'products', title: '产品库存', count: rows.length, tone: 'blue' as Tone, desc: '物料库存明细' },
+                { key: 'products', title: '产品库存', count: productCount, tone: 'blue' as Tone, desc: '物料库存明细' },
                 { key: 'locations', title: '库位分布', count: locCount, tone: 'green' as Tone, desc: '各库位库存' },
                 { key: 'moves', title: '收发流水', count: moveCount, tone: 'orange' as Tone, desc: '最近出入库' },
               ].map((c) => (
@@ -808,18 +754,27 @@ function BlockerSummaryCard() {
           项目执行摘要
         </span>
       </div>
-      <div className="status-bar status-bar-3col">
-        <div className="status-bar-item">
-          <span className="label">项目</span>
-          <span className="num">{rowsQ.data?.length ?? 0}</span>
+      <div className="kpi-grid" style={{ gridTemplateColumns: 'repeat(3, 1fr)' }}>
+        <div className="kpi-card">
+          <div className="kpi-icon blue"><Icon name="grid" size={16} /></div>
+          <div className="kpi-copy">
+            <div className="num">{rowsQ.data?.length ?? 0}</div>
+            <div className="label">项目</div>
+          </div>
         </div>
-        <div className="status-bar-item">
-          <span className="label">活跃任务</span>
-          <span className="num">{stats.activeTasks}</span>
+        <div className="kpi-card">
+          <div className="kpi-icon orange"><Icon name="clock" size={16} /></div>
+          <div className="kpi-copy">
+            <div className="num">{stats.activeTasks}</div>
+            <div className="label">活跃任务</div>
+          </div>
         </div>
-        <div className="status-bar-item">
-          <span className="label">逾期任务</span>
-          <span className="num" style={{ color: 'var(--red)' }}>{stats.overdue}</span>
+        <div className="kpi-card">
+          <div className="kpi-icon red"><Icon name="alert" size={16} /></div>
+          <div className="kpi-copy">
+            <div className="num" style={{ color: 'var(--red)' }}>{stats.overdue}</div>
+            <div className="label">逾期任务</div>
+          </div>
         </div>
       </div>
     </div>
@@ -978,18 +933,6 @@ function ProcurementView() {
                     ))}
                   </div>
                 </div>
-
-                <div className="panel">
-                  <div className="panel-header">
-                    <span className="panel-title">清单导入 · 智能采购</span>
-                    <span className="muted" style={{ fontSize: 12 }}>粘贴外购件清单 → 自动识别配件 + 推荐供应商 → 批量生成采购单</span>
-                  </div>
-                  <div style={{ padding: '16px 20px', display: 'flex', alignItems: 'center', gap: 12 }}>
-                    <button className="ghost-btn" onClick={() => setListImportOpen(true)}>
-                      <Icon name="upload" size={14} /> 打开清单导入
-                    </button>
-                  </div>
-                </div>
               </div>
             )
           }
@@ -1001,6 +944,9 @@ function ProcurementView() {
                 <div className="list-toolbar">
                   <button className="ghost-btn" onClick={() => setView('overview')}>
                     <Icon name="arrow" size={13} /> 返回概要
+                  </button>
+                  <button className="primary-button" onClick={() => setListImportOpen(true)}>
+                    <Icon name="upload" size={14} /> 新建清单导入
                   </button>
                   <h2 className="list-toolbar-title">清单导入</h2>
                   <div className="list-toolbar-right">
@@ -1214,228 +1160,6 @@ function LogisticsView() {
   )
 }
 
-function LogisticsList({ rows }: { rows: SRow[] }) {
-  const [page, setPage] = useState(1)
-  const [filter, setFilter] = useState('全部')
-  const [selected, setSelected] = useState<SRow | null>(null)
-
-  const filtered = filter === '全部' ? rows : rows.filter((r) => r.status === filter)
-  const start = (page - 1) * PAGE_SIZE
-  const pageRows = filtered.slice(start, start + PAGE_SIZE)
-
-  return (
-    <div className="panel">
-      <div className="panel-header">
-        <span className="panel-title">
-          <Icon name="route" size={16} style={{ color: 'var(--blue)' } as React.CSSProperties} />
-          物流批次
-        </span>
-        <span className="subtitle" style={{ margin: 0 }}>{filtered.length} 批次 · 按优先级排序</span>
-      </div>
-      <FilterBar rows={rows} active={filter} onChange={(s) => { setFilter(s); setPage(1) }} />
-      <div className="logistics-list">
-        {pageRows.map((r) => (
-          <div className="logistics-item" key={r.id} onClick={() => setSelected(r)}>
-            <div className={`logistics-status tone-${r.tone}`} />
-            <div style={{ flex: 1 }}>
-              <div className="cell-name">{r.name}</div>
-              <div className="cell-sub">{r.id} · {r.cells?.slice(1, 4).join(' · ')}</div>
-            </div>
-            <span className="drawer-status"><StatusDot tone={r.tone} /> {r.status ?? '—'}</span>
-          </div>
-        ))}
-      </div>
-      <Pagination page={page} total={filtered.length} pageSize={PAGE_SIZE} onChange={setPage} />
-      {selected && (
-        <Drawer title={selected.name} subtitle={selected.id} tone={selected.tone} status={selected.status} fields={selected.fields} onClose={() => setSelected(null)} />
-      )}
-    </div>
-  )
-}
-
-/* ====================================================================
- *  ElectricalView
- * ==================================================================== */
-function ElectricalView() {
-  const rowsQ = useModuleRows('electrical')
-  return (
-    <QueryView query={rowsQ} empty={<EmptyState module={getModule('electrical')} />}>
-      {() => (
-        <>
-          <ElectricalProgressBar rows={rowsQ.data ?? []} />
-          <GenericTableView rows={rowsQ.data ?? []} showProgress={false} />
-        </>
-      )}
-    </QueryView>
-  )
-}
-
-function ElectricalProgressBar({ rows }: { rows: SRow[] }) {
-  const byStatus: Record<string, number> = {}
-  for (const r of rows) byStatus[r.status ?? '其他'] = (byStatus[r.status ?? '其他'] ?? 0) + 1
-  return (
-    <div className="panel">
-      <div className="panel-header">
-        <span className="panel-title">
-          <Icon name="bolt" size={16} style={{ color: 'var(--orange)' } as React.CSSProperties} />
-          施工工单状态
-        </span>
-      </div>
-      <div className="status-bar">
-        {Object.entries(byStatus).map(([k, v]) => (
-          <div key={k} className="status-bar-item">
-            <span className="label">{k}</span>
-            <span className="num">{v}</span>
-          </div>
-        ))}
-      </div>
-    </div>
-  )
-}
-
-/* ====================================================================
- *  DefaultView：通用表格（用于 delivery/design/mes/commissioning/documents/vendors/inventory）
- * ==================================================================== */
-function DefaultView() {
-  const { moduleId } = useNavigation()
-  const rowsQ = useModuleRows(moduleId)
-  return (
-    <QueryView query={rowsQ} empty={<EmptyState module={getModule(moduleId)} />}>
-      {(rows) => <GenericTableView rows={rows} />}
-    </QueryView>
-  )
-}
-
-/* ====================================================================
- *  ManufacturingView：制造执行（生产工单 + 工序进度，概要→详情）
- * ==================================================================== */
-function ManufacturingView() {
-  const prodQ = useQuery({
-    queryKey: ['delivery-tower-productions'],
-    queryFn: () => apiFetch<ProductionOverview>('/delivery-tower/productions?limit=200').then((r) => r.data),
-    staleTime: 60_000,
-  })
-  const [view, setView] = useState<'overview' | 'progress' | 'done' | 'urgent' | 'all'>('overview')
-  const [selectedMo, setSelectedMo] = useState<ProductionItem | null>(null)
-
-  return (
-    <>
-      <QueryView query={prodQ} empty={<EmptyState module={getModule('manufacturing')} />}>
-        {(production) => {
-          const items = production.items ?? []
-          const progress = items.filter((m) => m.state === 'progress')
-          const done = items.filter((m) => m.state === 'done')
-          const urgent = items.filter((m) => m.is_urgent)
-
-          if (view === 'overview') {
-            return (
-              <div className="module-view">
-                <div className="panel">
-                  <div className="panel-header">
-                    <span className="panel-title">生产分类 · 点击进入明细</span>
-                  </div>
-                  <div className="category-grid">
-                    {[
-                      { key: 'progress', title: '生产中', count: progress.length, tone: 'orange' as Tone, desc: '在制工单' },
-                      { key: 'urgent', title: '紧急工单', count: urgent.length, tone: 'red' as Tone, desc: '需优先完成' },
-                      { key: 'done', title: '已完成', count: done.length, tone: 'green' as Tone, desc: '已完工' },
-                      { key: 'all', title: '全部工单', count: items.length, tone: 'blue' as Tone, desc: '查看全量' },
-                    ].map((c) => (
-                      <div className="category-card" key={c.key} onClick={() => setView(c.key as 'progress' | 'done' | 'urgent' | 'all')}>
-                        <div className="category-card-head">
-                          <StatusDot tone={c.tone} />
-                          <span className="category-card-title">{c.title}</span>
-                        </div>
-                        <div className="category-card-count" style={{ color: c.tone === 'red' ? 'var(--red)' : 'var(--ink)' }}>{c.count}</div>
-                        <div className="category-card-desc">{c.desc}</div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            )
-          }
-
-          const list = view === 'progress' ? progress : view === 'done' ? done : view === 'urgent' ? urgent : items
-          const title = view === 'progress' ? '生产中' : view === 'done' ? '已完成' : view === 'urgent' ? '紧急工单' : '全部工单'
-          return (
-            <div className="module-view">
-              <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
-                <button className="ghost-btn" onClick={() => setView('overview')}>
-                  <Icon name="arrow" size={13} /> 返回概要
-                </button>
-                <span className="muted" style={{ fontSize: 12 }}>{title} · {list.length} 单</span>
-              </div>
-              <MoProductionTable items={list} onOpenMo={setSelectedMo} />
-            </div>
-          )
-        }}
-      </QueryView>
-      {selectedMo && <MoDrawer mo={selectedMo} onClose={() => setSelectedMo(null)} />}
-    </>
-  )
-}
-
-function MoProductionTable({ items, onOpenMo }: { items: ProductionItem[]; onOpenMo: (mo: ProductionItem) => void }) {
-  const [page, setPage] = useState(1)
-  const TABLE_PAGE_SIZE = 10
-  const total = items.length
-  const start = (page - 1) * TABLE_PAGE_SIZE
-  const pageItems = items.slice(start, start + TABLE_PAGE_SIZE)
-  return (
-    <div className="panel module-table-panel">
-      <div className="panel-header">
-        <span className="panel-title">生产工单 · 加工工序进度</span>
-        <span className="muted" style={{ fontSize: 12 }}>共 {items.length} 单 · 点击查看工序明细</span>
-      </div>
-      <table className="data-table">
-        <thead>
-          <tr>
-            <th>工单号</th>
-            <th>产品</th>
-            <th>状态</th>
-            <th>紧急</th>
-            <th>工序进度</th>
-            <th>数量</th>
-            <th>开始 / 完成</th>
-          </tr>
-        </thead>
-        <tbody>
-          {pageItems.map((m) => {
-            const [label, tone] = st(MO_STATE, m.state)
-            const woTotal = m.workorder_count
-            const pct = woTotal > 0 ? Math.round((m.workorder_done / woTotal) * 100) : (m.state === 'done' ? 100 : 0)
-            return (
-              <tr key={m.id} onClick={() => onOpenMo(m)}>
-                <td style={{ color: 'var(--muted)', whiteSpace: 'nowrap' }}>{m.name}</td>
-                <td><div className="cell-name">{m.product}</div></td>
-                <td><StatusDot tone={tone} /> {label}</td>
-                <td>{m.is_urgent ? <span className="urgent-badge">紧急</span> : <span className="muted" style={{ fontSize: 12 }}>—</span>}</td>
-                <td style={{ minWidth: 180 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <div style={{ flex: 1 }}><ProgressBar value={pct} /></div>
-                    <span style={{ fontSize: 12, color: 'var(--muted)', whiteSpace: 'nowrap' }}>{m.workorder_done}/{woTotal} 道</span>
-                  </div>
-                </td>
-                <td style={{ whiteSpace: 'nowrap' }}>{Number(m.product_qty ?? 0).toLocaleString()} 台</td>
-                <td style={{ whiteSpace: 'nowrap', fontSize: 12, color: 'var(--muted)' }}>
-                  {(m.date_start ?? '').slice(0, 10)}{m.date_finished ? ` → ${m.date_finished.slice(0, 10)}` : ''}
-                </td>
-              </tr>
-            )
-          })}
-        </tbody>
-      </table>
-      {items.length === 0 && <div className="state-block">暂无生产工单</div>}
-      {total > TABLE_PAGE_SIZE && (
-        <div style={{ padding: '12px 0 4px' }}>
-          <Pagination page={page} total={total} pageSize={TABLE_PAGE_SIZE} onChange={setPage} />
-        </div>
-      )}
-    </div>
-  )
-}
-
 /* ====================================================================
  *  DeliveryView：交付包按状态分组看板
  * ==================================================================== */
@@ -1494,8 +1218,70 @@ function DeliveryCol({ title, items, tone }: { title: string; items: SRow[]; ton
       </div>
       <Pagination page={page} total={items.length} pageSize={PAGE_SIZE} onChange={setPage} />
       {selected && (
-        <Drawer title={selected.name} subtitle={selected.id} tone={selected.tone} status={selected.status} fields={selected.fields} onClose={() => setSelected(null)} />
+        <Drawer
+          title={selected.name}
+          subtitle={selected.id}
+          tone={selected.tone}
+          status={selected.status}
+          fields={selected.fields}
+          extra={<VendorOrders partnerId={String(selected.id).replace('VEN-', '')} />}
+          onClose={() => setSelected(null)}
+        />
       )}
+    </div>
+  )
+}
+
+/** 供应商合作订单：该供应商（res.partner）的采购单列表，点击查看详情 */
+function VendorOrders({ partnerId }: { partnerId: string }) {
+  const q = useQuery({
+    queryKey: ['vendor-orders', partnerId],
+    queryFn: () => apiFetch<Array<{
+      id: number; name: string; partner: string; state: string; is_urgent: boolean
+      date_planned: string | null; amount_total: number | null; origin: string | null
+      line_count: number; priority: string | number
+    }>>(`/modules/vendors/${partnerId}/orders`).then((r) => r.data),
+    enabled: !!partnerId && /^\d+$/.test(partnerId),
+    staleTime: 60_000,
+  })
+  const [selected, setSelected] = useState<PoItem | null>(null)
+  const PO_STATE_CN: Record<string, string> = {
+    draft: '询价中', sent: '已发送', purchase: '已下单', done: '已完成', cancel: '已取消',
+  }
+  return (
+    <div className="drawer-section">
+      <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink)', marginBottom: 8 }}>合作订单 · 点击查看详情</div>
+      <QueryView query={q} empty={<div className="muted" style={{ fontSize: 12 }}>暂无合作订单</div>}>
+        {(orders) => (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {orders.map((o) => (
+              <div
+                key={o.id}
+                className="chain-item"
+                style={{ cursor: 'pointer' }}
+                onClick={() => setSelected({
+                  id: o.id, name: o.name, partner: o.partner, state: o.state,
+                  priority: Number(o.priority) || 0, is_urgent: o.is_urgent,
+                  date_planned: o.date_planned, amount_total: o.amount_total,
+                  line_count: o.line_count, project: '', user: '',
+                })}
+              >
+                <div className="chain-item-head">
+                  <span className="chain-item-name">{o.name}</span>
+                  {o.is_urgent && <span className="urgent-badge">紧急</span>}
+                  <span className="chain-item-state" style={{ color: 'var(--muted)' }}>{PO_STATE_CN[o.state] ?? o.state}</span>
+                </div>
+                <div className="chain-item-meta">
+                  {o.origin ? `来源 ${o.origin}` : ''}
+                  {o.date_planned ? ` · 交期 ${String(o.date_planned).slice(0, 10)}` : ''}
+                  {o.amount_total != null ? ` · ¥${Number(o.amount_total).toLocaleString()}` : ''}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </QueryView>
+      {selected && <PoDrawer po={selected} onClose={() => setSelected(null)} />}
     </div>
   )
 }
@@ -1566,29 +1352,57 @@ function VendorTable({ rows }: { rows: SRow[] }) {
       </table>
       <Pagination page={page} total={filtered.length} pageSize={PAGE_SIZE} onChange={setPage} />
       {selected && (
-        <Drawer title={selected.name} subtitle={selected.id} tone={selected.tone} status={selected.status} fields={selected.fields} onClose={() => setSelected(null)} />
+        <Drawer
+          title={selected.name}
+          subtitle={selected.id}
+          tone={selected.tone}
+          status={selected.status}
+          fields={selected.fields}
+          extra={<VendorOrders partnerId={String(selected.id).replace('VEN-', '')} />}
+          onClose={() => setSelected(null)}
+        />
       )}
     </div>
   )
 }
 
 /* ====================================================================
- *  WorkshopView：生产车间（整合 生产工单 + 电气施工）
+ *  WorkshopView：生产车间（车间信息 + 各车间生产进度）
  * ==================================================================== */
-function WorkshopView() {
-  const [tab, setTab] = useState<'production' | 'electrical'>('production')
+function WorkshopDetail({ row }: { row: SRow }) {
+  const id = String(row.id).replace('WC-', '')
+  const q = useQuery({
+    queryKey: ['workshop-workorders', id],
+    queryFn: () => apiFetch<SRow[]>(`/modules/workshop/${id}/workorders`).then((r) => r.data),
+    enabled: !!id && id !== row.id,
+    staleTime: 60_000,
+  })
   return (
-    <>
-      <div className="module-tabs" style={{ marginBottom: 16 }}>
-        <button className={tab === 'production' ? 'active' : ''} onClick={() => setTab('production')}>
-          <Icon name="factory" size={13} /> 生产工单
-        </button>
-        <button className={tab === 'electrical' ? 'active' : ''} onClick={() => setTab('electrical')}>
-          <Icon name="bolt" size={13} /> 电气施工
-        </button>
-      </div>
-      {tab === 'production' ? <ManufacturingView /> : <ElectricalView />}
-    </>
+    <QueryView query={q} empty={<div className="subtitle" style={{ padding: '6px 2px' }}>暂无工单数据</div>}>
+      {(rows) => <DrillList title="车间工单 · 生产进度" rows={rows} />}
+    </QueryView>
+  )
+}
+
+function WorkshopView() {
+  const rowsQ = useModuleRows('workshop')
+  return (
+    <QueryView query={rowsQ} empty={<EmptyState module={getModule('workshop')} />}>
+      {() => <GenericTableView rows={rowsQ.data ?? []} extra={(row) => <WorkshopDetail row={row} />} />}
+    </QueryView>
+  )
+}
+
+/* ====================================================================
+ *  DefaultView：通用表格（未专门实现的模块兜底）
+ * ==================================================================== */
+function DefaultView() {
+  const { moduleId } = useNavigation()
+  const rowsQ = useModuleRows(moduleId)
+  return (
+    <QueryView query={rowsQ} empty={<EmptyState module={getModule(moduleId)} />}>
+      {(rows) => <GenericTableView rows={rows} />}
+    </QueryView>
   )
 }
 

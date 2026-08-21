@@ -168,6 +168,44 @@ async def workshop_workorders(
     return [adapter.to_row(r) for r in records]
 
 
+@router.get("/modules/vendors/{partner_id}/orders")
+async def vendor_orders(
+    partner_id: int,
+    client: ClientDep,
+    resp: Response,
+    limit: int = Query(200, ge=1, le=500),
+):
+    """供应商合作订单：该供应商（res.partner）的采购单列表"""
+    try:
+        pos = await client.search_read(
+            "purchase.order", [["partner_id", "=", partner_id]],
+            ["id", "name", "state", "priority", "date_planned", "amount_total", "origin", "partner_id", "order_line"],
+            limit=limit, order="id desc",
+        )
+    except Exception as e:  # noqa: BLE001
+        logger.warning("vendor_orders(%s) 失败: %s", partner_id, e)
+        return []
+    resp.headers["X-Data-Source"] = "odoo" if pos else "empty"
+    rows = []
+    for p in pos:
+        partner_ref = p.get("partner_id")
+        partner_name = partner_ref[1] if isinstance(partner_ref, (list, tuple)) and len(partner_ref) > 1 else ""
+        # 去掉 name_get 的 code 前缀（如 "[P00123] 东莞市..." → "东莞市..."）
+        if partner_name.startswith("[") and "]" in partner_name:
+            partner_name = partner_name.split("]", 1)[1].strip()
+        rows.append({
+            "id": p["id"], "name": p.get("name"),
+            "partner": partner_name,
+            "state": p.get("state"), "priority": p.get("priority") or "0",
+            "is_urgent": (p.get("priority") or "") == "1",
+            "date_planned": p.get("date_planned"),
+            "amount_total": p.get("amount_total"),
+            "origin": p.get("origin"),
+            "line_count": len(p.get("order_line") or []),
+        })
+    return rows
+
+
 @router.get("/modules/{module}/config")
 async def module_config(module: str, client: ClientDep, resp: Response):
     cfg = _MODULES.get(module)
@@ -225,9 +263,13 @@ async def compute_module_stats(client, module: str) -> list[list[str]]:
         if module == "inventory":
             total = await _count(client, "stock.quant")
             products = await _count(client, "product.product")
+            locations = await _count(client, "stock.location", [("usage", "=", "internal")])
+            moves = await _count(client, "stock.move", [("state", "=", "done")])
             return [
-                ["物料数量", str(total)],
                 ["产品种类", str(products)],
+                ["库存记录", str(total)],
+                ["库位", str(locations)],
+                ["收发流水", str(moves)],
             ]
         if module == "people":
             total = await _count(client, "hr.employee")

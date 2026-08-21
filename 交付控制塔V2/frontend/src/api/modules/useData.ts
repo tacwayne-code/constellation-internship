@@ -62,11 +62,12 @@ export function useBlockers() {
 
 // ---- 通用模块行数据 ----
 
-export function useModuleRows(moduleId: string) {
+export function useModuleRows(moduleId: string, enabled = true) {
   return useQuery({
     queryKey: ['module-rows', moduleId],
     queryFn: () => get<SRow[]>(`/modules/${moduleId}/rows`),
     staleTime: 30_000,
+    enabled,
   })
 }
 
