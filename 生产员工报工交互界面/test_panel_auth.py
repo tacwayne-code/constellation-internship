@@ -146,6 +146,66 @@ class WorkorderProgressTests(unittest.TestCase):
 
 
 class WorkorderBomTests(unittest.TestCase):
+    def test_custom_assembly_matches_bom_component_name_when_workorder_name_differs(self):
+        operation = {
+            "code": "worker_assembly_custom_ng",
+            "name": "NG废料环结构组装",
+            "workorderNames": ["NG废料环结构组装"],
+            "productClass": "machine",
+            "requiresBom": True,
+        }
+        workorder = {
+            "workorderName": "NG吹气组装",
+            "productClass": "machine",
+            "bomComponentNames": ["[P00334] NG废料杯结构"],
+            "bomComponentCodes": ["P00334"],
+        }
+        self.assertTrue(server.operation_matches_workorder(operation, workorder))
+
+    def test_custom_assembly_does_not_match_a_sibling_workorder_from_the_same_bom(self):
+        operation = {
+            "code": "worker_assembly_custom_ng",
+            "name": "NG废料环结构组装",
+            "workorderNames": ["NG废料环结构组装"],
+            "productClass": "machine",
+            "requiresBom": True,
+        }
+        workorder = {
+            "workorderName": "前端电磁阀组装",
+            "productClass": "machine",
+            "bomComponentNames": ["NG废料杯结构", "前端电磁阀"],
+        }
+        self.assertFalse(server.operation_matches_workorder(operation, workorder))
+
+    def test_component_operation_does_not_match_another_electromagnetic_valve_workorder(self):
+        operation = {
+            "code": "worker_assembly_custom_four_valve",
+            "name": "4位电磁阀组装",
+            "workorderNames": ["4位电磁阀组装"],
+            "productClass": "machine",
+            "requiresBom": True,
+        }
+        workorder = {
+            "workorderName": "前端电磁阀组装",
+            "productClass": "machine",
+            "bomComponentNames": ["4位电磁阀", "前端电磁阀"],
+        }
+        self.assertFalse(server.operation_matches_workorder(operation, workorder))
+
+    def test_generic_operation_does_not_use_component_name_fallback(self):
+        operation = {
+            "code": "worker_packing",
+            "name": "打包",
+            "workorderNames": ["打包"],
+            "productClass": "machine",
+        }
+        workorder = {
+            "workorderName": "其他配件组装",
+            "productClass": "machine",
+            "bomComponentNames": ["其他配件"],
+        }
+        self.assertFalse(server.operation_matches_workorder(operation, workorder))
+
     def test_custom_assembly_code_uses_workorder_bom_when_flag_is_missing(self):
         operation = {
             "code": "worker_assembly_custom_0f0cb3b8592d0eef",

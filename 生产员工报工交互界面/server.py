@@ -1,5 +1,6 @@
 import base64
 import binascii
+import difflib
 import hashlib
 import json
 import hmac
@@ -1262,8 +1263,93 @@ def operation_matches_workorder(operation, workorder):
         return False
     names = operation.get("workorderNames") or []
     if names and workorder.get("workorderName") not in names:
-        return False
+        # Component assembly work orders are named by the routing operation,
+        # while the employee binding is named by the material.  Odoo data can
+        # use slightly different material wording (for example 杯/环), so
+        # retain the exact WO match and then fall back to the selected MO BOM.
+        custom_assembly = bool(operation.get("requiresBom")) or str(
+            operation.get("code", "")
+        ).startswith("worker_assembly_custom_")
+        component_names = workorder.get("bomComponentNames") or []
+        component_codes = workorder.get("bomComponentCodes") or []
+        if not custom_assembly or not any(
+            _custom_assembly_matches_workorder(
+                name,
+                workorder.get("workorderName", ""),
+                [*component_names, *component_codes],
+            )
+            for name in names
+        ):
+            return False
     return True
+
+
+def _match_text(value):
+    """Normalize Odoo/worker material names for semantic comparisons."""
+    text = clean_name(value).casefold()
+    return re.sub(r"[\s_\-./\\,，。:：()（）[\]【】]+", "", text)
+
+
+def _operation_material_variants(value):
+    text = _match_text(value)
+    variants = []
+    if text:
+        variants.append(text)
+    # Routing suffixes belong to the operation, not the material name.
+    for suffix in ("组装", "总装"):
+        if text.endswith(suffix) and len(text) > len(suffix):
+            text = text[: -len(suffix)]
+            variants.append(text)
+    if text.endswith("结构") and len(text) > 2:
+        variants.append(text[:-2])
+    return list(dict.fromkeys(item for item in variants if item))
+
+
+def _material_matches_operation(operation_name, material_name):
+    """Match a custom assembly name to a BOM component without hardcoding it."""
+    operation_variants = _operation_material_variants(operation_name)
+    material_variants = _operation_material_variants(material_name)
+    for operation_text in operation_variants:
+        for material_text in material_variants:
+            if operation_text in material_text or material_text in operation_text:
+                return True
+            if min(len(operation_text), len(material_text)) < 4:
+                continue
+            similarity = difflib.SequenceMatcher(
+                None, operation_text, material_text, autojunk=False
+            ).ratio()
+            if similarity >= 0.72:
+                return True
+    return False
+
+
+def _names_share_component_anchor(operation_name, workorder_name):
+    """Require a meaningful routing-name link for BOM-based fallbacks."""
+    # Compare the most specific, routing-suffix-free form only. Otherwise
+    # every pair of Chinese component WOs would match on the shared “组装”.
+    operation_variants = _operation_material_variants(operation_name)
+    workorder_variants = _operation_material_variants(workorder_name)
+    if not operation_variants or not workorder_variants:
+        return False
+    left = operation_variants[-1]
+    right = workorder_variants[-1]
+    # A BOM is shared by every component WO in the same MO. A generic common
+    # word such as “电磁阀” must not expose sibling WOs, so the fallback uses
+    # the leading component identifier only (for example NG废料环 -> NG吹气).
+    prefix_length = 0
+    for left_char, right_char in zip(left, right):
+        if left_char != right_char:
+            break
+        prefix_length += 1
+    return prefix_length >= 2
+
+
+def _custom_assembly_matches_workorder(operation_name, workorder_name, components):
+    """Match a component route without exposing sibling routes in the same MO."""
+    return (
+        _names_share_component_anchor(operation_name, workorder_name)
+        and any(_material_matches_operation(operation_name, component) for component in components)
+    )
 
 
 def bracket_code(value):
@@ -2185,9 +2271,15 @@ def get_workorder_bom_data(workorder_id, operation=None):
         lines = [
             line for line in lines
             if any(
-                keyword in clean_name(products.get(rel_id(line.get("product_id")), {}).get("name", "")).casefold()
-                or keyword in str(products.get(rel_id(line.get("product_id")), {}).get("default_code", "")).casefold()
-                for keyword in keywords
+                _material_matches_operation(
+                    operation.get("name", ""),
+                    products.get(rel_id(line.get("product_id")), {}).get("name", ""),
+                )
+                or _material_matches_operation(
+                    operation.get("name", ""),
+                    products.get(rel_id(line.get("product_id")), {}).get("default_code", ""),
+                )
+                for _keyword in keywords
             )
         ]
         if not lines:
@@ -2410,9 +2502,46 @@ def get_workorders_data():
         mo_data = {}
         if mo_ids:
             mo_rows = client.read("mrp.production", list(mo_ids),
-                                  ["id", "name", "product_id", "product_qty", "state", "origin"])
+                                  ["id", "name", "bom_id", "product_id", "product_qty", "state", "origin"])
             for mo in mo_rows:
                 mo_data[mo["id"]] = mo
+
+        # Custom assembly jobs are assigned by component material, but Odoo
+        # routing names can use a variant of that material name. Carry this
+        # read-only MO BOM metadata into the shared matching rule.
+        bom_component_names = {}
+        bom_component_codes = {}
+        component_bom_ids = {
+            rel_id(mo.get("bom_id")) for mo in mo_data.values()
+            if rel_id(mo.get("bom_id"))
+        }
+        if component_bom_ids:
+            try:
+                bom_lines = client.search_read(
+                    "mrp.bom.line", [("bom_id", "in", list(component_bom_ids))],
+                    ["bom_id", "product_id"], limit=2000,
+                )
+                product_ids = sorted({
+                    rel_id(line.get("product_id")) for line in bom_lines
+                    if rel_id(line.get("product_id"))
+                })
+                products_by_id = {
+                    product["id"]: product
+                    for product in client.read(
+                        "product.product", product_ids, ["id", "name", "default_code"]
+                    )
+                } if product_ids else {}
+                for line in bom_lines:
+                    bom_id = rel_id(line.get("bom_id"))
+                    product = products_by_id.get(rel_id(line.get("product_id")), {})
+                    name = clean_name(product.get("name") or rel_name(line.get("product_id")))
+                    code = str(product.get("default_code") or product_code(line.get("product_id")) or "").strip()
+                    if name:
+                        bom_component_names.setdefault(bom_id, []).append(name)
+                    if code:
+                        bom_component_codes.setdefault(bom_id, []).append(code)
+            except Exception as bom_meta_error:
+                logger.warning(f"读取工单 BOM 物料名称跳过（不影响工单读取）: {bom_meta_error}")
 
         workorders = []
         # 状态翻译
@@ -2452,6 +2581,8 @@ def get_workorders_data():
                 "remainingQty": number(wo.get("qty_remaining")),
                 "hostType": host_type,
                 "productClass": workorder_product_class(wo.get("product_id")),
+                "bomComponentNames": bom_component_names.get(rel_id(mo.get("bom_id")), []),
+                "bomComponentCodes": bom_component_codes.get(rel_id(mo.get("bom_id")), []),
             })
         with _WO_CACHE_LOCK:
             if reset_marker_stamp() == marker:
@@ -3791,14 +3922,23 @@ class Handler(SimpleHTTPRequestHandler):
             assembly_operation = _operation_requires_workorder_bom(op_info)
             machine_assembly = False
             if mode == "real":
-                workorder_view = {
-                    "workorderName": check_rows[0].get("name", ""),
-                    "hostType": workorder_host_type(
-                        check_rows[0].get("product_id"),
-                        check_rows[0].get("workcenter_id"),
+                # Reuse the pre-filtered workorder view so a custom component
+                # route has the same BOM-backed permission at display time and
+                # at report submission time.
+                workorder_view = next(
+                    (
+                        item for item in get_workorders_data()
+                        if str(item.get("workorderId")) == str(workorder_id)
                     ),
-                    "productClass": workorder_product_class(check_rows[0].get("product_id")),
-                }
+                    {
+                        "workorderName": check_rows[0].get("name", ""),
+                        "hostType": workorder_host_type(
+                            check_rows[0].get("product_id"),
+                            check_rows[0].get("workcenter_id"),
+                        ),
+                        "productClass": workorder_product_class(check_rows[0].get("product_id")),
+                    },
+                )
                 machine_operation = workorder_view["productClass"] == "machine"
                 assembly_operation = assembly_operation or (
                     op_info.get("name") == "组装"

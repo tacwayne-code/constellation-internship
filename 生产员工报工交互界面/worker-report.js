@@ -520,7 +520,64 @@ function workorderMatchesSelectedOperation(workorder) {
   if (operation.hostType && workorder.hostType !== operation.hostType) return false;
   if (operation.productClass && workorder.productClass !== operation.productClass) return false;
   const names = operation.workorderNames || [];
-  return !names.length || names.includes(workorder.workorderName);
+  if (!names.length || names.includes(workorder.workorderName)) return true;
+  const customAssembly = !!operation.requiresBom ||
+    String(operation.code || "").startsWith("worker_assembly_custom_");
+  if (!customAssembly) return false;
+  const components = [
+    ...(workorder.bomComponentNames || []),
+    ...(workorder.bomComponentCodes || []),
+  ];
+  return names.some((name) =>
+    namesShareComponentAnchor(name, workorder.workorderName) &&
+    components.some((component) => materialMatchesOperation(name, component))
+  );
+}
+
+function materialMatchText(value) {
+  return String(value || "")
+    .replace(/^\[[^\]]+\]\s*/, "")
+    .toLocaleLowerCase()
+    .replace(/[\s_\-./\\,，。:：()（）[\]【】]+/g, "");
+}
+
+function materialVariants(value) {
+  let text = materialMatchText(value);
+  const variants = [];
+  if (text) variants.push(text);
+  ["组装", "总装"].forEach((suffix) => {
+    if (text.endsWith(suffix) && text.length > suffix.length) {
+      text = text.slice(0, -suffix.length);
+      variants.push(text);
+    }
+  });
+  if (text.endsWith("结构") && text.length > 2) variants.push(text.slice(0, -2));
+  return [...new Set(variants.filter(Boolean))];
+}
+
+function materialMatchesOperation(operationName, materialName) {
+  const left = materialVariants(operationName);
+  const right = materialVariants(materialName);
+  return left.some((a) => right.some((b) => {
+    if (a.includes(b) || b.includes(a)) return true;
+    if (Math.min(a.length, b.length) < 4) return false;
+    let same = 0;
+    const length = Math.min(a.length, b.length);
+    for (let i = 0; i < length; i++) if (a[i] === b[i]) same++;
+    return same / Math.max(a.length, b.length) >= 0.72;
+  }));
+}
+
+function namesShareComponentAnchor(operationName, workorderName) {
+  const leftVariants = materialVariants(operationName);
+  const rightVariants = materialVariants(workorderName);
+  const left = leftVariants[leftVariants.length - 1];
+  const right = rightVariants[rightVariants.length - 1];
+  if (!left || !right) return false;
+  let prefixLength = 0;
+  while (prefixLength < left.length && prefixLength < right.length &&
+    left[prefixLength] === right[prefixLength]) prefixLength++;
+  return prefixLength >= 2;
 }
 
 function operationRequiresBom(operation = S.selectedOperation) {
