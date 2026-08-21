@@ -65,6 +65,44 @@ def _ref_id(ref: Any) -> int | None:
     return None
 
 
+# ---- 业务类型归类（按订单行产品分类） ----
+_BUSINESS_WAREHOUSE_KW = ("堆垛", "机器人", "RGV", "立体", "仓储", "输送", "穿梭", "货架", "AGV", "分拣", "升降")
+_BUSINESS_LED_KW = ("编带", "分光")
+
+
+async def _get_so_business_types(client: OdooClient, so_ids: list[int]) -> dict[int, str]:
+    """按销售订单行产品分类归类业务类型：warehouse(仓储设备) / led(分光编带) / other"""
+    if not so_ids:
+        return {}
+    sols = await client.search_read(
+        MODEL_SALE_ORDER_LINE, [["order_id", "in", so_ids]],
+        ["id", "order_id", "product_id"], limit=None)
+    prod_ids = {_ref_id(l.get("product_id")) for l in sols if l.get("product_id")}
+    categ_map: dict[int, str] = {}
+    if prod_ids:
+        prods = await client.search_read(
+            "product.product", [["id", "in", list(prod_ids)]],
+            ["id", "categ_id"], limit=None)
+        categ_map = {p["id"]: _ref_name(p.get("categ_id")) for p in prods}
+    so_categ: dict[int, set[str]] = {}
+    for l in sols:
+        so_id = _ref_id(l.get("order_id"))
+        if so_id is None:
+            continue
+        pid = _ref_id(l.get("product_id"))
+        so_categ.setdefault(so_id, set()).add(categ_map.get(pid or 0, ""))
+    result: dict[int, str] = {}
+    for so_id, cs in so_categ.items():
+        joined = " ".join(cs)
+        if any(k in joined for k in _BUSINESS_WAREHOUSE_KW):
+            result[so_id] = "warehouse"
+        elif any(k in joined for k in _BUSINESS_LED_KW):
+            result[so_id] = "led"
+        else:
+            result[so_id] = "other"
+    return result
+
+
 async def get_sales_overview(client: OdooClient, limit: int = 100) -> list[dict[str, Any]]:
     """销售订单列表 + 紧急判定 + 关联子单聚合（PO/MO/picking 数量）"""
     emergency_ids = await _get_emergency_tag_ids(client)
@@ -140,10 +178,11 @@ async def get_sales_overview(client: OdooClient, limit: int = 100) -> list[dict[
                     g["urgent"] += 1
                 g["states"].add(p.get("state"))
 
-    return _assemble_sales(sos, emergency_ids, mo_count, pick_count, po_count)
+    so_biz = await _get_so_business_types(client, so_ids)
+    return _assemble_sales(sos, emergency_ids, mo_count, pick_count, po_count, so_biz)
 
 
-def _assemble_sales(sos, emergency_ids, mo_count, pick_count, po_count) -> list[dict]:
+def _assemble_sales(sos, emergency_ids, mo_count, pick_count, po_count, so_biz) -> list[dict]:
     rows = []
     for s in sos:
         so_id = s["id"]
@@ -157,6 +196,7 @@ def _assemble_sales(sos, emergency_ids, mo_count, pick_count, po_count) -> list[
         rows.append({
             "id": so_id,
             "name": name,
+            "business_type": so_biz.get(so_id, "other"),
             "partner": _ref_name(s.get("partner_id")),
             "state": s.get("state"),
             "date_order": s.get("date_order"),

@@ -1,11 +1,13 @@
 /**
- * 销售订单视图（含交付塔能力）：订单四链路聚合 + 紧急标记 + 配件紧急继承 + 采购看板
+ * 销售订单视图（交付塔入口）：订单四链路聚合 + 紧急标记 + 配件紧急继承
  *
  * 数据源（后端 /api/delivery-tower/*，均已就绪）：
  *   GET /delivery-tower/sales?limit=200          → 销售订单总览（紧急判定 + PO/MO/picking 计数）
- *   GET /delivery-tower/procurement/overview     → 采购看板（stats + by_priority 分组）
  *   GET /delivery-tower/orders/{so_id}           → 单订单四链路聚合（PO/MO/picking/BOM）
  *   POST /delivery-tower/sync/emergency          → 手动触发紧急继承（含 BOM 配件级传播）
+ *
+ * 采购 / 生产 / 物流 已拆到左侧对应模块（见 ModuleView.tsx 的 ProcurementView / ManufacturingView / LogisticsView）。
+ * 本文件导出的 ProcurementBoard / ProcurementTable / LogisticsTable / PoDrawer / MoDrawer 供左侧模块复用。
  */
 import { useMemo, useState, type ReactNode } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
@@ -18,7 +20,6 @@ import { EmptyState } from '../common/EmptyState'
 import { Pagination } from '../common/Pagination'
 import { toast } from '../../store/uiStore'
 import { getModule } from '../../config/modules'
-import { ListImportDrawer } from './ListImportDrawer'
 import type { SRow, Tone } from '../../types/contract'
 
 /* ====================================================================
@@ -29,6 +30,7 @@ interface SaleRow {
   name: string
   partner: string
   state: string
+  business_type: string
   date_order: string
   commitment_date: string | null
   amount_total: number | null
@@ -44,7 +46,7 @@ interface SaleRow {
   picking_states: string[]
 }
 
-interface PoItem {
+export interface PoItem {
   id: number
   name: string
   partner: string
@@ -58,7 +60,7 @@ interface PoItem {
   user: string
 }
 
-interface ProcurementOverview {
+export interface ProcurementOverview {
   stats: { total: number; urgent: number; urgent_pending?: number; urgent_transit?: number; by_priority: Record<string, number>; by_state: Record<string, number> }
   by_priority: Record<string, PoItem[]>
   urgent_pending?: PoItem[]
@@ -113,7 +115,7 @@ interface OrderAggregate {
   }
 }
 
-interface ProductionItem {
+export interface ProductionItem {
   id: number
   name: string
   product: string
@@ -131,12 +133,12 @@ interface ProductionItem {
   workorder_states: string[]
 }
 
-interface ProductionOverview {
+export interface ProductionOverview {
   stats: { total: number; progress: number; done: number; urgent: number }
   items: ProductionItem[]
 }
 
-interface WorkOrderItem {
+export interface WorkOrderItem {
   id: number
   name: string
   operation: string
@@ -198,7 +200,7 @@ interface CreateUrgentResult {
   skipped: Array<{ product: string; reason: string }>
 }
 
-interface LogisticsItem {
+export interface LogisticsItem {
   id: number
   name: string
   flow: string
@@ -213,7 +215,7 @@ interface LogisticsItem {
   move_type: string
 }
 
-interface LogisticsOverview {
+export interface LogisticsOverview {
   stats: { total: number; incoming: number; outgoing: number; internal: number; in_transit: number }
   showing: number
   incoming: LogisticsItem[]
@@ -228,15 +230,15 @@ const SALE_STATE: Record<string, [string, Tone]> = {
   draft: ['草稿', 'neutral'], sent: ['已发送', 'blue'], sale: ['已确认', 'blue'],
   done: ['已完成', 'success'], cancel: ['已取消', 'neutral'],
 }
-const PO_STATE: Record<string, [string, Tone]> = {
+export const PO_STATE: Record<string, [string, Tone]> = {
   draft: ['询价中', 'neutral'], sent: ['已发送', 'blue'], 'to approve': ['待审批', 'orange'],
   purchase: ['已下单', 'blue'], done: ['已完成', 'success'], cancel: ['已取消', 'neutral'],
 }
-const MO_STATE: Record<string, [string, Tone]> = {
+export const MO_STATE: Record<string, [string, Tone]> = {
   draft: ['草稿', 'neutral'], confirmed: ['已确认', 'blue'], progress: ['生产中', 'orange'],
   to_close: ['待关闭', 'warning'], done: ['已完成', 'success'], cancel: ['已取消', 'neutral'],
 }
-const PICK_STATE: Record<string, [string, Tone]> = {
+export const PICK_STATE: Record<string, [string, Tone]> = {
   draft: ['草稿', 'neutral'], waiting: ['等待', 'neutral'], confirmed: ['已确认', 'blue'],
   assigned: ['已分配', 'orange'], done: ['已完成', 'success'], cancel: ['已取消', 'neutral'],
 }
@@ -510,7 +512,7 @@ function OdooOpenButton({ model, id }: { model: string; id: number }) {
 /* ====================================================================
  *  采购单详情抽屉（基本信息 + 订单行明细）
  * ==================================================================== */
-function PoDrawer({ po, onClose }: { po: PoItem; onClose: () => void }) {
+export function PoDrawer({ po, onClose }: { po: PoItem; onClose: () => void }) {
   const q = useQuery({
     queryKey: ['po-lines', po.id],
     queryFn: () => apiFetch<SRow[]>(`/modules/procurement/order/${po.id}/lines`).then((r) => r.data),
@@ -926,7 +928,7 @@ function ChainBlock({
 /* ====================================================================
  *  生产工单详情抽屉（工序进度）
  * ==================================================================== */
-function MoDrawer({ mo, onClose }: { mo: ProductionItem; onClose: () => void }) {
+export function MoDrawer({ mo, onClose }: { mo: ProductionItem; onClose: () => void }) {
   const q = useQuery({
     queryKey: ['mo-workorders', mo.id],
     queryFn: () => apiFetch<WorkOrderItem[]>(`/delivery-tower/productions/${mo.id}/workorders`).then((r) => r.data),
@@ -986,7 +988,7 @@ function MoDrawer({ mo, onClose }: { mo: ProductionItem; onClose: () => void }) 
 /* ====================================================================
  *  采购看板区块（按 priority 分组）
  * ==================================================================== */
-function ProcurementBoard({ overview, onOpenPo }: { overview: ProcurementOverview; onOpenPo: (po: PoItem) => void }) {
+export function ProcurementBoard({ overview, onOpenPo }: { overview: ProcurementOverview; onOpenPo: (po: PoItem) => void }) {
   const [boardPages, setBoardPages] = useState<Record<string, number>>({})
   const BOARD_PAGE_SIZE = 5
   const pageOf = (key: string) => boardPages[key] ?? 1
@@ -1057,7 +1059,7 @@ function ProcurementBoard({ overview, onOpenPo }: { overview: ProcurementOvervie
 /* ====================================================================
  *  采购订单表（全量）
  * ==================================================================== */
-function ProcurementTable({ items, onOpenPo }: { items: PoItem[]; onOpenPo: (po: PoItem) => void }) {
+export function ProcurementTable({ items, onOpenPo, title = '采购订单 · 全量' }: { items: PoItem[]; onOpenPo: (po: PoItem) => void; title?: string }) {
   const [page, setPage] = useState(1)
   const PAGE_SIZE = 10
   const total = items.length
@@ -1066,7 +1068,7 @@ function ProcurementTable({ items, onOpenPo }: { items: PoItem[]; onOpenPo: (po:
   return (
     <div className="panel module-table-panel">
       <div className="panel-header">
-        <span className="panel-title">采购订单 · 全量</span>
+        <span className="panel-title">{title}</span>
         <span className="muted" style={{ fontSize: 12 }}>共 {items.length} 单</span>
       </div>
       <table className="data-table">
@@ -1117,7 +1119,7 @@ function ProcurementTable({ items, onOpenPo }: { items: PoItem[]; onOpenPo: (po:
 /* ====================================================================
  *  物流表格（采购收货 / 销售出货 共用）
  * ==================================================================== */
-function LogisticsTable({ title, items }: { title: string; items: LogisticsItem[] }) {
+export function LogisticsTable({ title, items }: { title: string; items: LogisticsItem[] }) {
   const [page, setPage] = useState(1)
   const PAGE_SIZE = 5
   const total = items.length
@@ -1193,51 +1195,24 @@ function LogisticsTable({ title, items }: { title: string; items: LogisticsItem[
  * ==================================================================== */
 export function DeliveryTowerView() {
   const queryClient = useQueryClient()
-  const [tab, setTab] = useState<'sales' | 'procurement' | 'production' | 'logistics'>('sales')
   const [selectedSo, setSelectedSo] = useState<number | null>(null)
-  const [selectedPo, setSelectedPo] = useState<PoItem | null>(null)
-  const [selectedMo, setSelectedMo] = useState<ProductionItem | null>(null)
   const [syncing, setSyncing] = useState(false)
   const [soSearch, setSoSearch] = useState('')
   const [soSearching, setSoSearching] = useState(false)
   const [salesPage, setSalesPage] = useState(1)
-  const [moPage, setMoPage] = useState(1)
-  const [listImportOpen, setListImportOpen] = useState(false)
+  const [view, setView] = useState<'overview' | 'urgent' | 'confirmed' | 'done' | 'all'>('overview')
+  const [bizFilter, setBizFilter] = useState<'all' | 'warehouse' | 'led' | 'other'>('all')
   const SALES_PAGE_SIZE = 10
-  const MO_PAGE_SIZE = 10
 
   const salesQ = useQuery({
     queryKey: ['delivery-tower-sales'],
     queryFn: () => apiFetch<SaleRow[]>('/delivery-tower/sales?limit=200').then((r) => r.data),
     staleTime: 30_000,
   })
-  const poQ = useQuery({
-    queryKey: ['delivery-tower-procurement'],
-    queryFn: () => apiFetch<ProcurementOverview>('/delivery-tower/procurement/overview?limit=500').then((r) => r.data),
-    staleTime: 30_000,
-  })
-  const prodQ = useQuery({
-    queryKey: ['delivery-tower-productions'],
-    queryFn: () => apiFetch<ProductionOverview>('/delivery-tower/productions?limit=200').then((r) => r.data),
-    staleTime: 30_000,
-  })
-  const logisticsQ = useQuery({
-    queryKey: ['delivery-tower-logistics'],
-    queryFn: () => apiFetch<LogisticsOverview>('/delivery-tower/logistics').then((r) => r.data),
-    staleTime: 30_000,
-  })
 
   const sales = salesQ.data ?? []
-  const overview = poQ.data
-  const production = prodQ.data
-  const logistics = logisticsQ.data
 
   const urgentSales = useMemo(() => (salesQ.data ?? []).filter((s) => s.is_emergency), [salesQ.data])
-  const inProgressMo = useMemo(() => {
-    const set = new Set<string>()
-    for (const s of salesQ.data ?? []) for (const stt of s.mo_states) if (stt === 'progress') set.add(s.name)
-    return set.size
-  }, [salesQ.data])
 
   const onSync = async () => {
     setSyncing(true)
@@ -1279,81 +1254,63 @@ export function DeliveryTowerView() {
     }
   }
 
-  const tabs = [
-    { key: 'sales' as const, label: '销售订单' },
-    { key: 'procurement' as const, label: '采购订单' },
-    { key: 'production' as const, label: '生产进度' },
-    { key: 'logistics' as const, label: '物流查看' },
-  ]
+  const confirmedSales = sales.filter((s) => s.state === 'sale')
+  const doneSales = sales.filter((s) => s.state === 'done')
+  const byView = view === 'urgent' ? urgentSales : view === 'confirmed' ? confirmedSales : view === 'done' ? doneSales : sales
+  const filteredSales = bizFilter === 'all' ? byView : byView.filter((s) => s.business_type === bizFilter)
+  const listTitle = view === 'urgent' ? '紧急订单' : view === 'confirmed' ? '已确认' : view === 'done' ? '已完成' : '全部订单'
 
   return (
     <QueryView query={salesQ} empty={<EmptyState module={getModule('sales')} />}>
       {() => (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-          {/* ── Tab 切换 ── */}
-          <div className="module-tabs">
-            {tabs.map((t) => (
-              <button key={t.key} className={tab === t.key ? 'active' : ''} onClick={() => setTab(t.key)}>
-                {t.label}
-              </button>
-            ))}
-          </div>
-
-          {/* ══════════ Tab 1 · 销售订单 ══════════ */}
-          {tab === 'sales' && (
+          {view === 'overview' ? (
             <>
-              {/* KPI */}
-              <div className="procurement-stats">
-                {[
-                  { label: '紧急订单', value: urgentSales.length, icon: 'alert', cls: 'red', extra: `采购紧急 ${overview?.stats.urgent ?? 0} 单` },
-                  { label: '销售订单', value: sales.length, icon: 'handshake', cls: 'blue' },
-                  { label: '生产中工单', value: inProgressMo, icon: 'factory', cls: 'orange' },
-                  { label: '采购单', value: overview?.stats.total ?? 0, icon: 'truck', cls: 'purple', extra: `${overview?.stats.by_state?.purchase ?? 0} 已下单` },
-                ].map((k) => (
-                  <div className="kpi-card" key={k.label}>
-                    <div className={`kpi-icon ${k.cls}`}><Icon name={k.icon} size={18} /></div>
-                    <div className="kpi-copy">
-                      <div className="num" style={k.cls === 'red' ? { color: 'var(--red)' } : undefined}>{k.value}</div>
-                      <div className="label">{k.label}{k.extra ? ` · ${k.extra}` : ''}</div>
+              <div className="panel">
+                <div className="panel-header">
+                  <span className="panel-title">销售订单分类 · 点击进入明细</span>
+                </div>
+                <div className="category-grid">
+                  {[
+                    { key: 'urgent', title: '紧急订单', count: urgentSales.length, tone: 'red' as Tone, desc: '需优先处理' },
+                    { key: 'confirmed', title: '已确认', count: confirmedSales.length, tone: 'blue' as Tone, desc: '待交付' },
+                    { key: 'done', title: '已完成', count: doneSales.length, tone: 'green' as Tone, desc: '已交付' },
+                    { key: 'all', title: '全部订单', count: sales.length, tone: 'neutral' as Tone, desc: '查看全量' },
+                  ].map((c) => (
+                    <div className="category-card" key={c.key} onClick={() => setView(c.key as 'urgent' | 'confirmed' | 'done' | 'all')}>
+                      <div className="category-card-head">
+                        <StatusDot tone={c.tone} />
+                        <span className="category-card-title">{c.title}</span>
+                      </div>
+                      <div className="category-card-count" style={{ color: c.tone === 'red' ? 'var(--red)' : 'var(--ink)' }}>{c.count}</div>
+                      <div className="category-card-desc">{c.desc}</div>
                     </div>
-                  </div>
-                ))}
+                  ))}
+                </div>
+              </div>
+            </>
+          ) : (
+            <>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+                <button className="ghost-btn" onClick={() => setView('overview')}>
+                  <Icon name="arrow" size={13} /> 返回概要
+                </button>
+                <select
+                  style={{ fontSize: 12, padding: '7px 10px', background: 'var(--surface)', color: 'var(--ink)', border: '1px solid var(--border)', borderRadius: 8 }}
+                  value={bizFilter}
+                  onChange={(e) => { setBizFilter(e.target.value as 'all' | 'warehouse' | 'led' | 'other'); setSalesPage(1) }}
+                >
+                  <option value="all">全部业务</option>
+                  <option value="warehouse">仓储设备（堆垛机/RGV）</option>
+                  <option value="led">LED 分光编带</option>
+                  <option value="other">其他 / 未分类</option>
+                </select>
+                <span className="muted" style={{ fontSize: 12 }}>{listTitle} · {filteredSales.length} 单</span>
               </div>
 
-              {/* 紧急泳道 */}
-              {urgentSales.length > 0 && (
-                <div className="board-layout" style={{ gridTemplateColumns: '1fr' }}>
-                  <div className="board-column" style={{ borderColor: 'var(--red)' }}>
-                    <div className="board-column-head">
-                      <StatusDot tone="red" />
-                      <span className="board-col-title">紧急销售订单</span>
-                      <span className="count">{urgentSales.length}</span>
-                    </div>
-                    <div className="board-cards">
-                      {urgentSales.slice(0, 10).map((s) => (
-                        <div key={s.id} className="board-card" style={{ borderColor: 'var(--red)', background: 'var(--red-soft)', cursor: 'pointer' }}
-                          onClick={() => setSelectedSo(s.id)}>
-                          <div className="board-card-top">
-                            <span className="board-card-title" style={{ color: 'var(--red)' }}>{s.name}</span>
-                            <StatusDot tone="red" />
-                          </div>
-                          <div className="board-card-meta">
-                            {s.partner}
-                            <br />
-                            {st(SALE_STATE, s.state)[0]} · PO {s.po_count} / MO {s.mo_count} / 物流 {s.picking_count}
-                            {s.tag_names.length ? ` · ${s.tag_names.join('/')}` : ''}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* 销售订单表 */}
               <div className="panel module-table-panel">
                 <div className="panel-header">
-                  <span className="panel-title">销售订单 · 四链路</span>
+                  <span className="panel-title">{listTitle} · 销售订单</span>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                     <input
                       className="locate-input"
@@ -1384,7 +1341,7 @@ export function DeliveryTowerView() {
                     </tr>
                   </thead>
                   <tbody>
-                    {sales.slice((salesPage - 1) * SALES_PAGE_SIZE, salesPage * SALES_PAGE_SIZE).map((s) => {
+                    {filteredSales.slice((salesPage - 1) * SALES_PAGE_SIZE, salesPage * SALES_PAGE_SIZE).map((s) => {
                       const [label, tone] = st(SALE_STATE, s.state)
                       return (
                         <tr key={s.id} onClick={() => setSelectedSo(s.id)}>
@@ -1420,182 +1377,16 @@ export function DeliveryTowerView() {
                     })}
                   </tbody>
                 </table>
-                {sales.length === 0 && <div className="state-block">暂无销售订单数据</div>}
-                {sales.length > SALES_PAGE_SIZE && (
+                {filteredSales.length === 0 && <div className="state-block">暂无销售订单数据</div>}
+                {filteredSales.length > SALES_PAGE_SIZE && (
                   <div style={{ padding: '12px 0 4px' }}>
-                    <Pagination page={salesPage} total={sales.length} pageSize={SALES_PAGE_SIZE} onChange={setSalesPage} />
+                    <Pagination page={salesPage} total={filteredSales.length} pageSize={SALES_PAGE_SIZE} onChange={setSalesPage} />
                   </div>
                 )}
               </div>
             </>
           )}
-
-          {/* ══════════ Tab 2 · 采购订单 ══════════ */}
-          {tab === 'procurement' && (
-            <>
-              <div className="procurement-stats">
-                {[
-                  { label: '采购单', value: overview?.stats.total ?? 0, icon: 'truck', cls: 'blue' },
-                  { label: '紧急', value: overview?.stats.urgent ?? 0, icon: 'alert', cls: 'red' },
-                  { label: '已下单', value: overview?.stats.by_state?.purchase ?? 0, icon: 'check', cls: 'green' },
-                  { label: '草稿/询价', value: (overview?.stats.by_state?.draft ?? 0) + (overview?.stats.by_state?.sent ?? 0), icon: 'clock', cls: 'orange' },
-                ].map((k) => (
-                  <div className="kpi-card" key={k.label}>
-                    <div className={`kpi-icon ${k.cls}`}><Icon name={k.icon} size={18} /></div>
-                    <div className="kpi-copy">
-                      <div className="num" style={k.cls === 'red' ? { color: 'var(--red)' } : undefined}>{k.value}</div>
-                      <div className="label">{k.label}</div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-              {overview && <ProcurementBoard overview={overview} onOpenPo={setSelectedPo} />}
-              {overview && <ProcurementTable items={overview.items} onOpenPo={setSelectedPo} />}
-
-              {/* 清单导入 · 智能采购 */}
-              <div className="panel module-table-panel">
-                <div className="panel-header">
-                  <span className="panel-title">清单导入 · 智能采购</span>
-                  <span className="muted" style={{ fontSize: 12 }}>粘贴外购件清单 → 自动识别配件 + 推荐供应商 → 批量生成采购单</span>
-                </div>
-                <div style={{ padding: '16px 20px', display: 'flex', alignItems: 'center', gap: 12 }}>
-                  <button className="ghost-btn" onClick={() => setListImportOpen(true)}>
-                    <Icon name="upload" size={14} /> 打开清单导入
-                  </button>
-                  <span className="muted" style={{ fontSize: 12 }}>
-                    支持平垫圈 / 六角螺母 / 内六角螺钉 / 滑触线等标准件，自动匹配编码与规格
-                  </span>
-                </div>
-              </div>
-            </>
-          )}
-
-          {/* ══════════ Tab 3 · 生产进度 ══════════ */}
-          {tab === 'production' && (
-            <QueryView query={prodQ} empty={<div className="panel state-block">暂无生产工单</div>}>
-              {() => {
-                const prodItems = production?.items ?? []
-                return (
-                <>
-                  <div className="procurement-stats">
-                    {[
-                      { label: '工单总数', value: production?.stats.total ?? 0, icon: 'factory', cls: 'blue' },
-                      { label: '生产中', value: production?.stats.progress ?? 0, icon: 'bolt', cls: 'orange' },
-                      { label: '已完成', value: production?.stats.done ?? 0, icon: 'check', cls: 'green' },
-                      { label: '紧急工单', value: production?.stats.urgent ?? 0, icon: 'alert', cls: 'red' },
-                    ].map((k) => (
-                      <div className="kpi-card" key={k.label}>
-                        <div className={`kpi-icon ${k.cls}`}><Icon name={k.icon} size={18} /></div>
-                        <div className="kpi-copy">
-                          <div className="num" style={k.cls === 'red' ? { color: 'var(--red)' } : undefined}>{k.value}</div>
-                          <div className="label">{k.label}</div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                  <div className="panel module-table-panel">
-                    <div className="panel-header">
-                      <span className="panel-title">生产工单 · 加工工序进度</span>
-                      <span className="muted" style={{ fontSize: 12 }}>点击查看工序明细</span>
-                    </div>
-                    <table className="data-table">
-                      <thead>
-                        <tr>
-                          <th>工单号</th>
-                          <th>产品</th>
-                          <th>状态</th>
-                          <th>紧急</th>
-                          <th>工序进度</th>
-                          <th>数量</th>
-                          <th>开始 / 完成</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {prodItems.slice((moPage - 1) * MO_PAGE_SIZE, moPage * MO_PAGE_SIZE).map((m) => {
-                          const [label, tone] = st(MO_STATE, m.state)
-                          const woTotal = m.workorder_count
-                          const pct = woTotal > 0 ? Math.round((m.workorder_done / woTotal) * 100) : (m.state === 'done' ? 100 : 0)
-                          return (
-                            <tr key={m.id} onClick={() => setSelectedMo(m)}>
-                              <td style={{ color: 'var(--muted)', whiteSpace: 'nowrap' }}>{m.name}</td>
-                              <td>
-                                <div className="cell-name">{m.product}</div>
-                              </td>
-                              <td><StatusDot tone={tone} /> {label}</td>
-                              <td>
-                                {m.is_urgent
-                                  ? <span className="urgent-badge">紧急</span>
-                                  : <span className="muted" style={{ fontSize: 12 }}>—</span>}
-                              </td>
-                              <td style={{ minWidth: 180 }}>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                                  <div style={{ flex: 1 }}><ProgressBar value={pct} /></div>
-                                  <span style={{ fontSize: 12, color: 'var(--muted)', whiteSpace: 'nowrap' }}>
-                                    {m.workorder_done}/{woTotal} 道
-                                  </span>
-                                </div>
-                              </td>
-                              <td style={{ whiteSpace: 'nowrap' }}>{Number(m.product_qty ?? 0).toLocaleString()} 台</td>
-                              <td style={{ whiteSpace: 'nowrap', fontSize: 12, color: 'var(--muted)' }}>
-                                {fmtDate(m.date_start)}{m.date_finished ? ` → ${fmtDate(m.date_finished)}` : ''}
-                              </td>
-                            </tr>
-                          )
-                        })}
-                      </tbody>
-                    </table>
-                    {prodItems.length === 0 && <div className="state-block">暂无生产工单</div>}
-                    {prodItems.length > MO_PAGE_SIZE && (
-                      <div style={{ padding: '12px 0 4px' }}>
-                        <Pagination page={moPage} total={prodItems.length} pageSize={MO_PAGE_SIZE} onChange={setMoPage} />
-                      </div>
-                    )}
-                  </div>
-                </>
-                )
-              }}
-            </QueryView>
-          )}
-
-          {/* ══════════ Tab 4 · 物流查看 ══════════ */}
-          {tab === 'logistics' && (
-            <QueryView query={logisticsQ} empty={<div className="panel state-block">暂无物流���据</div>}>
-              {() => (
-                <>
-                  <div className="procurement-stats">
-                    {[
-                      { label: '物流单', value: logistics?.stats.total ?? 0, icon: 'route', cls: 'blue' },
-                      { label: '采购收货', value: logistics?.stats.incoming ?? 0, icon: 'truck', cls: 'orange' },
-                      { label: '销售出货', value: logistics?.stats.outgoing ?? 0, icon: 'arrow', cls: 'purple' },
-                      { label: '运输中', value: logistics?.stats.in_transit ?? 0, icon: 'clock', cls: 'red' },
-                    ].map((k) => (
-                      <div className="kpi-card" key={k.label}>
-                        <div className={`kpi-icon ${k.cls}`}><Icon name={k.icon} size={18} /></div>
-                        <div className="kpi-copy">
-                          <div className="num" style={k.cls === 'red' ? { color: 'var(--red)' } : undefined}>{k.value}</div>
-                          <div className="label">{k.label}</div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                  <LogisticsTable title="采购物流 · 补货入库" items={logistics?.incoming ?? []} />
-                  <LogisticsTable title="销售物流 · 出货" items={logistics?.outgoing ?? []} />
-                </>
-              )}
-            </QueryView>
-          )}
-
           {selectedSo != null && <OrderDrawer soId={selectedSo} onClose={() => setSelectedSo(null)} />}
-          {selectedPo != null && <PoDrawer po={selectedPo} onClose={() => setSelectedPo(null)} />}
-          {selectedMo != null && <MoDrawer mo={selectedMo} onClose={() => setSelectedMo(null)} />}
-          {listImportOpen && (
-            <ListImportDrawer
-              onClose={() => setListImportOpen(false)}
-              onCreated={() => {
-                queryClient.invalidateQueries({ queryKey: ['delivery-tower-procurement'] })
-              }}
-            />
-          )}
         </div>
       )}
     </QueryView>

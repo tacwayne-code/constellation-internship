@@ -93,7 +93,7 @@ export const MODULES: Record<string, ModuleConfig> = {
   sales: {
     id: 'sales',
     title: '订单管理',
-    subtitle: '销售 / 采购 / 生产 / 物流 四视图 · 紧急标记自动继承',
+    subtitle: '销售订单 · 分类概览 · 紧急标记自动继承',
     icon: 'handshake',
     stats: [],
   },

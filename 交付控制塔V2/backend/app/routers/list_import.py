@@ -83,6 +83,10 @@ class CreatePoRequest(BaseModel):
         None,
         description="交货时间（计划到货时间），写入订单行 date_planned；支持 'YYYY-MM-DD' 或 'YYYY-MM-DD HH:MM'；缺省按供应商交期（今天+delay）",
     )
+    list_name: str | None = Field(
+        None,
+        description="清单名，写入采购单 origin（前缀「清单:」），便于按清单聚合/搜索；缺省为「清单导入」",
+    )
 
 
 # ---- 接口 ----
@@ -378,6 +382,7 @@ async def create_po_list(
             urgent=req.urgent,
             purchase_date=req.purchase_date,
             delivery_date=req.delivery_date,
+            list_name=req.list_name,
         )
     except Exception as e:  # noqa: BLE001
         logger.exception("create_po_list failed")
@@ -438,3 +443,75 @@ async def create_partner(
         return {"ok": False, "error": str(e)[:160]}
     resp.headers["X-Data-Source"] = "odoo"
     return {"ok": True, "partner_id": pid, "name": name}
+
+
+def _ref_name(ref) -> str:
+    if isinstance(ref, (list, tuple)) and len(ref) > 1:
+        return str(ref[1])
+    return str(ref) if ref else "—"
+
+
+def _business_type_of(name: str) -> str:
+    """按清单名关键词归类业务类型：warehouse(立体仓储) / rgv / stacker(堆垛机) / other"""
+    upper = (name or "").upper()
+    if "RGV" in upper:
+        return "rgv"
+    if "堆垛" in name:
+        return "stacker"
+    if "立体" in name or "仓储" in name or "货架" in name:
+        return "warehouse"
+    return "other"
+
+
+@router.get("/lists")
+async def list_lists(
+    client: ClientDep,
+    resp: Response,
+    q: str | None = Query(None, description="按清单名模糊搜索"),
+    limit: int = Query(500, ge=1, le=2000),
+):
+    """清单列表：按 origin 聚合「清单导入」来源的采购单，返回清单板块。
+
+    每个清单含其下所有采购单（复用采购看板 PoItem 结构），支持 q 按清单名搜索。
+    """
+    domain: list = [["origin", "ilike", "清单:%"]]
+    if q:
+        domain.append(["origin", "ilike", f"清单:%{q}%"])
+    try:
+        pos = await client.search_read(
+            "purchase.order", domain,
+            ["id", "name", "origin", "state", "priority", "partner_id",
+             "date_order", "date_planned", "amount_total", "order_line"],
+            limit=limit, order="id desc",
+        )
+    except Exception as e:  # noqa: BLE001
+        logger.exception("list_lists failed")
+        return {"total": 0, "items": []}
+
+    groups: dict[str, dict] = {}
+    for p in pos:
+        origin = p.get("origin") or ""
+        list_name = origin[3:] if origin.startswith("清单:") else origin
+        g = groups.setdefault(list_name, {
+            "list_name": list_name, "business_type": _business_type_of(list_name),
+            "orders": [], "po_count": 0, "urgent": 0, "done": 0,
+        })
+        priority = p.get("priority") or "0"
+        g["orders"].append({
+            "id": p["id"], "name": p.get("name"),
+            "partner": _ref_name(p.get("partner_id")),
+            "state": p.get("state"), "priority": priority,
+            "is_urgent": str(priority) == "1",
+            "date_planned": p.get("date_planned"),
+            "amount_total": p.get("amount_total"),
+            "line_count": len(p.get("order_line") or []),
+        })
+        g["po_count"] += 1
+        if str(priority) == "1":
+            g["urgent"] += 1
+        if p.get("state") == "done":
+            g["done"] += 1
+
+    items = sorted(groups.values(), key=lambda x: -(x["orders"][0]["id"] if x["orders"] else 0))
+    resp.headers["X-Data-Source"] = "odoo" if items else "empty"
+    return {"total": len(items), "items": items}

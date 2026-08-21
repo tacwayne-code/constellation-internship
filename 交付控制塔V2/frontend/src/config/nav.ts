@@ -28,11 +28,12 @@ export const NAV_SECTIONS: NavSection[] = [
     id: 'field',
     label: '现场交付',
     items: [
+      { id: 'sales', label: '订单管理', icon: 'handshake' },
       { id: 'logistics', label: '物流管理', icon: 'route' },
       { id: 'inventory', label: '现场库存', icon: 'box' },
+      { id: 'products', label: '产品主数据', icon: 'box' },
       { id: 'people', label: '人员管理', icon: 'users' },
       { id: 'vendors', label: '供应商交付', icon: 'handshake' },
-      { id: 'electrical', label: '电气施工', icon: 'bolt' },
       { id: 'workshop', label: '生产车间', icon: 'factory' },
       { id: 'field', label: '风险控制', icon: 'shield' },
     ],
@@ -43,15 +44,6 @@ export const NAV_SECTIONS: NavSection[] = [
     items: [
       { id: 'mes', label: 'MES / WCS 实施', icon: 'code' },
       { id: 'commissioning', label: '调试与验收', icon: 'check' },
-    ],
-  },
-  {
-    id: 'biz',
-    label: '业务支撑',
-    items: [
-      { id: 'sales', label: '订单管理', icon: 'handshake' },
-      { id: 'products', label: '产品主数据', icon: 'box' },
-      { id: 'manufacturing', label: '制造执行', icon: 'bolt' },
     ],
   },
 ]

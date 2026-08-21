@@ -1,5 +1,5 @@
 import { useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { apiFetch } from '../../api/client'
 import { useNavigation } from '../../store/navigationStore'
 import { getModule } from '../../config/modules'
@@ -12,11 +12,31 @@ import { FilterBar } from '../common/FilterBar'
 import { EmptyState } from '../common/EmptyState'
 import { SearchInput } from '../common/SearchInput'
 import { ModuleShell } from './ModuleShell'
-import { DeliveryTowerView } from './DeliveryTowerView'
+import {
+  DeliveryTowerView,
+  ProcurementBoard,
+  ProcurementTable,
+  LogisticsTable,
+  PoDrawer,
+  MoDrawer,
+  PO_STATE,
+  MO_STATE,
+} from './DeliveryTowerView'
+import type {
+  ProcurementOverview,
+  PoItem,
+  LogisticsOverview,
+  ProductionOverview,
+  ProductionItem,
+} from './DeliveryTowerView'
+import { ListImportDrawer } from './ListImportDrawer'
 import { useGantt, useModuleRows } from '../../api/modules/useData'
-import type { GanttTask, SRow } from '../../types/contract'
+import type { GanttTask, SRow, Tone } from '../../types/contract'
 
 const PAGE_SIZE = 10
+
+const st = (map: Record<string, [string, Tone]>, key?: string | null): [string, Tone] =>
+  map[key ?? ''] ?? [key || '—', 'neutral']
 
 /* ====================================================================
  *  通用：分页表格 + 抽屉
@@ -237,17 +257,63 @@ function InventoryView() {
     queryFn: () => apiFetch<SRow[]>('/modules/inventory/moves').then((r) => r.data),
     staleTime: 60_000,
   })
+  const [view, setView] = useState<'overview' | 'products' | 'locations' | 'moves'>('overview')
+
+  const rows = rowsQ.data ?? []
+  const locCount = (locQ.data ?? []).length
+  const moveCount = (movesQ.data ?? []).length
+
   return (
     <div className="module-view">
-      <QueryView query={rowsQ} empty={<EmptyState module={getModule('inventory')} />}>
-        {() => <GenericTableView rows={rowsQ.data ?? []} />}
-      </QueryView>
-      <QueryView query={locQ} empty={null}>
-        {(rows) => <PanelSection title="库位分布" rows={rows} />}
-      </QueryView>
-      <QueryView query={movesQ} empty={null}>
-        {(rows) => <PanelSection title="收发流水（最近）" rows={rows} max={15} />}
-      </QueryView>
+      {view === 'overview' && (
+        <>
+          <div className="panel">
+            <div className="panel-header">
+              <span className="panel-title">库存分类 · 点击进入明细</span>
+            </div>
+            <div className="category-grid">
+              {[
+                { key: 'products', title: '产品库存', count: rows.length, tone: 'blue' as Tone, desc: '物料库存明细' },
+                { key: 'locations', title: '库位分布', count: locCount, tone: 'green' as Tone, desc: '各库位库存' },
+                { key: 'moves', title: '收发流水', count: moveCount, tone: 'orange' as Tone, desc: '最近出入库' },
+              ].map((c) => (
+                <div className="category-card" key={c.key} onClick={() => setView(c.key as 'products' | 'locations' | 'moves')}>
+                  <div className="category-card-head">
+                    <StatusDot tone={c.tone} />
+                    <span className="category-card-title">{c.title}</span>
+                  </div>
+                  <div className="category-card-count">{c.count}</div>
+                  <div className="category-card-desc">{c.desc}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </>
+      )}
+
+      {view !== 'overview' && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
+          <button className="ghost-btn" onClick={() => setView('overview')}>
+            <Icon name="arrow" size={13} /> 返回概要
+          </button>
+        </div>
+      )}
+
+      {view === 'products' && (
+        <QueryView query={rowsQ} empty={<EmptyState module={getModule('inventory')} />}>
+          {() => <GenericTableView rows={rows} />}
+        </QueryView>
+      )}
+      {view === 'locations' && (
+        <QueryView query={locQ} empty={<div className="state-block">暂无库位数据</div>}>
+          {(r) => <GenericTableView rows={r} />}
+        </QueryView>
+      )}
+      {view === 'moves' && (
+        <QueryView query={movesQ} empty={<div className="state-block">暂无收发流水</div>}>
+          {(r) => <GenericTableView rows={r} />}
+        </QueryView>
+      )}
     </div>
   )
 }
@@ -844,47 +910,182 @@ function RiskGroup({ title, items }: { title: string; items: SRow[] }) {
 /* ====================================================================
  *  ProcurementView
  * ==================================================================== */
+/** 清单板块（按 origin 聚合的清单导入采购单） */
+interface ImportList {
+  list_name: string
+  business_type: string
+  po_count: number
+  urgent: number
+  done: number
+  orders: PoItem[]
+}
+
+const IMPORT_BIZ_LABEL: Record<string, string> = { warehouse: '立体仓储', rgv: 'RGV', stacker: '堆垛机', other: '其他' }
+
 function ProcurementView() {
-  const rowsQ = useModuleRows('procurement')
+  const queryClient = useQueryClient()
+  const overviewQ = useQuery({
+    queryKey: ['delivery-tower-procurement'],
+    queryFn: () => apiFetch<ProcurementOverview>('/delivery-tower/procurement/overview?limit=500').then((r) => r.data),
+    staleTime: 60_000,
+  })
+  const [listSearch, setListSearch] = useState('')
+  const listsQ = useQuery({
+    queryKey: ['procurement-lists', listSearch],
+    queryFn: () => apiFetch<{ total: number; items: ImportList[] }>(
+      `/procurement/list/lists${listSearch ? `?q=${encodeURIComponent(listSearch)}` : ''}`,
+    ).then((r) => r.data),
+    staleTime: 60_000,
+  })
+  const [view, setView] = useState<'overview' | 'pending' | 'transit' | 'normal' | 'all' | 'lists'>('overview')
+  const [selectedPo, setSelectedPo] = useState<PoItem | null>(null)
+  const [listImportOpen, setListImportOpen] = useState(false)
+  const [expandedList, setExpandedList] = useState<string | null>(null)
+  const [listBiz, setListBiz] = useState<'all' | 'warehouse' | 'rgv' | 'stacker' | 'other'>('all')
+
   return (
-    <QueryView query={rowsQ} empty={<EmptyState module={getModule('procurement')} />}>
-      {() => {
-        const list = rowsQ.data ?? []
-        const grouped = {
-          in_progress: list.filter((r) => r.tone === 'warning' || r.tone === 'orange'),
-          received: list.filter((r) => r.tone === 'success'),
-          other: list.filter((r) => r.tone !== 'warning' && r.tone !== 'orange' && r.tone !== 'success'),
-        }
-        return (
-          <>
-            <div className="procurement-stats">
-              <div className="kpi-card">
-                <div className="kpi-icon orange"><Icon name="clock" size={18} /></div>
-                <div className="kpi-copy">
-                  <div className="num">{grouped.in_progress.length}</div>
-                  <div className="label">采购中</div>
+    <>
+      <QueryView query={overviewQ} empty={<EmptyState module={getModule('procurement')} />}>
+        {(overview) => {
+          const pending = overview.urgent_pending ?? overview.by_priority['1'] ?? []
+          const transit = overview.urgent_transit ?? []
+          const normal = overview.by_priority['0'] ?? []
+          const all = overview.items ?? []
+
+          if (view === 'overview') {
+            return (
+              <div className="module-view">
+                <div className="panel">
+                  <div className="panel-header">
+                    <span className="panel-title">采购分类 · 点击进入明细</span>
+                  </div>
+                  <div className="category-grid">
+                    {[
+                      { key: 'pending', title: '紧急 · 待发起', count: pending.length, tone: 'red' as Tone, desc: '需立即下单' },
+                      { key: 'transit', title: '紧急 · 在途', count: transit.length, tone: 'orange' as Tone, desc: '已下单待收货' },
+                      { key: 'normal', title: '普通采购', count: normal.length, tone: 'neutral' as Tone, desc: '常规采购' },
+                      { key: 'all', title: '全部采购单', count: all.length, tone: 'blue' as Tone, desc: '查看全量' },
+                      { key: 'lists', title: '清单导入', count: listsQ.data?.total ?? 0, tone: 'green' as Tone, desc: '按清单查看' },
+                    ].map((c) => (
+                      <div className="category-card" key={c.key} onClick={() => setView(c.key as 'pending' | 'transit' | 'normal' | 'all' | 'lists')}>
+                        <div className="category-card-head">
+                          <StatusDot tone={c.tone} />
+                          <span className="category-card-title">{c.title}</span>
+                        </div>
+                        <div className="category-card-count" style={{ color: c.tone === 'red' ? 'var(--red)' : 'var(--ink)' }}>{c.count}</div>
+                        <div className="category-card-desc">{c.desc}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="panel">
+                  <div className="panel-header">
+                    <span className="panel-title">清单导入 · 智能采购</span>
+                    <span className="muted" style={{ fontSize: 12 }}>粘贴外购件清单 → 自动识别配件 + 推荐供应商 → 批量生成采购单</span>
+                  </div>
+                  <div style={{ padding: '16px 20px', display: 'flex', alignItems: 'center', gap: 12 }}>
+                    <button className="ghost-btn" onClick={() => setListImportOpen(true)}>
+                      <Icon name="upload" size={14} /> 打开清单导入
+                    </button>
+                  </div>
                 </div>
               </div>
-              <div className="kpi-card">
-                <div className="kpi-icon green"><Icon name="check" size={18} /></div>
-                <div className="kpi-copy">
-                  <div className="num">{grouped.received.length}</div>
-                  <div className="label">已到货</div>
+            )
+          }
+
+          if (view === 'lists') {
+            const lists = (listsQ.data?.items ?? []).filter((l) => listBiz === 'all' || l.business_type === listBiz)
+            return (
+              <div className="list-page">
+                <div className="list-toolbar">
+                  <button className="ghost-btn" onClick={() => setView('overview')}>
+                    <Icon name="arrow" size={13} /> 返回概要
+                  </button>
+                  <h2 className="list-toolbar-title">清单导入</h2>
+                  <div className="list-toolbar-right">
+                    <select
+                      style={{ fontSize: 12, padding: '7px 10px', background: 'var(--surface)', color: 'var(--ink)', border: '1px solid var(--border)', borderRadius: 8 }}
+                      value={listBiz}
+                      onChange={(e) => setListBiz(e.target.value as 'all' | 'warehouse' | 'rgv' | 'stacker' | 'other')}
+                    >
+                      <option value="all">全部业务</option>
+                      <option value="warehouse">立体仓储</option>
+                      <option value="rgv">RGV</option>
+                      <option value="stacker">堆垛机</option>
+                      <option value="other">其他</option>
+                    </select>
+                    <input
+                      className="locate-input"
+                      placeholder="按清单名搜索"
+                      value={listSearch}
+                      onChange={(e) => setListSearch(e.target.value)}
+                    />
+                    <span className="muted" style={{ fontSize: 12, whiteSpace: 'nowrap' }}>共 {lists.length} 个清单</span>
+                  </div>
                 </div>
+
+                {lists.length === 0 && <div className="state-block">暂无清单导入记录</div>}
+
+                {lists.map((l) => (
+                  <div className="import-list-card" key={l.list_name}>
+                    <div
+                      className="import-list-head"
+                      onClick={() => setExpandedList(expandedList === l.list_name ? null : l.list_name)}
+                    >
+                      <div className="import-list-icon">
+                        <Icon name="file" size={18} />
+                      </div>
+                      <div className="import-list-info">
+                        <div className="import-list-name">{l.list_name}</div>
+                        <div className="import-list-stats">
+                          <span className="import-list-stat biz">{IMPORT_BIZ_LABEL[l.business_type] ?? '其他'}</span>
+                          <span className="import-list-stat">采购单 {l.po_count}</span>
+                          {l.urgent > 0 && <span className="import-list-stat urgent">紧急 {l.urgent}</span>}
+                          {l.done > 0 && <span className="import-list-stat done">已到货 {l.done}</span>}
+                        </div>
+                      </div>
+                      <Icon
+                        name="chevron"
+                        size={18}
+                        className="import-list-arrow"
+                        style={{ transform: expandedList === l.list_name ? 'rotate(90deg)' : 'none' }}
+                      />
+                    </div>
+                    {expandedList === l.list_name && (
+                      <div className="import-list-body">
+                        <ProcurementTable items={l.orders} onOpenPo={setSelectedPo} title={`${l.list_name} · 采购单`} />
+                      </div>
+                    )}
+                  </div>
+                ))}
               </div>
-              <div className="kpi-card">
-                <div className="kpi-icon blue"><Icon name="truck" size={18} /></div>
-                <div className="kpi-copy">
-                  <div className="num">{list.length}</div>
-                  <div className="label">采购单总数</div>
-                </div>
+            )
+          }
+
+          const items = view === 'pending' ? pending : view === 'transit' ? transit : view === 'normal' ? normal : all
+          const title = view === 'pending' ? '紧急 · 待发起' : view === 'transit' ? '紧急 · 在途' : view === 'normal' ? '普通采购' : '全部采购单'
+          return (
+            <div className="module-view">
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
+                <button className="ghost-btn" onClick={() => setView('overview')}>
+                  <Icon name="arrow" size={13} /> 返回概要
+                </button>
+                <span className="muted" style={{ fontSize: 12 }}>{title} · {items.length} 单</span>
               </div>
+              <ProcurementTable items={items} onOpenPo={setSelectedPo} title={`${title} · 采购单`} />
             </div>
-            <GenericTableView rows={list} extra={(row) => <PurchaseDetail row={row} />} />
-          </>
-        )
-      }}
-    </QueryView>
+          )
+        }}
+      </QueryView>
+      {selectedPo && <PoDrawer po={selectedPo} onClose={() => setSelectedPo(null)} />}
+      {listImportOpen && (
+        <ListImportDrawer
+          onClose={() => setListImportOpen(false)}
+          onCreated={() => queryClient.invalidateQueries({ queryKey: ['delivery-tower-procurement'] })}
+        />
+      )}
+    </>
   )
 }
 
@@ -958,20 +1159,57 @@ function DeptCard({ dept, members }: { dept: string; members: SRow[] }) {
  *  LogisticsView
  * ==================================================================== */
 function LogisticsView() {
-  const rowsQ = useModuleRows('logistics')
-  const sorted = useMemo(() => {
-    return [...(rowsQ.data ?? [])].sort((a, b) => {
-      if (a.tone === 'danger' && b.tone !== 'danger') return -1
-      if (a.tone !== 'danger' && b.tone === 'danger') return 1
-      return (a.name || '').localeCompare(b.name || '')
-    })
-  }, [rowsQ.data])
+  const overviewQ = useQuery({
+    queryKey: ['delivery-tower-logistics'],
+    queryFn: () => apiFetch<LogisticsOverview>('/delivery-tower/logistics').then((r) => r.data),
+    staleTime: 60_000,
+  })
+  const [view, setView] = useState<'overview' | 'incoming' | 'outgoing' | 'internal'>('overview')
 
   return (
-    <QueryView query={rowsQ} empty={<EmptyState module={getModule('logistics')} />}>
-      {() => (
-        <LogisticsList rows={sorted} />
-      )}
+    <QueryView query={overviewQ} empty={<EmptyState module={getModule('logistics')} />}>
+      {(overview) => {
+        if (view === 'overview') {
+          return (
+            <div className="module-view">
+              <div className="panel">
+                <div className="panel-header">
+                  <span className="panel-title">物流分类 · 点击进入明细</span>
+                </div>
+                <div className="category-grid">
+                  {[
+                    { key: 'incoming', title: '采购收货', count: overview.incoming.length, tone: 'orange' as Tone, desc: '补货入库' },
+                    { key: 'outgoing', title: '销售出货', count: overview.outgoing.length, tone: 'purple' as Tone, desc: '发往客户' },
+                    { key: 'internal', title: '内部流转', count: overview.internal.length, tone: 'neutral' as Tone, desc: '厂内调拨' },
+                  ].map((c) => (
+                    <div className="category-card" key={c.key} onClick={() => setView(c.key as 'incoming' | 'outgoing' | 'internal')}>
+                      <div className="category-card-head">
+                        <StatusDot tone={c.tone} />
+                        <span className="category-card-title">{c.title}</span>
+                      </div>
+                      <div className="category-card-count">{c.count}</div>
+                      <div className="category-card-desc">{c.desc}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )
+        }
+        const items = view === 'incoming' ? overview.incoming : view === 'outgoing' ? overview.outgoing : overview.internal
+        const title = view === 'incoming' ? '采购物流 · 补货入库' : view === 'outgoing' ? '销售物流 · 出货' : '内部流转'
+        return (
+          <div className="module-view">
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
+              <button className="ghost-btn" onClick={() => setView('overview')}>
+                <Icon name="arrow" size={13} /> 返回概要
+              </button>
+              <span className="muted" style={{ fontSize: 12 }}>{title} · {items.length} 单</span>
+            </div>
+            <LogisticsTable title={title} items={items} />
+          </div>
+        )
+      }}
     </QueryView>
   )
 }
@@ -1065,6 +1303,136 @@ function DefaultView() {
     <QueryView query={rowsQ} empty={<EmptyState module={getModule(moduleId)} />}>
       {(rows) => <GenericTableView rows={rows} />}
     </QueryView>
+  )
+}
+
+/* ====================================================================
+ *  ManufacturingView：制造执行（生产工单 + 工序进度，概要→详情）
+ * ==================================================================== */
+function ManufacturingView() {
+  const prodQ = useQuery({
+    queryKey: ['delivery-tower-productions'],
+    queryFn: () => apiFetch<ProductionOverview>('/delivery-tower/productions?limit=200').then((r) => r.data),
+    staleTime: 60_000,
+  })
+  const [view, setView] = useState<'overview' | 'progress' | 'done' | 'urgent' | 'all'>('overview')
+  const [selectedMo, setSelectedMo] = useState<ProductionItem | null>(null)
+
+  return (
+    <>
+      <QueryView query={prodQ} empty={<EmptyState module={getModule('manufacturing')} />}>
+        {(production) => {
+          const items = production.items ?? []
+          const progress = items.filter((m) => m.state === 'progress')
+          const done = items.filter((m) => m.state === 'done')
+          const urgent = items.filter((m) => m.is_urgent)
+
+          if (view === 'overview') {
+            return (
+              <div className="module-view">
+                <div className="panel">
+                  <div className="panel-header">
+                    <span className="panel-title">生产分类 · 点击进入明细</span>
+                  </div>
+                  <div className="category-grid">
+                    {[
+                      { key: 'progress', title: '生产中', count: progress.length, tone: 'orange' as Tone, desc: '在制工单' },
+                      { key: 'urgent', title: '紧急工单', count: urgent.length, tone: 'red' as Tone, desc: '需优先完成' },
+                      { key: 'done', title: '已完成', count: done.length, tone: 'green' as Tone, desc: '已完工' },
+                      { key: 'all', title: '全部工单', count: items.length, tone: 'blue' as Tone, desc: '查看全量' },
+                    ].map((c) => (
+                      <div className="category-card" key={c.key} onClick={() => setView(c.key as 'progress' | 'done' | 'urgent' | 'all')}>
+                        <div className="category-card-head">
+                          <StatusDot tone={c.tone} />
+                          <span className="category-card-title">{c.title}</span>
+                        </div>
+                        <div className="category-card-count" style={{ color: c.tone === 'red' ? 'var(--red)' : 'var(--ink)' }}>{c.count}</div>
+                        <div className="category-card-desc">{c.desc}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )
+          }
+
+          const list = view === 'progress' ? progress : view === 'done' ? done : view === 'urgent' ? urgent : items
+          const title = view === 'progress' ? '生产中' : view === 'done' ? '已完成' : view === 'urgent' ? '紧急工单' : '全部工单'
+          return (
+            <div className="module-view">
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
+                <button className="ghost-btn" onClick={() => setView('overview')}>
+                  <Icon name="arrow" size={13} /> 返回概要
+                </button>
+                <span className="muted" style={{ fontSize: 12 }}>{title} · {list.length} 单</span>
+              </div>
+              <MoProductionTable items={list} onOpenMo={setSelectedMo} />
+            </div>
+          )
+        }}
+      </QueryView>
+      {selectedMo && <MoDrawer mo={selectedMo} onClose={() => setSelectedMo(null)} />}
+    </>
+  )
+}
+
+function MoProductionTable({ items, onOpenMo }: { items: ProductionItem[]; onOpenMo: (mo: ProductionItem) => void }) {
+  const [page, setPage] = useState(1)
+  const TABLE_PAGE_SIZE = 10
+  const total = items.length
+  const start = (page - 1) * TABLE_PAGE_SIZE
+  const pageItems = items.slice(start, start + TABLE_PAGE_SIZE)
+  return (
+    <div className="panel module-table-panel">
+      <div className="panel-header">
+        <span className="panel-title">生产工单 · 加工工序进度</span>
+        <span className="muted" style={{ fontSize: 12 }}>共 {items.length} 单 · 点击查看工序明细</span>
+      </div>
+      <table className="data-table">
+        <thead>
+          <tr>
+            <th>工单号</th>
+            <th>产品</th>
+            <th>状态</th>
+            <th>紧急</th>
+            <th>工序进度</th>
+            <th>数量</th>
+            <th>开始 / 完成</th>
+          </tr>
+        </thead>
+        <tbody>
+          {pageItems.map((m) => {
+            const [label, tone] = st(MO_STATE, m.state)
+            const woTotal = m.workorder_count
+            const pct = woTotal > 0 ? Math.round((m.workorder_done / woTotal) * 100) : (m.state === 'done' ? 100 : 0)
+            return (
+              <tr key={m.id} onClick={() => onOpenMo(m)}>
+                <td style={{ color: 'var(--muted)', whiteSpace: 'nowrap' }}>{m.name}</td>
+                <td><div className="cell-name">{m.product}</div></td>
+                <td><StatusDot tone={tone} /> {label}</td>
+                <td>{m.is_urgent ? <span className="urgent-badge">紧急</span> : <span className="muted" style={{ fontSize: 12 }}>—</span>}</td>
+                <td style={{ minWidth: 180 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <div style={{ flex: 1 }}><ProgressBar value={pct} /></div>
+                    <span style={{ fontSize: 12, color: 'var(--muted)', whiteSpace: 'nowrap' }}>{m.workorder_done}/{woTotal} 道</span>
+                  </div>
+                </td>
+                <td style={{ whiteSpace: 'nowrap' }}>{Number(m.product_qty ?? 0).toLocaleString()} 台</td>
+                <td style={{ whiteSpace: 'nowrap', fontSize: 12, color: 'var(--muted)' }}>
+                  {(m.date_start ?? '').slice(0, 10)}{m.date_finished ? ` → ${m.date_finished.slice(0, 10)}` : ''}
+                </td>
+              </tr>
+            )
+          })}
+        </tbody>
+      </table>
+      {items.length === 0 && <div className="state-block">暂无生产工单</div>}
+      {total > TABLE_PAGE_SIZE && (
+        <div style={{ padding: '12px 0 4px' }}>
+          <Pagination page={page} total={total} pageSize={TABLE_PAGE_SIZE} onChange={setPage} />
+        </div>
+      )}
+    </div>
   )
 }
 
@@ -1205,29 +1573,22 @@ function VendorTable({ rows }: { rows: SRow[] }) {
 }
 
 /* ====================================================================
- *  WorkshopView：生产车间（车间列表 + 子单下钻）
+ *  WorkshopView：生产车间（整合 生产工单 + 电气施工）
  * ==================================================================== */
-function WorkshopDetail({ row }: { row: SRow }) {
-  const id = String(row.id).replace('WC-', '')
-  const q = useQuery({
-    queryKey: ['workshop-workorders', id],
-    queryFn: () => apiFetch<SRow[]>(`/modules/workshop/${id}/workorders`).then((r) => r.data),
-    enabled: !!id && id !== row.id,
-    staleTime: 60_000,
-  })
-  return (
-    <QueryView query={q} empty={<div className="subtitle" style={{ padding: '6px 2px' }}>暂无工单数据</div>}>
-      {(rows) => <DrillList title="车间工单" rows={rows} />}
-    </QueryView>
-  )
-}
-
 function WorkshopView() {
-  const rowsQ = useModuleRows('workshop')
+  const [tab, setTab] = useState<'production' | 'electrical'>('production')
   return (
-    <QueryView query={rowsQ} empty={<EmptyState module={getModule('workshop')} />}>
-      {() => <GenericTableView rows={rowsQ.data ?? []} extra={(row) => <WorkshopDetail row={row} />} />}
-    </QueryView>
+    <>
+      <div className="module-tabs" style={{ marginBottom: 16 }}>
+        <button className={tab === 'production' ? 'active' : ''} onClick={() => setTab('production')}>
+          <Icon name="factory" size={13} /> 生产工单
+        </button>
+        <button className={tab === 'electrical' ? 'active' : ''} onClick={() => setTab('electrical')}>
+          <Icon name="bolt" size={13} /> 电气施工
+        </button>
+      </div>
+      {tab === 'production' ? <ManufacturingView /> : <ElectricalView />}
+    </>
   )
 }
 
@@ -1250,14 +1611,14 @@ export function ModuleView({ projectId }: { projectId: string | null }) {
       return <ModuleShell><PeopleView /></ModuleShell>
     case 'logistics':
       return <ModuleShell><LogisticsView /></ModuleShell>
-    case 'electrical':
-      return <ModuleShell><ElectricalView /></ModuleShell>
     case 'vendors':
       return <ModuleShell><VendorView /></ModuleShell>
     case 'design':
       return <ModuleShell><DesignView /></ModuleShell>
     case 'inventory':
       return <ModuleShell><InventoryView /></ModuleShell>
+    case 'electrical':
+    case 'manufacturing':
     case 'workshop':
       return <ModuleShell><WorkshopView /></ModuleShell>
     case 'sales':

@@ -679,6 +679,7 @@ async def batch_create_purchase_orders(
     urgent: bool = True,
     purchase_date: str | None = None,
     delivery_date: str | None = None,
+    list_name: str | None = None,
 ) -> dict[str, Any]:
     """按供应商聚合批量建采购单（date_planned + 回写 supplierinfo）。
 
@@ -686,6 +687,7 @@ async def batch_create_purchase_orders(
     - urgent=True（默认）→ priority=1 紧急（进紧急采购看板）；urgent=False → 普通采购单
     - purchase_date（可选）：订单日期，写入 purchase.order.date_order（缺省 Odoo 当前时间）
     - delivery_date（可选）：计划到货日期，写入订单行 date_planned（缺省按供应商交期 今天+delay）
+    - list_name（可选）：清单名，写入 purchase.order.origin（前缀「清单:」），便于按清单聚合/搜索
     - product_id 命中（match 已识别）→ 直接用现有产品
     - 无 product_id：
       · auto_create_product=True  → 按 name 自动创建产品主数据
@@ -798,7 +800,7 @@ async def batch_create_purchase_orders(
         po_vals = {
             "partner_id": partner_id,
             "priority": PRIORITY_URGENT if urgent else PRIORITY_NORMAL,  # 紧急标记（衔接看板）
-            "origin": "清单导入",
+            "origin": f"清单:{list_name}" if list_name else "清单导入",
             "order_line": order_lines,
         }
         # 采购日期：接口指定则写入 date_order（缺省 Odoo 当前时间）

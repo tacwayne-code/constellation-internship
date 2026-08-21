@@ -108,9 +108,9 @@ async def module_rows(
             resp.headers["X-Data-Source"] = "mock"
         return projects[:limit]
 
-    # 现场库存板块：按产品聚合（同一产品多库位合并为一行）
+    # 现场库存板块：按产品聚合（同一产品多库位合并为一行；返回全量以匹配 config 产品种类）
     if module == "inventory":
-        rows = await fetch_inventory_grouped(client, limit=limit)
+        rows = await fetch_inventory_grouped(client)
         if rows:
             return rows
         resp.headers["X-Data-Source"] = "mock"
@@ -345,32 +345,48 @@ async def compute_module_stats(client, module: str) -> list[list[str]]:
     return []
 
 
-async def fetch_inventory_grouped(client, limit: int = 200) -> list[dict]:
-    """stock.quant 按产品聚合：产品级库存行（总数量 + 库位数 + 记录数）"""
+async def fetch_inventory_grouped(client, limit: int | None = None) -> list[dict]:
+    """stock.quant 按产品聚合：产品级库存行（总数量 + 库位数 + 记录数）
+
+    以 product.product 为主表（保证所有产品都出现，包括无库存的），rows 数与
+    /modules/inventory/config 的「产品种类」一致；limit=None 返回全量。
+    """
     try:
+        # 主表：所有 product.product（保证无库存产品也出现在结果里）
+        products = await client.search_read(
+            "product.product", [], ["id", "name"], limit=None
+        )
+        # 库存聚合：拉所有 quant 按 product_id 求和
         records = await client.search_read(
             "stock.quant", [],
             ["id", "product_id", "location_id", "quantity", "reserved_quantity"],
-            limit=5000,
+            limit=10000,
         )
     except Exception as e:  # noqa: BLE001
         logger.warning("fetch_inventory_grouped 失败: %s", e)
         return []
 
     groups: dict[int, dict] = {}
+    for p in products:
+        pid = p["id"]
+        groups[pid] = {"id": pid, "name": p.get("name") or "物料", "qty": 0.0, "locs": set(), "n": 0}
     for r in records:
         pid = r.get("product_id")
-        key = pid[0] if isinstance(pid, (list, tuple)) and pid else r.get("id")
-        name = pid[1] if isinstance(pid, (list, tuple)) and len(pid) > 1 else "物料"
-        g = groups.setdefault(key, {"id": key, "name": name, "qty": 0.0, "locs": set(), "n": 0})
-        g["qty"] += r.get("quantity") or 0
-        loc = r.get("location_id")
-        if isinstance(loc, (list, tuple)) and len(loc) > 1:
-            g["locs"].add(loc[1])
-        g["n"] += 1
+        if isinstance(pid, (list, tuple)) and pid:
+            pid = pid[0]
+        if pid in groups:
+            g = groups[pid]
+            g["qty"] += r.get("quantity") or 0
+            loc = r.get("location_id")
+            if isinstance(loc, (list, tuple)) and len(loc) > 1:
+                g["locs"].add(loc[1])
+            g["n"] += 1
 
+    items = sorted(groups.items(), key=lambda x: -x[1]["qty"])
+    if limit:
+        items = items[:limit]
     rows = []
-    for key, g in sorted(groups.items(), key=lambda x: -x[1]["qty"])[:limit]:
+    for key, g in items:
         in_stock = g["qty"] > 0
         rows.append({
             "id": f"MAT-{key}",
@@ -554,7 +570,7 @@ async def procurement_lines(
 @router.get("/modules/inventory/locations")
 async def inventory_locations(
     client: ClientDep,
-    limit: int = Query(200, ge=1, le=500),
+    limit: int = Query(2000, ge=1, le=5000),
 ):
     """现场库存：库位分布（stock.location 内部库位 + 该库位 quant 汇总）"""
     try:
@@ -619,7 +635,7 @@ async def inventory_locations(
 @router.get("/modules/inventory/moves")
 async def inventory_moves(
     client: ClientDep,
-    limit: int = Query(100, ge=1, le=300),
+    limit: int = Query(500, ge=1, le=2000),
 ):
     """现场库存：最近收发流水（stock.move，按日期倒序）"""
     from app.services.odoo.models import FIELDS_STOCK_MOVE

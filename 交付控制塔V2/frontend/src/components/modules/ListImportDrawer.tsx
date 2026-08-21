@@ -335,6 +335,7 @@ export function ListImportDrawer({ onClose, onCreated }: { onClose: () => void; 
   const [loading, setLoading] = useState(false)
   const [creating, setCreating] = useState(false)
   const [urgent, setUrgent] = useState(true)
+  const [listName, setListName] = useState('')
   // 采购时间 / 交货时间（react-datepicker Date 对象；onCreate 时再格式化为 'YYYY-MM-DDTHH:MM'）
   const _today = new Date()
   const [purchaseDate, setPurchaseDate] = useState<Date | null>(_today)
@@ -441,6 +442,8 @@ export function ListImportDrawer({ onClose, onCreated }: { onClose: () => void; 
     if (loading) return
     setLoading(true)
     setFileName(file.name)
+    // 清单名自动识别为文件名（去扩展名），可手动修改
+    setListName(file.name.replace(/\.[^.]+$/, ''))
     try {
       const fd = new FormData()
       fd.append('file', file)
@@ -561,6 +564,7 @@ export function ListImportDrawer({ onClose, onCreated }: { onClose: () => void; 
           urgent,
           purchase_date: fmtForApi(purchaseDate),
           delivery_date: fmtForApi(deliveryDate),
+          list_name: listName.trim() || undefined,
         }),
       })
       setResult(res.data)
@@ -665,6 +669,21 @@ export function ListImportDrawer({ onClose, onCreated }: { onClose: () => void; 
                 />
                 标记为紧急采购单（priority=1，将进入紧急采购看板）
               </label>
+            )}
+            {rows.length > 0 && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
+                <label style={{ fontSize: 12, color: T.ink, whiteSpace: 'nowrap' }}>清单名</label>
+                <input
+                  style={{
+                    fontSize: 12, padding: '6px 10px', background: 'var(--surface)',
+                    color: 'var(--ink)', border: '1px solid var(--border)', borderRadius: 8,
+                    fontFamily: 'inherit', outline: 'none', minWidth: 240, flex: 1,
+                  }}
+                  placeholder="如「项目A 外购件清单」，用于按清单搜索采购单"
+                  value={listName}
+                  onChange={(e) => setListName(e.target.value)}
+                />
+              </div>
             )}
             {rows.length > 0 && (
               <div style={{ display: 'flex', gap: 10, marginTop: 10, flexWrap: 'wrap', alignItems: 'center' }}>
