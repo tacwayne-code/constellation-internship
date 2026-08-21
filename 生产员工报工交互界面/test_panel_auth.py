@@ -69,6 +69,22 @@ class PanelAuthTests(unittest.TestCase):
         }
         self.assertEqual(server.worker_required_product_class(worker), "host")
 
+    def test_custom_host_assembly_uses_workorder_bom(self):
+        operation = {
+            "code": "worker_assembly_custom_index",
+            "name": "分度盘结构组装",
+            "requiresBom": True,
+        }
+        context = {"productClass": "host", "items": [{"defaultCode": "P-DIV"}]}
+        self.assertTrue(server._should_use_workorder_bom(operation, context))
+        self.assertTrue(server._should_fail_workorder_bom_lookup(operation, "tape"))
+
+    def test_legacy_host_assembly_can_use_generic_host_bom(self):
+        operation = {"code": "pc_assembly_tape", "requiresBom": False}
+        context = {"productClass": "host"}
+        self.assertFalse(server._should_use_workorder_bom(operation, context))
+        self.assertFalse(server._should_fail_workorder_bom_lookup(operation, "tape"))
+
 
 class WorkorderProgressTests(unittest.TestCase):
     def test_partial_route_completion_does_not_complete_the_manufacturing_order(self):

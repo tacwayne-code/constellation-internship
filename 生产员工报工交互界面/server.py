@@ -2239,6 +2239,18 @@ def get_workorder_bom_data(workorder_id, operation=None):
     }
 
 
+def _should_use_workorder_bom(operation, context):
+    """Use the selected WO BOM for every explicitly BOM-routed operation."""
+    return bool(operation and operation.get("requiresBom")) or (
+        isinstance(context, dict) and context.get("productClass") == "machine"
+    )
+
+
+def _should_fail_workorder_bom_lookup(operation, host_type):
+    """Custom BOM routes fail closed instead of falling back to host BOM."""
+    return bool(operation and operation.get("requiresBom")) or host_type not in ("tape", "splitter")
+
+
 def models_query_tmpl_by_code(client, default_code):
     """通过 default_code 查 product.template 的 id"""
     try:
@@ -3299,7 +3311,7 @@ class Handler(SimpleHTTPRequestHandler):
                     if not operation:
                         raise ValueError("当前员工未绑定所选工序")
                     context = get_workorder_bom_data(workorder_id, operation)
-                    if context.get("productClass") == "machine":
+                    if _should_use_workorder_bom(operation, context):
                         items = context.pop("items")
                         self.write_json({
                             "ok": True,
@@ -3313,7 +3325,7 @@ class Handler(SimpleHTTPRequestHandler):
                         })
                         return
                 except Exception as e:
-                    if host_type in ("tape", "splitter"):
+                    if not _should_fail_workorder_bom_lookup(operation, host_type):
                         logger.debug(f"主机工单沿用主机 BOM 查询: {e}")
                     else:
                         logger.error(f"工单 BOM 查询异常: {e}")

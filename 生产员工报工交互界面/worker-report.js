@@ -699,9 +699,12 @@ async function openBomModal(nocache = false) {
   }
 
   // 设置标题
-  $("#bomHostType").textContent = machineAssembly
-    ? `${S.selectedWorkorder.productName || "机器"} BOM`
-    : (ht === "tape" ? "编带主机 BOM" : "分光主机 BOM");
+  const operationBom = !!(S.selectedOperation && S.selectedOperation.requiresBom);
+  $("#bomHostType").textContent = operationBom
+    ? (S.selectedOperation.name || "当前工序") + " BOM"
+    : machineAssembly
+      ? (S.selectedWorkorder.productName || "机器") + " BOM"
+      : (ht === "tape" ? "编带主机 BOM" : "分光主机 BOM");
   const woInfo = S.selectedWorkorder
     ? `WO#${S.selectedWorkorder.workorderId} | MO#${S.selectedWorkorder.productionId}`
     : "";
