@@ -5,7 +5,9 @@ import react from '@vitejs/plugin-react'
 export default defineConfig({
   plugins: [react()],
   build: {
-    emptyOutDir: false, // 关闭 safe-delete：本机 genie-trash 不可用会 fail-closed 中断构建
+    // 保持 false：本机 WorkBuddy 沙箱把 Node 删除 API 拦截成「移入回收站」，回收站不可用会 fail-closed 中断构建。
+    // 因此构建前需手动清理 dist（用系统 rm -rf，绕过 Node shim），避免旧 hash 资产积累。
+    emptyOutDir: false,
   },
   server: {
     port: 5173,
