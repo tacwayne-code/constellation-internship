@@ -157,7 +157,7 @@ async def analyze_delivery(client: OdooClient, so_id: int) -> dict[str, Any]:
         picks = await client.search_read(
             "stock.picking",
             [["origin", "in", po_names], ["picking_type_id", "!=", False]],
-            ["id", "name", "origin", "state", "scheduled_date", "carrier_tracking_ref", "date_done"],
+            ["id", "name", "origin", "state", "scheduled_date", "carrier_id", "carrier_tracking_ref", "date_done"],
             limit=None,
         )
         for pk in picks:
@@ -264,7 +264,6 @@ async def analyze_delivery(client: OdooClient, so_id: int) -> dict[str, Any]:
             "on_order": on_order,
         })
 
-    # ── 5.5 物流同步：配件相关采购收货物流（incoming picking）状态回写配件 ──
     # ── 5.5 物流同步：配件状态回写（pick_map 已在上方按 PO origin 拉取） ──
     for m in materials:
         m["pickings"] = [
