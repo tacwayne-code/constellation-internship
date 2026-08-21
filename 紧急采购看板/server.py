@@ -21,6 +21,7 @@
 
 import json
 import os
+import re
 import statistics
 import sys
 import threading
@@ -291,6 +292,70 @@ def parse_material(product):
     return "", text
 
 
+def parse_list_name(origin):
+    """从采购单 source document (origin) 提取「清单」名称。
+
+    Odoo 的 origin 形如 "清单:150KG堆垛机电气清单"（也可能是 "SO001, 清单:xxx" 这类复合来源），
+    这里去掉「清单: / 清单：」前缀返回纯清单名；无来源时返回「未关联清单」。
+    """
+    text = str(origin or "").strip()
+    if not text:
+        return "未关联清单"
+    match = re.search(r"清单\s*[:：]\s*(.+)$", text)
+    if match:
+        return match.group(1).strip() or text
+    return text
+
+
+LIST_LEVEL_ORDER = {"P0": 0, "P1": 1, "P2": 2, "P3": 3}
+
+# 板块分类规则：清单名 → 板块。列表顺序即匹配优先级（先命中者优先）。
+# 可通过环境变量 ODOO_LIST_CATEGORIES 覆盖，格式为 JSON 对象：{"板块名": ["关键词", ...]}。
+LIST_CATEGORY_RULES = [
+    ("立体仓储", ["立体仓储", "立体仓库", "立体库", "立库", "asrs", "as/rs"]),
+    ("RGV", ["rgv"]),
+    ("堆垛机", ["堆垛机", "堆垛", "stacker"]),
+]
+
+
+def _load_category_rules():
+    """从环境变量加载板块分类规则；不合法则回退内置默认。"""
+    raw = os.getenv("ODOO_LIST_CATEGORIES", "").strip()
+    if not raw:
+        return LIST_CATEGORY_RULES
+    try:
+        data = json.loads(raw)
+    except (ValueError, json.JSONDecodeError):
+        print(f"⚠️  环境变量 ODOO_LIST_CATEGORIES 不是合法 JSON，已使用内置默认板块分类")
+        return LIST_CATEGORY_RULES
+    if not isinstance(data, dict):
+        print(f"⚠️  环境变量 ODOO_LIST_CATEGORIES 必须是 JSON 对象，已使用内置默认板块分类")
+        return LIST_CATEGORY_RULES
+    rules = []
+    for name, keywords in data.items():
+        if isinstance(keywords, list):
+            rules.append((str(name), [str(k) for k in keywords]))
+    return rules or LIST_CATEGORY_RULES
+
+
+LIST_CATEGORY_RULES = _load_category_rules()
+
+
+def classify_list_category(list_name):
+    """按清单名关键词把清单归类到「板块」。
+
+    命中内置关键词（立体仓储 / RGV / 堆垛机 …）→ 归入对应板块；
+    未命中时，直接用清单名本身作为板块名，自动生成新板块（不丢进统一「其他」）。
+    """
+    name = str(list_name or "").strip()
+    text = name.lower()
+    for category, keywords in LIST_CATEGORY_RULES:
+        for kw in keywords:
+            if kw.lower() in text:
+                return category
+    return name or "其他"
+
+
 def resolve_urgent_domain(client):
     """Build the 'urgent' domain part for purchase.order (read-only)."""
     if URGENT_DOMAIN_OVERRIDE:
@@ -369,7 +434,7 @@ def build_urgent_orders(client):
 
     fields = [
         "id", "name", "partner_id", "user_id", "amount_total", "state",
-        "date_order", "date_planned", "currency_id",
+        "date_order", "date_planned", "currency_id", "origin",
     ]
     orders = client.search_read_all(
         "purchase.order",
@@ -442,6 +507,9 @@ def build_urgent_orders(client):
         items.append({
             "id": order_id,
             "name": first_text(o.get("name")),
+            "origin": str(o.get("origin") or "").strip(),
+            "list": parse_list_name(o.get("origin")),
+            "category": classify_list_category(parse_list_name(o.get("origin"))),
             "supplier": first_text(o.get("partner_id")),
             "buyer": first_text(o.get("user_id"), ""),
             "amount": float(o.get("amount_total") or 0),
@@ -464,6 +532,72 @@ def build_urgent_orders(client):
                 else "未设置预计日期"
             ),
         })
+
+    # 清单分组：同一清单下的多张采购单归为一组，看板以清单为主展示
+    lists_map = {}
+    for item in items:
+        key = item["list"]
+        group = lists_map.get(key)
+        if group is None:
+            group = {
+                "name": key,
+                "origin": item["origin"],
+                "category": item["category"],
+                "orderCount": 0,
+                "amount": 0.0,
+                "suppliers": set(),
+                "levels": {"P0": 0, "P1": 0, "P2": 0, "P3": 0},
+                "maxDaysOverdue": 0,
+                "minDaysToPlanned": None,
+                "orderIds": [],
+            }
+            lists_map[key] = group
+        group["orderCount"] += 1
+        group["amount"] += item["amount"]
+        if item["supplier"] != "-":
+            group["suppliers"].add(item["supplier"])
+        group["levels"][item["level"]] += 1
+        if item["daysOverdue"] > group["maxDaysOverdue"]:
+            group["maxDaysOverdue"] = item["daysOverdue"]
+        dtp = item["daysToPlanned"]
+        if dtp is not None and (group["minDaysToPlanned"] is None or dtp < group["minDaysToPlanned"]):
+            group["minDaysToPlanned"] = dtp
+        group["orderIds"].append(item["id"])
+
+    lists = []
+    for group in lists_map.values():
+        level = min(
+            (lv for lv, count in group["levels"].items() if count > 0),
+            key=lambda lv: LIST_LEVEL_ORDER[lv],
+            default="P3",
+        )
+        if group["maxDaysOverdue"] > 0:
+            urgent_hint = f"最紧急：超期 {group['maxDaysOverdue']} 天"
+        elif group["minDaysToPlanned"] == 0:
+            urgent_hint = "最紧急：今天到期"
+        elif group["minDaysToPlanned"] is not None:
+            urgent_hint = f"最紧急：{group['minDaysToPlanned']} 天后到期"
+        else:
+            urgent_hint = "未设置预计日期"
+        lists.append({
+            "name": group["name"],
+            "origin": group["origin"],
+            "category": group["category"],
+            "orderCount": group["orderCount"],
+            "amount": round(group["amount"], 2),
+            "amountText": money(group["amount"]),
+            "supplierCount": len(group["suppliers"]),
+            "level": level,
+            "levels": group["levels"],
+            "maxDaysOverdue": group["maxDaysOverdue"],
+            "urgentHint": urgent_hint,
+            "orderIds": group["orderIds"],
+        })
+    lists.sort(key=lambda g: (
+        LIST_LEVEL_ORDER.get(g["level"], 9),
+        -g["maxDaysOverdue"],
+        -g["amount"],
+    ))
 
     # 汇总指标
     total = len(items)
@@ -496,8 +630,45 @@ def build_urgent_orders(client):
         for name, info in sorted(supplier_totals.items(), key=lambda kv: kv[1]["amount"], reverse=True)[:8]
     ]
 
+    # 板块统计（立体仓储 / RGV / 堆垛机 …）
+    category_map = {}
+    for item in items:
+        cat = item["category"]
+        c = category_map.setdefault(cat, {
+            "listCount": 0, "orderCount": 0, "amount": 0.0,
+            "levels": {"P0": 0, "P1": 0, "P2": 0, "P3": 0},
+        })
+        c["orderCount"] += 1
+        c["amount"] += item["amount"]
+        c["levels"][item["level"]] += 1
+    for l in lists:
+        c = category_map.setdefault(l["category"], {
+            "listCount": 0, "orderCount": 0, "amount": 0.0,
+            "levels": {"P0": 0, "P1": 0, "P2": 0, "P3": 0},
+        })
+        c["listCount"] += 1
+    # 确保配置的所有板块都出现（即使暂无数据），方便前端下拉固定板块
+    for name, _ in LIST_CATEGORY_RULES:
+        category_map.setdefault(name, {
+            "listCount": 0, "orderCount": 0, "amount": 0.0,
+            "levels": {"P0": 0, "P1": 0, "P2": 0, "P3": 0},
+        })
+    categories = [
+        {
+            "name": name,
+            "listCount": c["listCount"],
+            "orderCount": c["orderCount"],
+            "amount": round(c["amount"], 2),
+            "amountText": money(c["amount"]),
+            "levels": c["levels"],
+        }
+        for name, c in category_map.items()
+    ]
+    cat_order = {name: i for i, (name, _) in enumerate(LIST_CATEGORY_RULES)}
+    categories.sort(key=lambda c: cat_order.get(c["name"], 99))
+
     summary = [
-        f"当前共有 {total} 条标有「紧急」的未采购订单/询价单，其中 {today} 条已超期或今天到期（P0）。",
+        f"当前共有 {len(lists)} 个采购清单、{total} 条标有「紧急」的未采购订单/询价单，其中 {today} 条已超期或今天到期（P0）。",
         f"已超期 {overdue} 条，平均等待 {avg_waiting} 天，涉及 {suppliers} 家供应商，合计金额 {money(amount_sum)}。",
         "数据只读展示：Odoo 中把采购单标记为紧急、或确认转成采购订单后，下一次刷新会自动更新。",
     ]
@@ -510,8 +681,11 @@ def build_urgent_orders(client):
             "amount": money(amount_sum),
             "suppliers": suppliers,
             "avgWaiting": avg_waiting,
+            "lists": len(lists),
         },
         "orders": items,
+        "lists": lists,
+        "categories": categories,
         "states": state_rows,
         "suppliers": supplier_rows,
         "summary": summary,

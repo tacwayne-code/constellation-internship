@@ -8,7 +8,7 @@
     <meta http-equiv="Expires" content="0" />
     <title>紧急采购看板</title>
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' fill='%2307111f'/%3E%3Cpath d='M12 44 28 14l24 36H18' fill='none' stroke='%2338bdf8' stroke-width='5' stroke-linejoin='round'/%3E%3Cpath d='M29 31h10M29 41h18' stroke='%2322c55e' stroke-width='5' stroke-linecap='round'/%3E%3C/svg%3E" />
-    <link rel="stylesheet" href="./styles.css?v=1786613111" />
+    <link rel="stylesheet" href="./styles.css?v=1787281317" />
   </head>
   <body>
     <main class="risk-shell">
@@ -17,27 +17,16 @@
           <span class="brand-mark" aria-hidden="true"></span>
           <div>
             <h1>紧急采购看板</h1>
-            <p>Odoo 中标有「紧急」且尚未转为采购订单的未采购数据，只读展示，不写回 ERP。</p>
           </div>
         </div>
 
         <div class="toolbar">
-          <label class="filter-control">
-            <span>等级</span>
-            <select id="levelFilter" aria-label="筛选风险等级">
-              <option value="all">全部紧急</option>
-              <option value="P0">P0 今天必须处理</option>
-              <option value="P1">P1 3 天内处理</option>
-              <option value="P2">P2 本周关注</option>
-              <option value="P3">P3 普通提醒</option>
-            </select>
-          </label>
           <label class="search-control">
             <span>搜索</span>
-            <input id="orderSearch" autocomplete="off" placeholder="单号 / 供应商 / 物料 / 采购员" />
+            <input id="orderSearch" autocomplete="off" placeholder="板块 / 清单 / 单号 / 供应商 / 物料" />
           </label>
           <button class="tool-button" id="refreshBtn" type="button" title="刷新数据">刷新</button>
-          <button class="tool-button help-button" id="helpBtn" type="button" title="使用说明">❓ 使用说明</button>
+          <button class="icon-button" id="helpBtn" type="button" title="使用说明" aria-label="使用说明">❓</button>
           <button class="icon-button" id="fullscreenBtn" type="button" title="全屏显示" aria-label="全屏显示">
             <svg viewBox="0 0 24 24" aria-hidden="true">
               <path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" />
@@ -69,7 +58,7 @@
 
           <section class="help-section">
             <h3>📊 这是什么</h3>
-            <p>一个<strong>只读</strong>驾驶舱，连接 Odoo ERP，只展示<strong>标有「紧急」且尚未转为采购订单（未采购）</strong>的采购单 / 询价单。打开看一眼就知道今天有哪些紧急采购需要处理。<strong>不会写回 Odoo，不会新增、修改、删除任何数据。</strong></p>
+            <p>一个<strong>只读</strong>驾驶舱，连接 Odoo ERP，只展示<strong>标有「紧急」且尚未转为采购订单（未采购）</strong>的采购单 / 询价单，并按<strong>采购清单</strong>（Odoo 采购单的「来源单据」字段）分组：先看清单，点进清单再看该清单下的各张采购单。<strong>不会写回 Odoo，不会新增、修改、删除任何数据。</strong></p>
           </section>
 
           <section class="help-section">
@@ -89,11 +78,11 @@
               <tr><th>区域</th><th>内容</th></tr>
               <tr><td>① 顶部命令栏</td><td>等级筛选 / 关键词搜索 / 刷新 / 使用说明 / 全屏</td></tr>
               <tr><td>② 状态条</td><td>连接状态 · 最后同步 · 数据覆盖 · 当前时间</td></tr>
-              <tr><td>③ 标题条</td><td>模块标题 + P0 ~ P3 各等级单数徽标 + 总数</td></tr>
-              <tr><td>④ 关键指标横排 (KPI)</td><td>紧急未采购总数 / 今日必须处理 / 已超期 / 待采购金额 / 涉及供应商 / 平均等待（6 张横向）</td></tr>
-              <tr><td>⑤ 色块墙（主视觉）</td><td>按优先级最高的紧急单填充的色块；点击展开 Odoo 明细</td></tr>
+              <tr><td>③ 标题条</td><td>模块标题 + 清单总数 + P0 ~ P3 各等级单数徽标 + 总数</td></tr>
+              <tr><td>④ 关键指标横排 (KPI)</td><td>采购清单数 / 紧急未采购总数 / 今日必须处理 / 已超期 / 待采购金额 / 涉及供应商（6 张横向）</td></tr>
+              <tr><td>⑤ 清单卡片墙（主视觉）</td><td>按「清单」聚合的卡片（清单名 / 采购单数 / 供应商数 / 金额 / 最高等级）；点击进入查看该清单下的采购单</td></tr>
               <tr><td>⑥ 右侧辅助栏</td><td>按金额排序的「供应商金额排行」</td></tr>
-              <tr><td>⑦ 明细表（整宽）</td><td>所有紧急未采购单的明细；可独立滚动；行内「展开明细」查看物料 / 数量 / 单价</td></tr>
+              <tr><td>⑦ 明细表（整宽）</td><td>采购单明细（含「清单」列）；可独立滚动；行内「展开明细」查看物料 / 数量 / 单价</td></tr>
             </table>
           </section>
 
@@ -158,19 +147,21 @@
           <section class="help-section">
             <h3>🔍 搜索与筛选</h3>
             <ul style="margin:0;padding-left:18px;line-height:1.7;">
-              <li>顶部「等级」下拉筛选（默认全部紧急）</li>
-              <li>搜索框模糊匹配<strong>单号 / 供应商 / 采购员 / 物料 / 状态 / 预计日期</strong>（不区分大小写、不区分空格）</li>
-              <li>筛选后色块墙、标题条徽标与明细表会同步刷新</li>
-              <li>色块墙底部「查看更多」可加载后续单子（默认每页 20 条）</li>
+              <li>标题条<strong>板块徽标</strong>（立体仓储 / RGV / 堆垛机）：点击按板块筛选，再点取消；板块按清单名关键词自动归类，可配置</li>
+              <li>标题条<strong>等级徽标</strong>（P0 / P1 / P2 / P3）：点击按等级筛选，再点取消</li>
+              <li>搜索框模糊匹配<strong>板块 / 清单 / 单号 / 供应商 / 采购员 / 物料 / 状态 / 预计日期</strong>（不区分大小写、不区分空格）</li>
+              <li>筛选后清单卡片墙、标题条徽标与明细表会同步刷新</li>
+              <li>清单卡片墙底部「查看更多」可加载后续清单（默认每页 20 条）</li>
             </ul>
           </section>
 
           <section class="help-section">
             <h3>🖱️ 交互操作</h3>
             <ul style="margin:0;padding-left:18px;line-height:1.7;">
-              <li>点击色块：选中该单并展开「Odoo 依据」物料明细；再次点击收起</li>
+              <li>点击<strong>清单卡片</strong>：进入该清单，展示其下的各张采购单色块；点「← 返回全部清单」退回清单列表</li>
+              <li>点击<strong>采购单色块</strong>：弹出该单详情（基础字段 + 物料明细 + 处理原因）；再次点击收起</li>
               <li>明细表行「展开明细」按钮：查看该单完整的物料 / 数量 / 已收数量 / 单价 / 单位</li>
-              <li>点击 KPI 卡等级徽标 / 色块墙底部「P0 4」徽标：快速按等级筛选</li>
+              <li>点击标题条<strong>板块 / 等级徽标</strong>：快速按板块或等级筛选</li>
               <li>右上角全屏按钮 ⛶：进入 / 退出全屏，适合大屏监控</li>
               <li>所有操作<strong>只读</strong>，<strong>不会</strong>写回 Odoo</li>
             </ul>
@@ -191,6 +182,6 @@
     </div>
 
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
-    <script src="./app.js?v=1786613111"></script>
+    <script src="./app.js?v=1787281317"></script>
   </body>
 </html>

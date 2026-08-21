@@ -30,10 +30,12 @@ const DATA_REFRESH_MS = 180000;
 
 let rawData = structuredClone(fallbackData);
 let levelFilter = "all";
+let categoryFilter = "all";
 let searchTerm = "";
 let expandedOrderId = "";
 let selectedOrderId = "";
 let displayLimit = 20;
+let activeListName = "";
 let lastDashboardError = "";
 let refreshingDashboard = false;
 
@@ -50,6 +52,9 @@ function buildDemoData() {
   const mk = (item) => ({
     id: item.id,
     name: item.name,
+    origin: item.origin || "",
+    list: item.list || "",
+    category: item.category || "",
     supplier: item.supplier,
     buyer: item.buyer,
     amount: item.amount,
@@ -71,13 +76,13 @@ function buildDemoData() {
     lines: item.materials.map((product) => ({ product, qty: 1, received: 0, remaining: 1, price: 0, uom: "pcs", state: "draft" }))
   });
   const orders = [
-    { id: 342, name: "P00342", supplier: "[P00202] 淘宝电商公司", buyer: "杨艳桢", amount: 452.9, state: "draft", stateText: "询价单", orderOffset: -18, plannedOffset: -18, waiting: 18, overdue: 18, planned: 0, level: "P0", materials: ["[P01352] 3分牙12厘接头"] },
-    { id: 341, name: "P00341", supplier: "[P00260] 华南精密传动有限公司", buyer: "采购员C", amount: 16200, state: "sent", stateText: "已发送", orderOffset: -12, plannedOffset: -9, waiting: 12, overdue: 9, planned: 0, level: "P0", materials: ["[P06018] 直线导轨滑块", "[P06035] 轴承座组件"] },
-    { id: 320, name: "P00320", supplier: "[P00255] 奥陶纪光电有限公司", buyer: "采购员A", amount: 12800, state: "sent", stateText: "已发送", orderOffset: -10, plannedOffset: -7, waiting: 10, overdue: 7, planned: 0, level: "P0", materials: ["[P02084] 光纤传感器"] },
-    { id: 318, name: "P00318", supplier: "[P00123] 东莞市奥威自动化设备有限公司", buyer: "采购员B", amount: 8600, state: "draft", stateText: "询价单", orderOffset: -8, plannedOffset: -2, waiting: 8, overdue: 2, planned: 0, level: "P0", materials: ["[P02155] 节流阀"] },
-    { id: 330, name: "P00330", supplier: "[P00261] 长三角工业备件有限公司", buyer: "采购员D", amount: 21500, state: "draft", stateText: "询价单", orderOffset: -6, plannedOffset: 2, waiting: 6, overdue: 0, planned: 2, level: "P1", materials: ["[P03001] 伺服线缆", "[P03005] 伺服驱动风扇"] },
-    { id: 326, name: "P00326", supplier: "[P00262] 南方机电配件有限公司", buyer: "采购员E", amount: 6900, state: "sent", stateText: "已发送", orderOffset: -5, plannedOffset: 5, waiting: 5, overdue: 0, planned: 5, level: "P2", materials: ["[P04021] 真空发生器"] },
-    { id: 322, name: "P00322", supplier: "[P00263] 中科精密五金有限公司", buyer: "采购员F", amount: 3200, state: "to approve", stateText: "待审批", orderOffset: -4, plannedOffset: 9, waiting: 4, overdue: 0, planned: 9, level: "P3", materials: ["[P06056] 伺服驱动风扇"] }
+    { id: 342, name: "P00342", origin: "清单:150KG堆垛机电气清单", list: "150KG堆垛机电气清单", category: "堆垛机", supplier: "[P00202] 淘宝电商公司", buyer: "杨艳桢", amount: 452.9, state: "draft", stateText: "询价单", orderOffset: -18, plannedOffset: -18, waiting: 18, overdue: 18, planned: 0, level: "P0", materials: ["[P01352] 3分牙12厘接头"] },
+    { id: 341, name: "P00341", origin: "清单:150KG堆垛机电气清单", list: "150KG堆垛机电气清单", category: "堆垛机", supplier: "[P00260] 华南精密传动有限公司", buyer: "采购员C", amount: 16200, state: "sent", stateText: "已发送", orderOffset: -12, plannedOffset: -9, waiting: 12, overdue: 9, planned: 0, level: "P0", materials: ["[P06018] 直线导轨滑块", "[P06035] 轴承座组件"] },
+    { id: 320, name: "P00320", origin: "清单:150KG堆垛机电气清单", list: "150KG堆垛机电气清单", category: "堆垛机", supplier: "[P00255] 奥陶纪光电有限公司", buyer: "采购员A", amount: 12800, state: "sent", stateText: "已发送", orderOffset: -10, plannedOffset: -7, waiting: 10, overdue: 7, planned: 0, level: "P0", materials: ["[P02084] 光纤传感器"] },
+    { id: 318, name: "P00318", origin: "清单:150KG堆垛机电气清单", list: "150KG堆垛机电气清单", category: "堆垛机", supplier: "[P00123] 东莞市奥威自动化设备有限公司", buyer: "采购员B", amount: 8600, state: "draft", stateText: "询价单", orderOffset: -8, plannedOffset: -2, waiting: 8, overdue: 2, planned: 0, level: "P0", materials: ["[P02155] 节流阀"] },
+    { id: 330, name: "P00330", origin: "清单:RGV天地轨外购件清单", list: "RGV天地轨外购件清单", category: "RGV", supplier: "[P00261] 长三角工业备件有限公司", buyer: "采购员D", amount: 21500, state: "draft", stateText: "询价单", orderOffset: -6, plannedOffset: 2, waiting: 6, overdue: 0, planned: 2, level: "P1", materials: ["[P03001] 伺服线缆", "[P03005] 伺服驱动风扇"] },
+    { id: 326, name: "P00326", origin: "清单:RGV天地轨外购件清单", list: "RGV天地轨外购件清单", category: "RGV", supplier: "[P00262] 南方机电配件有限公司", buyer: "采购员E", amount: 6900, state: "sent", stateText: "已发送", orderOffset: -5, plannedOffset: 5, waiting: 5, overdue: 0, planned: 5, level: "P2", materials: ["[P04021] 真空发生器"] },
+    { id: 322, name: "P00322", origin: "清单:RGV天地轨外购件清单", list: "RGV天地轨外购件清单", category: "RGV", supplier: "[P00263] 中科精密五金有限公司", buyer: "采购员F", amount: 3200, state: "to approve", stateText: "待审批", orderOffset: -4, plannedOffset: 9, waiting: 4, overdue: 0, planned: 9, level: "P3", materials: ["[P06056] 伺服驱动风扇"] }
   ].map(mk);
   demo.kpis = {
     total: orders.length,
@@ -227,6 +232,82 @@ function parseMaterial(product) {
   };
 }
 
+// 取采购单所属「清单」名称：优先用后端算好的 list，缺失时从 origin 兜底解析
+function orderListName(order) {
+  if (order.list) return order.list;
+  const origin = String(order.origin || "").trim();
+  if (!origin) return "未关联清单";
+  const match = origin.match(/清单\s*[:：]\s*(.+)$/);
+  return match ? match[1].trim() : origin;
+}
+
+// 取采购单所属「板块」：优先用后端算好的 category；缺失时用清单名作为板块（自动生成新板块）
+function orderCategory(order) {
+  if (order.category) return order.category;
+  return orderListName(order) || "其他";
+}
+
+// 把采购单按「清单」聚合，返回排序后的清单分组（看板以清单为主展示）
+function groupOrdersByList(orders) {
+  const orderLevel = { P0: 0, P1: 1, P2: 2, P3: 3 };
+  const map = new Map();
+  (orders || []).forEach((order) => {
+    const name = orderListName(order);
+    if (!map.has(name)) {
+      map.set(name, {
+        name,
+        origin: order.origin || "",
+        category: orderCategory(order),
+        orderCount: 0,
+        amount: 0,
+        suppliers: new Set(),
+        levels: { P0: 0, P1: 0, P2: 0, P3: 0 },
+        maxDaysOverdue: 0,
+        minDaysToPlanned: null,
+        orderIds: []
+      });
+    }
+    const group = map.get(name);
+    group.orderCount += 1;
+    group.amount += Number(order.amount || 0);
+    if (order.supplier && order.supplier !== "-") group.suppliers.add(order.supplier);
+    group.levels[order.level] = (group.levels[order.level] || 0) + 1;
+    if ((order.daysOverdue || 0) > group.maxDaysOverdue) group.maxDaysOverdue = order.daysOverdue;
+    const dtp = order.daysToPlanned;
+    if (dtp != null && (group.minDaysToPlanned == null || dtp < group.minDaysToPlanned)) group.minDaysToPlanned = dtp;
+    group.orderIds.push(order.id);
+  });
+  const lists = [...map.values()].map((group) => {
+    const level = ["P0", "P1", "P2", "P3"].find((lv) => group.levels[lv] > 0) || "P3";
+    let urgentHint = "未设置预计日期";
+    if (group.maxDaysOverdue > 0) urgentHint = `最紧急：超期 ${group.maxDaysOverdue} 天`;
+    else if (group.minDaysToPlanned === 0) urgentHint = "最紧急：今天到期";
+    else if (group.minDaysToPlanned != null) urgentHint = `最紧急：${group.minDaysToPlanned} 天后到期`;
+    return {
+      name: group.name,
+      origin: group.origin,
+      category: group.category,
+      orderCount: group.orderCount,
+      amount: group.amount,
+      amountText: moneyText(group.amount),
+      supplierCount: group.suppliers.size,
+      level,
+      levels: group.levels,
+      maxDaysOverdue: group.maxDaysOverdue,
+      urgentHint,
+      orderIds: group.orderIds
+    };
+  });
+  lists.sort((a, b) => {
+    const la = orderLevel[a.level];
+    const lb = orderLevel[b.level];
+    if (la !== lb) return la - lb;
+    if (b.maxDaysOverdue !== a.maxDaysOverdue) return b.maxDaysOverdue - a.maxDaysOverdue;
+    return b.amount - a.amount;
+  });
+  return lists;
+}
+
 function materialListText(order) {
   const materials = order.materials || [];
   if (!materials.length) return "-";
@@ -302,9 +383,13 @@ function filteredOrders() {
   const orders = sortOrders(rawData.orders || []);
   return orders.filter((order) => {
     if (levelFilter !== "all" && order.level !== levelFilter) return false;
+    if (categoryFilter !== "all" && orderCategory(order) !== categoryFilter) return false;
     if (!term) return true;
     const haystack = normalizeSearch([
       order.name,
+      order.origin,
+      orderListName(order),
+      orderCategory(order),
       order.supplier,
       order.buyer,
       order.stateText,
@@ -338,30 +423,46 @@ function buildKpis(orders, data) {
   const total = orders.length;
   const today = orders.filter((o) => o.level === "P0").length;
   const overdue = orders.filter((o) => o.daysOverdue > 0).length;
+  const listCount = groupOrdersByList(orders).length;
   const kpis = data.kpis || {};
   return [
+    { label: "采购清单", value: listCount, note: "同一清单下可含多张采购单", level: today > 0 ? "P0" : "P3", accent: "purple" },
     { label: "紧急未采购订单", value: total, note: "标有「紧急」且未转采购单", level: today > 0 ? "P0" : "P3" },
     { label: "今天必须处理", value: today, note: "已超期或今天到期 (P0)", level: "P0" },
     { label: "已超期", value: overdue, note: "预计日期已过仍未处理", level: overdue > 0 ? "P0" : "P3" },
     { label: "待采购金额", value: kpis.amount || "¥0.00", note: "紧急未采购单合计金额", accent: "info" },
-    { label: "涉及供应商", value: kpis.suppliers || 0, note: "不同供应商数量", accent: "purple" },
-    { label: "平均等待", value: `${kpis.avgWaiting || 0} 天`, note: "下单至今平均天数", level: "P2" }
+    { label: "涉及供应商", value: kpis.suppliers || 0, note: "不同供应商数量", accent: "purple" }
   ];
 }
 
 function ScreenTitleStrip(orders, displayOrders) {
+  // 板块徽标：优先用后端 categories 顺序；兜底从订单聚合（只显示板块名，不显示数量）
+  const catNames = [...new Set([
+    ...(rawData.categories || []).map((c) => c.name),
+    ...orders.map((o) => orderCategory(o))
+  ])];
+  const catChips = catNames
+    .map((name) => {
+      const active = categoryFilter === name ? " active" : "";
+      return `<span class="title-chip cat-chip${active}" data-category="${escapeHTML(name)}" role="button" tabindex="0">${escapeHTML(name)}</span>`;
+    })
+    .join("");
   const levelChips = ["P0", "P1", "P2", "P3"]
     .map((level) => ({ level, count: orders.filter((o) => o.level === level).length }))
     .filter((item) => item.count > 0)
-    .map((item) => `<span class="${item.level === "P0" ? "hot" : ""}">${item.level} ${item.count}</span>`)
+    .map((item) => {
+      const hot = item.level === "P0" ? " hot" : "";
+      const active = levelFilter === item.level ? " active" : "";
+      return `<span class="title-chip level-chip${hot}${active}" data-level="${item.level}" role="button" tabindex="0">${item.level} ${item.count}</span>`;
+    })
     .join("");
   return `
     <section class="screen-title-strip">
       <div>
-        <h2>紧急未采购订单</h2>
-        <p>Odoo 中标有「紧急」且尚未转为采购订单的未采购数据，只读展示。</p>
+        <h2>紧急采购清单</h2>
       </div>
       <div class="screen-title-metrics">
+        ${catChips}
         ${levelChips}
         <span>共 ${displayOrders.length}/${orders.length}</span>
       </div>
@@ -422,6 +523,88 @@ function RiskTileWall(orders) {
   `;
 }
 
+function ListCard(listGroup, index) {
+  const meta = LEVEL_META[listGroup.level] || LEVEL_META.P3;
+  const levelDist = ["P0", "P1", "P2", "P3"]
+    .filter((lv) => (listGroup.levels[lv] || 0) > 0)
+    .map((lv) => `<span class="${lv.toLowerCase()}">${lv} ${listGroup.levels[lv]}</span>`)
+    .join("");
+  return `
+    <article class="list-card level-${listGroup.level.toLowerCase()}" data-list-name="${escapeHTML(listGroup.name)}" role="button" tabindex="0" style="--tile-color:${meta.color}">
+      <span class="tile-level">${listGroup.level}</span>
+      <span class="list-category">${escapeHTML(listGroup.category || "其他")}</span>
+      <span class="tile-rank">清单 #${String(index + 1).padStart(2, "0")}</span>
+      <strong>${escapeHTML(listGroup.name)}</strong>
+      <em class="tile-subject-note">${escapeHTML(shortText(listGroup.origin, 36))}</em>
+      <p>${escapeHTML(listGroup.urgentHint)}</p>
+      <div class="tile-metrics">
+        <i>采购单 ${listGroup.orderCount} 张</i>
+        <i>供应商 ${listGroup.supplierCount} 家</i>
+        <i>${escapeHTML(listGroup.amountText)}</i>
+      </div>
+      <div class="list-level-dist">${levelDist}</div>
+      <div class="list-card-enter">点击进入查看 ${listGroup.orderCount} 张采购单 →</div>
+    </article>
+  `;
+}
+
+function ListTileWall(orders) {
+  const groups = groupOrdersByList(orders);
+  // 钻取态：展示当前清单下的采购单
+  if (activeListName) {
+    const active = groups.find((g) => g.name === activeListName);
+    const listOrders = orders.filter((o) => orderListName(o) === activeListName);
+    return `
+      <section class="panel tile-wall-panel list-drill-panel">
+        <div class="panel-heading compact">
+          <div class="drill-head">
+            <button type="button" class="back-to-lists">← 返回全部清单</button>
+            <h3>${escapeHTML(active ? active.category + " · " : "")}清单：${escapeHTML(activeListName)}</h3>
+            <p>${escapeHTML(active ? active.urgentHint : "")}｜共 ${listOrders.length} 张采购单</p>
+          </div>
+          <div class="wall-stats">
+            ${active ? `<span>采购单 ${active.orderCount}</span><span>金额 ${escapeHTML(active.amountText)}</span><span>供应商 ${active.supplierCount}</span>` : ""}
+          </div>
+        </div>
+        <div class="risk-tile-wall">
+          ${listOrders.length ? listOrders.map((order, index) => RiskTile(order, index)).join("") : `<div class="empty-state">该清单下暂无采购单。</div>`}
+        </div>
+        <div class="wall-footer">
+          <p class="wall-hint">点击采购单色块查看明细；点「在 Odoo 打开」跳转到对应单据。</p>
+        </div>
+      </section>
+    `;
+  }
+  const list = groups.slice(0, displayLimit);
+  return `
+    <section class="panel tile-wall-panel">
+      <div class="panel-heading compact">
+        <div>
+          <h3>采购清单</h3>
+          <p>以同一清单为主展示；点击清单进入查看其下采购单${categoryFilter !== "all" ? "｜板块：" + escapeHTML(categoryFilter) : ""}｜${list.length} / ${groups.length}</p>
+        </div>
+        <div class="wall-stats">
+          <span>清单 ${groups.length}</span>
+          <span>采购单 ${orders.length}</span>
+        </div>
+      </div>
+      <div class="tile-legend" aria-label="紧急等级图例">
+        <span class="p0">P0 今日必须处理</span>
+        <span class="p1">P1 3天内处理</span>
+        <span class="p2">P2 本周关注</span>
+        <span class="p3">P3 普通提醒</span>
+      </div>
+      <div class="list-card-wall">
+        ${list.length ? list.map((listGroup, index) => ListCard(listGroup, index)).join("") : `<div class="empty-state">当前筛选下没有采购清单。</div>`}
+      </div>
+      <div class="wall-footer">
+        <p class="wall-hint">点击清单卡片查看该清单下的采购单；此看板只读，不写回 ERP。</p>
+        ${groups.length > list.length ? `<button class="show-more-tiles" type="button">查看更多清单（剩余 ${groups.length - list.length}）</button>` : ""}
+      </div>
+    </section>
+  `;
+}
+
 function RiskTopTable(orders) {
   const list = sortOrders(orders).slice(0, 60);
   if (!list.length) {
@@ -449,6 +632,8 @@ function RiskTopTable(orders) {
             <tr>
               <th>紧急等级</th>
               <th>单号</th>
+              <th>板块</th>
+              <th>清单</th>
               <th>供应商</th>
               <th>采购员</th>
               <th>物料</th>
@@ -466,6 +651,8 @@ function RiskTopTable(orders) {
               <tr class="risk-row level-${order.level.toLowerCase()} ${selected ? "selected" : ""}" data-order-id="${escapeHTML(order.id)}">
                 <td>${RiskLevelBadge(order.level)}</td>
                 <td><b>${escapeHTML(order.name)}</b><span>${escapeHTML(order.stateText)}</span></td>
+                <td><b>${escapeHTML(orderCategory(order))}</b></td>
+                <td><b>${escapeHTML(shortText(orderListName(order), 24))}</b></td>
                 <td><b>${escapeHTML(shortText(order.supplier, 26))}</b><span>${escapeHTML(order.buyer || "-")}</span></td>
                 <td>${escapeHTML(order.buyer || "-")}</td>
                 <td><b>${escapeHTML(shortText(materialListText(order), 30))}</b></td>
@@ -478,7 +665,7 @@ function RiskTopTable(orders) {
                 <td>${escapeHTML(order.stateText)}</td>
                 <td>${escapeHTML(order.amountText)}</td>
               </tr>
-              ${expanded ? `<tr class="expand-row"><td colspan="8">${evidenceDetails(order)}</td></tr>` : ""}
+              ${expanded ? `<tr class="expand-row"><td colspan="10">${evidenceDetails(order)}</td></tr>` : ""}
             `;
             }).join("")}
           </tbody>
@@ -582,20 +769,23 @@ function LevelBars(orders) {
 
 function UrgentDashboardLayout() {
   const orders = filteredOrders();
+  const traceOrders = activeListName
+    ? orders.filter((o) => orderListName(o) === activeListName)
+    : orders;
   return `
     <section class="factory-screen">
       ${ScreenTitleStrip(rawData.orders || [], orders)}
       <section class="screen-kpi-rail" aria-label="关键指标">
         ${buildKpis(rawData.orders || [], rawData).map((card) => RiskKpiCard(card)).join("")}
       </section>
-      <main class="wall-zone" aria-label="紧急未采购订单色块墙主视觉">
-        ${RiskTileWall(orders)}
+      <main class="wall-zone" aria-label="采购清单主视觉">
+        ${ListTileWall(orders)}
       </main>
       <aside class="side-stack" aria-label="辅助信息">
         ${SupplierRanking(rawData.suppliers || [])}
       </aside>
-      <section class="trace-dock" aria-label="紧急未采购订单明细区">
-        ${RiskTopTable(orders)}
+      <section class="trace-dock" aria-label="紧急采购单明细区">
+        ${RiskTopTable(traceOrders)}
       </section>
     </section>
   `;
@@ -604,6 +794,7 @@ function UrgentDashboardLayout() {
 function renderAll() {
   setHTML("#urgentLayout", UrgentDashboardLayout());
   updateLevelFilterOptions();
+  updateCategoryFilterOptions();
 }
 
 function updateLevelFilterOptions() {
@@ -629,6 +820,28 @@ function updateLevelFilterOptions() {
   if (levelFilter !== "all" && !counts[levelFilter]) levelFilter = "all";
   select.innerHTML = options.join("");
   select.value = levelFilter;
+}
+
+function updateCategoryFilterOptions() {
+  const select = $("#categoryFilter");
+  if (!select) return;
+  // 板块顺序：优先用后端 categories 的顺序；兜底从订单里聚合
+  const catList = (rawData.categories || []).map((c) => c.name);
+  const fromOrders = [...new Set((rawData.orders || []).map((o) => orderCategory(o)))];
+  const allNames = [...new Set([...catList, ...fromOrders])];
+  const counts = {};
+  (rawData.orders || []).forEach((o) => {
+    const c = orderCategory(o);
+    counts[c] = (counts[c] || 0) + 1;
+  });
+  const total = (rawData.orders || []).length;
+  const options = [
+    `<option value="all">全部板块（${total}）</option>`,
+    ...allNames.map((name) => `<option value="${escapeHTML(name)}">${escapeHTML(name)}（${counts[name] || 0}）</option>`)
+  ];
+  if (categoryFilter !== "all" && !allNames.includes(categoryFilter)) categoryFilter = "all";
+  select.innerHTML = options.join("");
+  select.value = categoryFilter;
 }
 
 function setConnection(ok, meta = {}) {
@@ -673,6 +886,12 @@ async function loadRealDashboard(nocache = false) {
       selectedOrderId = "";
       expandedOrderId = "";
     }
+    if (activeListName && !(rawData.orders || []).some((o) => orderListName(o) === activeListName)) {
+      activeListName = "";
+    }
+    if (categoryFilter !== "all" && !(rawData.orders || []).some((o) => orderCategory(o) === categoryFilter)) {
+      categoryFilter = "all";
+    }
     renderAll();
     setConnection(true, rawData.meta);
     return true;
@@ -685,6 +904,12 @@ async function loadRealDashboard(nocache = false) {
     if (!(rawData.orders || []).some((o) => String(o.id) === String(selectedOrderId))) {
       selectedOrderId = "";
       expandedOrderId = "";
+    }
+    if (activeListName && !(rawData.orders || []).some((o) => orderListName(o) === activeListName)) {
+      activeListName = "";
+    }
+    if (categoryFilter !== "all" && !(rawData.orders || []).some((o) => orderCategory(o) === categoryFilter)) {
+      categoryFilter = "all";
     }
     renderAll();
     setConnection(false, rawData.meta);
@@ -703,6 +928,8 @@ function orderDetailHTML(order) {
   const fields = [
     ["紧急等级", order.level + " · " + meta.text],
     ["单号", order.name],
+    ["板块", orderCategory(order)],
+    ["清单", orderListName(order)],
     ["供应商", order.supplier],
     ["采购员", order.buyer || "-"],
     ["状态", order.stateText],
@@ -774,12 +1001,22 @@ function bindControls() {
   $("#levelFilter")?.addEventListener("change", (event) => {
     levelFilter = event.target.value;
     displayLimit = 20;
+    activeListName = "";
+    selectedOrderId = "";
+    expandedOrderId = "";
+    renderAll();
+  });
+  $("#categoryFilter")?.addEventListener("change", (event) => {
+    categoryFilter = event.target.value;
+    displayLimit = 20;
+    activeListName = "";
     selectedOrderId = "";
     expandedOrderId = "";
     renderAll();
   });  $("#orderSearch")?.addEventListener("input", (event) => {
     searchTerm = event.target.value;
     displayLimit = 20;
+    activeListName = "";
     selectedOrderId = "";
     expandedOrderId = "";
     renderAll();
@@ -816,9 +1053,53 @@ function bindControls() {
       return;
     }
 
+    const levelChip = event.target.closest(".level-chip");
+    if (levelChip) {
+      const level = levelChip.dataset.level;
+      levelFilter = levelFilter === level ? "all" : level;
+      displayLimit = 20;
+      activeListName = "";
+      selectedOrderId = "";
+      expandedOrderId = "";
+      renderAll();
+      return;
+    }
+
+    const catChip = event.target.closest(".cat-chip");
+    if (catChip) {
+      const category = catChip.dataset.category;
+      categoryFilter = categoryFilter === category ? "all" : category;
+      displayLimit = 20;
+      activeListName = "";
+      selectedOrderId = "";
+      expandedOrderId = "";
+      renderAll();
+      return;
+    }
+
     const showMore = event.target.closest(".show-more-tiles");
     if (showMore) {
       displayLimit += 20;
+      renderAll();
+      return;
+    }
+
+    const backBtn = event.target.closest(".back-to-lists");
+    if (backBtn) {
+      activeListName = "";
+      displayLimit = 20;
+      selectedOrderId = "";
+      expandedOrderId = "";
+      renderAll();
+      return;
+    }
+
+    const listCard = event.target.closest(".list-card");
+    if (listCard) {
+      activeListName = listCard.dataset.listName;
+      displayLimit = 20;
+      selectedOrderId = "";
+      expandedOrderId = "";
       renderAll();
       return;
     }
