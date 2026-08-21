@@ -145,5 +145,94 @@ class WorkorderProgressTests(unittest.TestCase):
         self.assertNotIn({"state": "done"}, client.stock_move_writes)
 
 
+class WorkorderBomTests(unittest.TestCase):
+    def test_custom_assembly_code_uses_workorder_bom_when_flag_is_missing(self):
+        operation = {
+            "code": "worker_assembly_custom_0f0cb3b8592d0eef",
+            "name": "分度盘结构组装",
+            "requiresBom": False,
+        }
+        self.assertTrue(server._operation_requires_workorder_bom(operation))
+        self.assertTrue(server._should_use_workorder_bom(operation, {"productClass": "host"}))
+        self.assertTrue(server._should_fail_workorder_bom_lookup(operation, "tape"))
+
+    def test_component_operation_matches_product_component_when_bom_operation_id_differs(self):
+        class Client:
+            def read(self, model, ids, fields):
+                if model == "mrp.workorder":
+                    return [{
+                        "id": 144,
+                        "production_id": [51, "WH/MO-OUT/00051"],
+                        "product_id": [100, "[P04725] 编带机"],
+                        "name": "分度盘结构组装",
+                        "operation_id": [123, "分度盘结构组装"],
+                    }]
+                if model == "mrp.production":
+                    return [{
+                        "id": 51,
+                        "name": "WH/MO-OUT/00051",
+                        "product_id": [100, "[P04725] 编带机"],
+                        "product_qty": 20,
+                        "bom_id": [500, "编带机 BOM"],
+                        "location_src_id": [17, "WH/生产前"],
+                    }]
+                if model == "product.product":
+                    return [
+                        {
+                            "id": 200,
+                            "default_code": "P01384",
+                            "name": "[P01384] 编带机分度盘",
+                            "product_tmpl_id": [220, "编带机分度盘"],
+                            "categ_id": [1, "物料"],
+                            "uom_id": [1, "pcs"],
+                        },
+                        {
+                            "id": 201,
+                            "default_code": "P05346",
+                            "name": "[P05346] CPU",
+                            "product_tmpl_id": [221, "CPU"],
+                            "categ_id": [1, "物料"],
+                            "uom_id": [1, "pcs"],
+                        },
+                    ]
+                if model == "product.template":
+                    return []
+                return []
+
+            def search_read(self, model, domain, fields, **kwargs):
+                if model == "mrp.bom.line":
+                    return [
+                        {
+                            "id": 9001,
+                            "product_id": [200, "[P01384] 编带机分度盘"],
+                            "product_qty": 1,
+                            "product_uom_id": [1, "pcs"],
+                            "sequence": 1,
+                            "operation_id": [999, "总装"],
+                        },
+                        {
+                            "id": 9002,
+                            "product_id": [201, "[P05346] CPU"],
+                            "product_qty": 1,
+                            "product_uom_id": [1, "pcs"],
+                            "sequence": 2,
+                            "operation_id": [999, "总装"],
+                        },
+                    ]
+                if model == "stock.quant":
+                    return []
+                return []
+
+        operation = {
+            "code": "worker_assembly_custom_divider",
+            "name": "分度盘结构组装",
+            "requiresBom": True,
+        }
+        with patch.object(server, "get_odoo", return_value=Client()):
+            context = server.get_workorder_bom_data(144, operation)
+
+        self.assertEqual([item["defaultCode"] for item in context["items"]], ["P01384"])
+
+
 if __name__ == "__main__":
     unittest.main()

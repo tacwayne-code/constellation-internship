@@ -526,6 +526,7 @@ function workorderMatchesSelectedOperation(workorder) {
 function operationRequiresBom(operation = S.selectedOperation) {
   return !!(operation && (
     operation.requiresBom ||
+    String(operation.code || "").startsWith("worker_assembly_custom_") ||
     ((operation.productClass === "machine" || operation.productClass === "host") &&
       operation.name === "组装")
   ));
@@ -699,7 +700,10 @@ async function openBomModal(nocache = false) {
   }
 
   // 设置标题
-  const operationBom = !!(S.selectedOperation && S.selectedOperation.requiresBom);
+  const operationBom = !!(S.selectedOperation && (
+    S.selectedOperation.requiresBom ||
+    String(S.selectedOperation.code || "").startsWith("worker_assembly_custom_")
+  ));
   $("#bomHostType").textContent = operationBom
     ? (S.selectedOperation.name || "当前工序") + " BOM"
     : machineAssembly

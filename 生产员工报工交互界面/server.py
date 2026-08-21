@@ -2141,12 +2141,9 @@ def get_workorder_bom_data(workorder_id, operation=None):
             limit=500, order="sequence asc, id asc",
         )
 
-    operation_requires_bom = bool(operation and operation.get("requiresBom"))
+    operation_requires_bom = _operation_requires_workorder_bom(operation)
     operation_filter_id = rel_id(wo.get("operation_id")) if operation_requires_bom else None
-    line_operation_ids = [rel_id(line.get("operation_id")) for line in lines]
-    operation_name_fallback = operation_requires_bom and (
-        not operation_filter_id or not any(line_operation_ids)
-    )
+    operation_name_fallback = False
     if operation_requires_bom and operation_filter_id:
         operation_lines = [
             line for line in lines
@@ -2154,8 +2151,12 @@ def get_workorder_bom_data(workorder_id, operation=None):
         ]
         if operation_lines:
             lines = operation_lines
-        elif any(rel_id(line.get("operation_id")) for line in lines):
-            raise ValueError("该组装工序在 BOM 中未配置对应物料")
+        else:
+            # BOM lines in Odoo may not carry the selected WO operation_id.
+            # Keep the complete MO BOM for semantic product-name matching.
+            operation_name_fallback = True
+    elif operation_requires_bom:
+        operation_name_fallback = True
     product_ids = sorted({rel_id(line.get("product_id")) for line in lines if rel_id(line.get("product_id"))})
     products = {}
     if product_ids:
@@ -2167,14 +2168,27 @@ def get_workorder_bom_data(workorder_id, operation=None):
 
     if operation_name_fallback:
         operation_name = str(operation.get("name", "")).strip()
-        keyword = operation_name[:-2].strip() if operation_name.endswith("组装") else operation_name
-        if not keyword:
+        keywords = []
+        for suffix in ("组装", "结构"):
+            if operation_name.endswith(suffix):
+                operation_name = operation_name[:-len(suffix)].strip()
+        if operation_name:
+            keywords.append(operation_name.casefold())
+        # “分度盘结构组装” maps to products such as “编带机分度盘”.
+        # Match the meaningful component term after removing routing words.
+        if operation_name.endswith("结构"):
+            operation_name = operation_name[:-2].strip()
+        if operation_name and operation_name.casefold() not in keywords:
+            keywords.append(operation_name.casefold())
+        if not keywords:
             raise ValueError("该组装工序缺少物料匹配名称")
-        keyword = keyword.casefold()
         lines = [
             line for line in lines
-            if keyword in clean_name(products.get(rel_id(line.get("product_id")), {}).get("name", "")).casefold()
-            or keyword in str(products.get(rel_id(line.get("product_id")), {}).get("default_code", "")).casefold()
+            if any(
+                keyword in clean_name(products.get(rel_id(line.get("product_id")), {}).get("name", "")).casefold()
+                or keyword in str(products.get(rel_id(line.get("product_id")), {}).get("default_code", "")).casefold()
+                for keyword in keywords
+            )
         ]
         if not lines:
             raise ValueError("该组装工序在 BOM 中未找到对应物料")
@@ -2241,14 +2255,23 @@ def get_workorder_bom_data(workorder_id, operation=None):
 
 def _should_use_workorder_bom(operation, context):
     """Use the selected WO BOM for every explicitly BOM-routed operation."""
-    return bool(operation and operation.get("requiresBom")) or (
+    return _operation_requires_workorder_bom(operation) or (
         isinstance(context, dict) and context.get("productClass") == "machine"
     )
 
 
 def _should_fail_workorder_bom_lookup(operation, host_type):
     """Custom BOM routes fail closed instead of falling back to host BOM."""
-    return bool(operation and operation.get("requiresBom")) or host_type not in ("tape", "splitter")
+    return _operation_requires_workorder_bom(operation) or host_type not in ("tape", "splitter")
+
+
+def _operation_requires_workorder_bom(operation):
+    """Recognize custom assembly routes even when an older session lacks the flag."""
+    if not isinstance(operation, dict):
+        return False
+    return bool(operation.get("requiresBom")) or str(operation.get("code", "")).startswith(
+        "worker_assembly_custom_"
+    )
 
 
 def models_query_tmpl_by_code(client, default_code):
@@ -3765,7 +3788,7 @@ class Handler(SimpleHTTPRequestHandler):
                 }, status=HTTPStatus.FORBIDDEN)
                 return
             machine_operation = False
-            assembly_operation = bool(op_info.get("requiresBom"))
+            assembly_operation = _operation_requires_workorder_bom(op_info)
             machine_assembly = False
             if mode == "real":
                 workorder_view = {
