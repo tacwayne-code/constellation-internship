@@ -37,6 +37,21 @@ def _ref_name(ref) -> str:
     return str(ref) if ref else "—"
 
 
+# ---- 物流分类：标准件 vs 加工周期件（按产品分类关键词） ----
+_STANDARD_KW = ("标准件", "螺丝", "螺母", "垫圈", "卡簧", "销钉", "轴承", "平垫", "弹垫", "顶丝", "接头", "端子", "紧固", "弹簧")
+_MACHINED_KW = ("加工", "非标", "定制", "CNC", "钣金", "成套", "焊接", "机加", "铸", "锻")
+_TRANSIT_DELAY_DAYS = 2  # 标准件「已发出」后允许的物流延迟（天）
+
+
+def _material_type(categ_name: str) -> str:
+    """物料类型：standard(标准件) / machined(加工周期件) / other(其他)"""
+    if any(k in categ_name for k in _STANDARD_KW):
+        return "standard"
+    if any(k in categ_name for k in _MACHINED_KW):
+        return "machined"
+    return "other"
+
+
 async def analyze_delivery(client: OdooClient, so_id: int) -> dict[str, Any]:
     """按销售订单做交付日期估算。返回含 materials / eta_summary / estimated_delivery。"""
     sos = await client.search_read(MODEL_SALE_ORDER, [["id", "=", so_id]], FIELDS_SALE_ORDER)
@@ -106,7 +121,7 @@ async def analyze_delivery(client: OdooClient, so_id: int) -> dict[str, Any]:
     pids = list(demands.keys())
     stocks = await client.search_read(
         "product.product", [["id", "in", pids]],
-        ["id", "name", "default_code", "qty_available", "product_tmpl_id"], limit=None,
+        ["id", "name", "default_code", "qty_available", "product_tmpl_id", "categ_id"], limit=None,
     )
     stock_map = {s["id"]: s for s in stocks}
 
@@ -135,6 +150,19 @@ async def analyze_delivery(client: OdooClient, so_id: int) -> dict[str, Any]:
             } for p in pos
         }
 
+    # ── 4.5 采购收货物流：按 PO origin 拉 picking（单号/状态/计划到货/完成时间） ──
+    pick_map: dict[str, list[dict]] = {}
+    if po_ids:
+        po_names = [po_map[i] for i in po_ids if i in po_map]
+        picks = await client.search_read(
+            "stock.picking",
+            [["origin", "in", po_names], ["picking_type_id", "!=", False]],
+            ["id", "name", "origin", "state", "scheduled_date", "carrier_tracking_ref", "date_done"],
+            limit=None,
+        )
+        for pk in picks:
+            pick_map.setdefault(pk.get("origin") or "", []).append(pk)
+
     # ── 5. 逐件计算（只在途 = 未收完的 PO 行） ──
     materials = []
     for pid, demand in sorted(demands.items(), key=lambda x: -x[1]):
@@ -148,8 +176,34 @@ async def analyze_delivery(client: OdooClient, so_id: int) -> dict[str, Any]:
             and (l.get("product_qty") or 0) - (l.get("qty_received") or 0) > 0
         ]
         in_transit = sum((l.get("product_qty") or 0) - (l.get("qty_received") or 0) for l in open_lines)
+        # 关联采购收货物流（按 PO origin）
+        rel_picks: list[dict] = []
+        for l in open_lines:
+            o = po_map.get(_ref_id(l.get("order_id")))
+            if o:
+                rel_picks.extend(pick_map.get(o, []))
+        # 物料类型（标准件/加工周期件）+ 物流单号
+        categ_name = _ref_name(s.get("categ_id"))
+        mtype = _material_type(categ_name)
+        tracking_refs = sorted({pk.get("carrier_tracking_ref") for pk in rel_picks if pk.get("carrier_tracking_ref")})
+        # ── 动态 ETA：标准件按物流状态推算，加工周期件用预计交付时间 ──
         etas = [l.get("date_planned") for l in open_lines if l.get("date_planned")]
-        eta = max(etas)[:10] if etas else None
+        base_eta = max(etas)[:10] if etas else None
+        eta = base_eta
+        logistics_note = ""
+        if mtype == "standard" and rel_picks:
+            done_picks = [pk for pk in rel_picks if pk.get("state") == "done"]
+            shipped_picks = [pk for pk in rel_picks if pk.get("state") in ("assigned", "confirmed")]
+            if done_picks:
+                done_dates = [(pk.get("date_done") or "")[:10] for pk in done_picks if pk.get("date_done")]
+                if done_dates:
+                    eta = max(done_dates)
+                    logistics_note = "已到货"
+            elif shipped_picks:
+                from datetime import date as _date, timedelta as _td
+
+                eta = (_date.today() + _td(days=_TRANSIT_DELAY_DAYS)).isoformat()
+                logistics_note = f"已发出·+{_TRANSIT_DELAY_DAYS}天"
         on_order = sorted({
             po_map[_ref_id(l.get("order_id"))] for l in open_lines
             if _ref_id(l.get("order_id")) in po_map
@@ -192,6 +246,9 @@ async def analyze_delivery(client: OdooClient, so_id: int) -> dict[str, Any]:
             "product_tmpl_id": _ref_id(s.get("product_tmpl_id")),
             "product": s.get("name") or f"P{pid}",
             "role": roles.get(pid, ""),
+            "material_type": mtype,
+            "logistics_note": logistics_note,
+            "tracking_refs": tracking_refs,
             "demand": demand,
             "available": available,
             "in_transit": in_transit,
@@ -208,25 +265,19 @@ async def analyze_delivery(client: OdooClient, so_id: int) -> dict[str, Any]:
         })
 
     # ── 5.5 物流同步：配件相关采购收货物流（incoming picking）状态回写配件 ──
-    po_names = sorted({n for m in materials for n in m.get("on_order", [])})
-    pick_map: dict[str, list[dict]] = {}
-    if po_names:
-        picks = await client.search_read(
-            "stock.picking",
-            [["origin", "in", po_names], ["picking_type_id", "!=", False]],
-            ["id", "name", "origin", "state", "scheduled_date", "carrier_id"],
-            limit=None,
-        )
-        for pk in picks:
-            origin = pk.get("origin") or ""
-            pick_map.setdefault(origin, []).append({
+    # ── 5.5 物流同步：配件状态回写（pick_map 已在上方按 PO origin 拉取） ──
+    for m in materials:
+        m["pickings"] = [
+            {
                 "name": pk.get("name"),
                 "state": pk.get("state"),
                 "scheduled_date": (pk.get("scheduled_date") or "")[:10],
                 "carrier": _ref_name(pk.get("carrier_id")),
-            })
-    for m in materials:
-        m["pickings"] = [pk for o in m.get("on_order", []) for pk in pick_map.get(o, [])]
+                "tracking_ref": pk.get("carrier_tracking_ref"),
+            }
+            for o in m.get("on_order", [])
+            for pk in pick_map.get(o, [])
+        ]
         # 在途采购 + 全部收货物流已完成 → 已到货（物流驱动配件状态）
         if m["status"] == "在途采购" and m["pickings"] and all(pk["state"] == "done" for pk in m["pickings"]):
             m["status"], m["status_tone"] = "已到货", "done"

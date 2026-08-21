@@ -160,6 +160,9 @@ interface DeliveryAnalysis {
   so: { name: string; state: string; commitment_date: string | null }
   materials: Array<{
     product: string; role: string
+    material_type: string
+    logistics_note: string
+    tracking_refs: string[]
     demand: number; available: number; in_transit: number; gap: number
     need_purchase: boolean
     has_existing_po: boolean
@@ -172,7 +175,7 @@ interface DeliveryAnalysis {
     eta: string | null; eta_source: string
     status: string; status_tone: string
     on_order: string[]
-    pickings: Array<{ name: string; state: string; scheduled_date: string; carrier: string }>
+    pickings: Array<{ name: string; state: string; scheduled_date: string; carrier: string; tracking_ref: string | null }>
   }>
   eta_summary: {
     total: number; gap_count: number
@@ -185,6 +188,19 @@ interface DeliveryAnalysis {
     date: string | null; source: string
     commitment_date: string | null; overdue_days: number; risk: 'high' | 'mid' | 'ok'
   }
+}
+
+interface DeliveryOverview {
+  stats: { total: number; overdue: number; urgent: number; unfinished: number }
+  overdue_orders: Array<{
+    id: number; name: string; partner: string; state: string
+    commitment_date: string; overdue_days: number; is_emergency: boolean
+    po_count: number; mo_count: number
+  }>
+  urgent_orders: Array<{
+    id: number; name: string; partner: string; state: string
+    po_count: number; po_urgent: number; mo_count: number; mo_urgent: number
+  }>
 }
 
 interface UrgentVendorOption {
@@ -252,6 +268,20 @@ const st = (map: Record<string, [string, Tone]>, key?: string | null): [string, 
 
 const fmtDate = (d?: string | null) => (d ? d.slice(0, 10) : '—')
 const fmtMoney = (n?: number | null) => (n == null ? '—' : `¥${Number(n).toLocaleString('zh-CN', { maximumFractionDigits: 2 })}`)
+
+/** 逾期天数：承诺交期已过且未完成 → 正数（逾期 N 天）；否则 0 */
+const overdueDaysOf = (s: { commitment_date: string | null; state: string }): number => {
+  if (!s.commitment_date || s.state === 'done' || s.state === 'cancel') return 0
+  try {
+    const d = new Date(s.commitment_date.slice(0, 10))
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+    const diff = Math.floor((today.getTime() - d.getTime()) / 86400000)
+    return diff > 0 ? diff : 0
+  } catch {
+    return 0
+  }
+}
 
 /** 紧急 → red，其余按状态 tone */
 const urgentTone = (isUrgent: boolean, base: Tone): Tone => (isUrgent ? 'red' : base)
@@ -874,7 +904,19 @@ function DeliveryAnalysis({ soId }: { soId: number }) {
                               <td style={{ padding: '6px 4px', textAlign: 'right' }}>{Number(m.available).toLocaleString()}</td>
                               <td style={{ padding: '6px 4px', textAlign: 'right' }}>{Number(m.in_transit).toLocaleString()}</td>
                               <td style={{ padding: '6px 14px 6px 4px', textAlign: 'right', color: gap > 0 ? 'var(--red)' : (gap < 0 ? 'var(--green)' : undefined), fontWeight: gap !== 0 ? 600 : undefined }}>{gap.toLocaleString()}</td>
-                              <td style={{ padding: '6px 4px 6px 14px', whiteSpace: 'nowrap' }}>{m.eta || '—'}</td>
+                              <td style={{ padding: '6px 4px 6px 14px', whiteSpace: 'nowrap' }}>
+                                <div>{m.eta || '—'}</div>
+                                {m.logistics_note && <div style={{ fontSize: 11, color: 'var(--green)', fontWeight: 500 }}>{m.logistics_note}</div>}
+                                {m.tracking_refs && m.tracking_refs.length > 0 && (
+                                  <div style={{ fontSize: 11, color: 'var(--color-text-tertiary)' }}>单号 {m.tracking_refs.join('/')}</div>
+                                )}
+                                {!m.logistics_note && m.material_type === 'standard' && (
+                                  <div style={{ fontSize: 11, color: 'var(--color-text-tertiary)' }}>标准件</div>
+                                )}
+                                {!m.logistics_note && m.material_type === 'machined' && (
+                                  <div style={{ fontSize: 11, color: 'var(--color-text-tertiary)' }}>加工件</div>
+                                )}
+                              </td>
                               <td style={{ padding: '6px 8px', maxWidth: 260, overflow: 'hidden' }}>
                                 {hasPo ? (
                                   <Tip text={hasPo ? buildPoTooltipText(m.existing_po_details) : ''} width={320}>
@@ -1209,6 +1251,11 @@ export function DeliveryTowerView() {
     queryFn: () => apiFetch<SaleRow[]>('/delivery-tower/sales?limit=200').then((r) => r.data),
     staleTime: 30_000,
   })
+  const deliveryOverviewQ = useQuery({
+    queryKey: ['delivery-overview'],
+    queryFn: () => apiFetch<DeliveryOverview>('/delivery-tower/delivery-overview').then((r) => r.data),
+    staleTime: 60_000,
+  })
 
   const sales = salesQ.data ?? []
 
@@ -1266,6 +1313,56 @@ export function DeliveryTowerView() {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
           {view === 'overview' ? (
             <>
+              <QueryView query={deliveryOverviewQ} empty={null}>
+                {(ov) => (
+                  <div className="panel">
+                    <div className="panel-header">
+                      <span className="panel-title">
+                        <Icon name="alert" size={16} style={{ color: 'var(--red)' } as React.CSSProperties} /> 交付风险总览
+                      </span>
+                      <span className="muted" style={{ fontSize: 12 }}>共 {ov.stats.total} 单</span>
+                    </div>
+                    <div style={{ display: 'flex', gap: 12, marginBottom: 14 }}>
+                      {[
+                        { label: '逾期订单', value: ov.stats.overdue, tone: 'red', icon: 'clock' },
+                        { label: '紧急订单', value: ov.stats.urgent, tone: 'orange', icon: 'alert' },
+                        { label: '未完成', value: ov.stats.unfinished, tone: 'blue', icon: 'factory' },
+                      ].map((k) => (
+                        <div className="kpi-card" key={k.label} style={{ flex: 1 }}>
+                          <div className={`kpi-icon ${k.tone}`}><Icon name={k.icon} size={16} /></div>
+                          <div className="kpi-copy">
+                            <div className="num" style={{ color: `var(--${k.tone})` }}>{k.value}</div>
+                            <div className="label">{k.label}</div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                    {ov.overdue_orders.length > 0 && (
+                      <div>
+                        <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--red)', marginBottom: 8 }}>逾期订单 · 点击查看详情</div>
+                        {ov.overdue_orders.slice(0, 5).map((o) => (
+                          <div key={o.id} className="chain-item" style={{ cursor: 'pointer' }} onClick={() => setSelectedSo(o.id)}>
+                            <div className="chain-item-head">
+                              <span className="chain-item-name">{o.name}</span>
+                              {o.is_emergency && <span className="urgent-badge">紧急</span>}
+                              <span className="chain-item-state" style={{ color: 'var(--red)' }}>逾期 {o.overdue_days} 天</span>
+                            </div>
+                            <div className="chain-item-meta">
+                              {o.partner} · 承诺交期 {fmtDate(o.commitment_date)}
+                              {o.po_count > 0 ? ` · 采购 ${o.po_count} 单` : ''}
+                              {o.mo_count > 0 ? ` · 生产 ${o.mo_count} 单` : ''}
+                            </div>
+                          </div>
+                        ))}
+                        {ov.stats.overdue > 5 && (
+                          <div className="muted" style={{ fontSize: 12, marginTop: 6 }}>… 共 {ov.stats.overdue} 单逾期，点「全部订单」查看</div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </QueryView>
+
               <div className="panel">
                 <div className="panel-header">
                   <span className="panel-title">销售订单分类 · 点击进入明细</span>
@@ -1333,6 +1430,7 @@ export function DeliveryTowerView() {
                       <th>订单号</th>
                       <th>客户</th>
                       <th>状态</th>
+                      <th>承诺交期</th>
                       <th>紧急</th>
                       <th>采购</th>
                       <th>生产</th>
@@ -1351,6 +1449,13 @@ export function DeliveryTowerView() {
                             <div className="cell-sub" style={{ fontSize: 12 }}>{fmtDate(s.date_order)}</div>
                           </td>
                           <td><StatusDot tone={tone} /> {label}</td>
+                          <td style={{ whiteSpace: 'nowrap' }}>
+                            {s.commitment_date
+                              ? (overdueDaysOf(s) > 0
+                                ? <span style={{ color: 'var(--red)', fontWeight: 600 }}>{fmtDate(s.commitment_date)} · 逾期{overdueDaysOf(s)}天</span>
+                                : <span>{fmtDate(s.commitment_date)}</span>)
+                              : <span className="muted" style={{ fontSize: 12 }}>—</span>}
+                          </td>
                           <td>
                             {s.is_emergency
                               ? <span className="urgent-badge">紧急</span>

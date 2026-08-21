@@ -50,6 +50,60 @@ async def sales_overview(
     return rows
 
 
+@router.get("/delivery-overview")
+async def delivery_overview(
+    client: ClientDep,
+    resp: Response,
+    limit: int = Query(500, ge=1, le=1000),
+):
+    """跨订单交付风险总览：逾期 / 紧急 / 未完成聚合（轻量，复用 sales overview，不做 BOM 齐套）"""
+    from datetime import date
+
+    rows = await get_sales_overview(client, limit=limit)
+    today = date.today()
+
+    overdue: list[dict] = []
+    urgent: list[dict] = []
+    unfinished: list[dict] = []
+    for s in rows:
+        state = s.get("state")
+        if state in ("done", "cancel"):
+            continue
+        unfinished.append(s)
+        if s.get("is_emergency"):
+            urgent.append(s)
+        cd = s.get("commitment_date")
+        if cd:
+            try:
+                d = date.fromisoformat(str(cd)[:10])
+                od = (today - d).days
+                if od > 0:
+                    overdue.append({"id": s["id"], "name": s["name"], "partner": s["partner"],
+                                    "state": state, "commitment_date": str(cd)[:10],
+                                    "overdue_days": od, "is_emergency": s.get("is_emergency"),
+                                    "po_count": s.get("po_count"), "mo_count": s.get("mo_count")})
+            except ValueError:
+                pass
+    overdue.sort(key=lambda x: -x["overdue_days"])
+
+    resp.headers["X-Data-Source"] = "odoo"
+    return {
+        "stats": {
+            "total": len(rows),
+            "overdue": len(overdue),
+            "urgent": len(urgent),
+            "unfinished": len(unfinished),
+        },
+        "overdue_orders": overdue[:20],
+        "urgent_orders": [
+            {"id": s["id"], "name": s["name"], "partner": s["partner"], "state": s["state"],
+             "po_count": s.get("po_count"), "po_urgent": s.get("po_urgent"),
+             "mo_count": s.get("mo_count"), "mo_urgent": s.get("mo_urgent")}
+            for s in urgent[:20]
+        ],
+    }
+
+
 @router.get("/logistics")
 async def logistics(
     client: ClientDep,
