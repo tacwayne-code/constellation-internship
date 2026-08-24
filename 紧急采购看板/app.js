@@ -9,9 +9,9 @@ const fallbackData = {
 };
 
 const LEVEL_META = {
-  P0: { label: "P0", text: "今天必须处理", color: "#b91c1c", order: 0 },
+  P0: { label: "P0", text: "今天必须处理", color: "#ef4444", order: 0 },
   P1: { label: "P1", text: "3 天内处理", color: "#f97316", order: 1 },
-  P2: { label: "P2", text: "本周关注", color: "#eab308", order: 2 },
+  P2: { label: "P2", text: "本周关注", color: "#f59e0b", order: 2 },
   P3: { label: "P3", text: "普通提醒", color: "#38bdf8", order: 3 }
 };
 
@@ -447,13 +447,12 @@ function ScreenTitleStrip(orders, displayOrders) {
       return `<span class="title-chip cat-chip${active}" data-category="${escapeHTML(name)}" role="button" tabindex="0">${escapeHTML(name)}</span>`;
     })
     .join("");
-  const levelChips = ["P0", "P1", "P2", "P3"]
+  const levelChips = ["P1", "P2", "P3"]
     .map((level) => ({ level, count: orders.filter((o) => o.level === level).length }))
     .filter((item) => item.count > 0)
     .map((item) => {
-      const hot = item.level === "P0" ? " hot" : "";
       const active = levelFilter === item.level ? " active" : "";
-      return `<span class="title-chip level-chip${hot}${active}" data-level="${item.level}" role="button" tabindex="0">${item.level} ${item.count}</span>`;
+      return `<span class="title-chip level-chip${active}" data-level="${item.level}" role="button" tabindex="0">${item.level} ${item.count}</span>`;
     })
     .join("");
   return `
@@ -583,24 +582,21 @@ function ListTileWall(orders) {
           <h3>采购清单</h3>
           <p>以同一清单为主展示；点击清单进入查看其下采购单${categoryFilter !== "all" ? "｜板块：" + escapeHTML(categoryFilter) : ""}｜${list.length} / ${groups.length}</p>
         </div>
+        <div class="tile-legend" aria-label="紧急等级图例">
+          <span class="p0 level-chip${levelFilter === "P0" ? " active" : ""}" data-level="P0" role="button" tabindex="0">P0 今日必须处理</span>
+          <span class="p1 level-chip${levelFilter === "P1" ? " active" : ""}" data-level="P1" role="button" tabindex="0">P1 3天内处理</span>
+          <span class="p2 level-chip${levelFilter === "P2" ? " active" : ""}" data-level="P2" role="button" tabindex="0">P2 本周关注</span>
+          <span class="p3 level-chip${levelFilter === "P3" ? " active" : ""}" data-level="P3" role="button" tabindex="0">P3 普通提醒</span>
+        </div>
         <div class="wall-stats">
           <span>清单 ${groups.length}</span>
           <span>采购单 ${orders.length}</span>
         </div>
       </div>
-      <div class="tile-legend" aria-label="紧急等级图例">
-        <span class="p0">P0 今日必须处理</span>
-        <span class="p1">P1 3天内处理</span>
-        <span class="p2">P2 本周关注</span>
-        <span class="p3">P3 普通提醒</span>
-      </div>
       <div class="list-card-wall">
         ${list.length ? list.map((listGroup, index) => ListCard(listGroup, index)).join("") : `<div class="empty-state">当前筛选下没有采购清单。</div>`}
       </div>
-      <div class="wall-footer">
-        <p class="wall-hint">点击清单卡片查看该清单下的采购单；此看板只读，不写回 ERP。</p>
-        ${groups.length > list.length ? `<button class="show-more-tiles" type="button">查看更多清单（剩余 ${groups.length - list.length}）</button>` : ""}
-      </div>
+      ${groups.length > list.length ? `<div class="wall-footer"><button class="show-more-tiles" type="button">查看更多清单（剩余 ${groups.length - list.length}）</button></div>` : ""}
     </section>
   `;
 }
@@ -769,9 +765,6 @@ function LevelBars(orders) {
 
 function UrgentDashboardLayout() {
   const orders = filteredOrders();
-  const traceOrders = activeListName
-    ? orders.filter((o) => orderListName(o) === activeListName)
-    : orders;
   return `
     <section class="factory-screen">
       ${ScreenTitleStrip(rawData.orders || [], orders)}
@@ -784,9 +777,6 @@ function UrgentDashboardLayout() {
       <aside class="side-stack" aria-label="辅助信息">
         ${SupplierRanking(rawData.suppliers || [])}
       </aside>
-      <section class="trace-dock" aria-label="紧急采购单明细区">
-        ${RiskTopTable(traceOrders)}
-      </section>
     </section>
   `;
 }
