@@ -132,15 +132,6 @@ STATE_LABELS = {
     "cancel": "已取消",
 }
 
-STATE_COLORS = {
-    "draft": "#ffbf4d",
-    "sent": "#18d8ff",
-    "to approve": "#ff6274",
-    "purchase": "#23e0b2",
-    "done": "#23e0b2",
-    "cancel": "#64748b",
-}
-
 _CACHE = {"data": None, "ts": 0}
 _CACHE_LOCK = threading.Lock()
 _REFRESHING = False
@@ -296,7 +287,8 @@ def parse_list_name(origin):
     """从采购单 source document (origin) 提取「清单」名称。
 
     Odoo 的 origin 形如 "清单:150KG堆垛机电气清单"（也可能是 "SO001, 清单:xxx" 这类复合来源），
-    这里去掉「清单: / 清单：」前缀返回纯清单名；无来源时返回「未关联清单」。
+    这里去掉「清单: / 清单：」前缀返回纯清单名；无来源或来源不是清单（如直接是销售单号 "S00124"）
+    时返回「未关联清单」。
     """
     text = str(origin or "").strip()
     if not text:
@@ -304,7 +296,7 @@ def parse_list_name(origin):
     match = re.search(r"清单\s*[:：]\s*(.+)$", text)
     if match:
         return match.group(1).strip() or text
-    return text
+    return "未关联清单"
 
 
 LIST_LEVEL_ORDER = {"P0": 0, "P1": 1, "P2": 2, "P3": 3}
@@ -345,7 +337,7 @@ def classify_list_category(list_name):
     """按清单名关键词把清单归类到「板块」。
 
     命中内置关键词（立体仓储 / RGV / 堆垛机 …）→ 归入对应板块；
-    未命中时，直接用清单名本身作为板块名，自动生成新板块（不丢进统一「其他」）。
+    未命中（含「未关联清单」这类无清单归属的单据）→ 统一归入「其他」。
     """
     name = str(list_name or "").strip()
     text = name.lower()
@@ -353,7 +345,7 @@ def classify_list_category(list_name):
         for kw in keywords:
             if kw.lower() in text:
                 return category
-    return name or "其他"
+    return "其他"
 
 
 def resolve_urgent_domain(client):
@@ -608,17 +600,6 @@ def build_urgent_orders(client):
     waiting_days = [item["daysWaiting"] for item in items if item["daysWaiting"] > 0]
     avg_waiting = round(statistics.mean(waiting_days), 1) if waiting_days else 0
 
-    # 状态分布
-    state_totals = defaultdict(int)
-    for item in items:
-        state_totals[item["stateText"]] += 1
-    state_rows = [
-        [name, count, STATE_COLORS.get(state, "#18d8ff")]
-        for state, name in STATE_LABELS.items()
-        for count in [state_totals.get(name, 0)]
-        if count > 0
-    ]
-
     # 供应商排行（按金额）
     supplier_totals = defaultdict(lambda: {"amount": 0.0, "count": 0})
     for item in items:
@@ -667,12 +648,6 @@ def build_urgent_orders(client):
     cat_order = {name: i for i, (name, _) in enumerate(LIST_CATEGORY_RULES)}
     categories.sort(key=lambda c: cat_order.get(c["name"], 99))
 
-    summary = [
-        f"当前共有 {len(lists)} 个采购清单、{total} 条标有「紧急」的未采购订单/询价单，其中 {today} 条已超期或今天到期（P0）。",
-        f"已超期 {overdue} 条，平均等待 {avg_waiting} 天，涉及 {suppliers} 家供应商，合计金额 {money(amount_sum)}。",
-        "数据只读展示：Odoo 中把采购单标记为紧急、或确认转成采购订单后，下一次刷新会自动更新。",
-    ]
-
     return {
         "kpis": {
             "total": total,
@@ -686,9 +661,7 @@ def build_urgent_orders(client):
         "orders": items,
         "lists": lists,
         "categories": categories,
-        "states": state_rows,
         "suppliers": supplier_rows,
-        "summary": summary,
     }
 
 

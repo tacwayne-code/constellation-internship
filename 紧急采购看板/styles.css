@@ -144,7 +144,6 @@ button {
   min-width: 0;
 }
 
-.filter-control,
 .search-control {
   display: flex;
   align-items: center;
@@ -156,28 +155,19 @@ button {
   background: rgba(10, 18, 32, 0.7);
 }
 
-.filter-control span,
 .search-control span {
   color: var(--muted);
   font-size: 12px;
   white-space: nowrap;
 }
 
-.filter-control select,
 .search-control input {
   height: 40px;
+  width: 240px;
   border: 0;
   outline: 0;
   color: var(--text);
   background: transparent;
-}
-
-.filter-control select {
-  min-width: 142px;
-}
-
-.search-control input {
-  width: 240px;
 }
 
 .search-control input::placeholder {
@@ -454,67 +444,6 @@ button {
   grid-area: wall;
   min-height: 0;
   min-width: 0;
-}
-
-/* 摘要横条（取代原来右侧 ol 列表，醒目便于扫一眼） */
-.summary-bar {
-  grid-area: summary;
-  display: flex;
-  align-items: stretch;
-  gap: 12px;
-  padding: 10px 14px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  background: linear-gradient(135deg, rgba(56, 189, 248, 0.08), rgba(129, 140, 248, 0.06)), rgba(13, 22, 38, 0.9);
-  min-height: 0;
-}
-
-.summary-bar h3 {
-  margin: 0;
-  display: flex;
-  align-items: center;
-  flex-shrink: 0;
-  font-size: 14px;
-  white-space: nowrap;
-  color: #dbeafe;
-}
-
-.summary-bar h3::before {
-  content: "";
-  display: inline-block;
-  width: 8px;
-  height: 8px;
-  margin-right: 8px;
-  border-radius: 50%;
-  background: var(--accent);
-}
-
-.summary-bar .summary-list {
-  flex: 1;
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-  gap: 8px;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-  overflow: hidden;
-  min-height: 0;
-}
-
-.summary-bar .summary-list li {
-  min-width: 0;
-  padding: 6px 10px;
-  border-left: 3px solid var(--accent);
-  border-radius: 4px;
-  background: rgba(8, 14, 26, 0.5);
-  font-size: 11px;
-  line-height: 1.45;
-  color: var(--soft);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
 }
 
 .panel {
@@ -888,155 +817,6 @@ button {
   text-align: center;
 }
 
-.trace-dock {
-  grid-area: trace;
-  display: block;
-  height: clamp(180px, 22vh, 260px);
-  min-height: 0;
-  min-width: 0;
-}
-
-.trace-dock > * {
-  min-height: 0;
-  border-radius: var(--radius);
-}
-
-.trace-dock .risk-table-panel {
-  height: 100%;
-  max-height: none;
-  overflow: hidden;
-}
-
-.trace-dock .panel-heading {
-  padding: 10px 14px 6px;
-}
-
-.trace-dock .panel-heading h3 {
-  font-size: 14px;
-}
-
-.trace-dock .panel-heading p,
-.trace-dock .table-count {
-  font-size: 11px;
-}
-
-.trace-dock .risk-table-wrap {
-  height: calc(100% - 46px);
-  max-height: none;
-  overflow: auto;
-  -webkit-overflow-scrolling: touch;
-}
-
-.risk-table {
-  width: 100%;
-  min-width: 980px;
-  border-collapse: collapse;
-}
-
-.risk-table th {
-  padding: 8px 10px;
-  color: #9fb0c8;
-  font-size: 11px;
-  text-align: left;
-  border-top: 1px solid var(--line);
-  border-bottom: 1px solid var(--line);
-  background: rgba(8, 14, 26, 0.4);
-}
-
-.risk-table td {
-  padding: 9px 10px;
-  color: var(--soft);
-  font-size: 12px;
-  line-height: 1.32;
-  vertical-align: top;
-  border-bottom: 1px solid rgba(148, 163, 184, 0.12);
-}
-
-.risk-row {
-  transition: background 0.16s ease;
-  cursor: pointer;
-}
-
-.risk-row:hover,
-.risk-row.selected {
-  background: rgba(56, 189, 248, 0.06);
-}
-
-.risk-row.level-p0 {
-  background-image: linear-gradient(90deg, rgba(239, 68, 68, 0.08), transparent 24%);
-  box-shadow: inset 4px 0 0 var(--p0);
-}
-
-.risk-table b {
-  display: block;
-  color: var(--text);
-  font-size: 13px;
-  line-height: 1.45;
-}
-
-.risk-table td > span:not(.risk-badge) {
-  display: block;
-  margin-top: 4px;
-}
-
-.risk-table small {
-  display: block;
-  margin-top: 5px;
-}
-
-.risk-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  min-width: 112px;
-  padding: 5px 8px;
-  border-radius: 999px;
-  color: var(--text);
-  font-size: 11px;
-  white-space: nowrap;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-}
-
-.risk-badge b {
-  display: inline;
-  font-size: 11px;
-}
-
-.risk-badge.p0 {
-  background: var(--p0-soft);
-  color: #fecaca;
-}
-
-.risk-badge.p1 {
-  background: var(--p1-soft);
-  color: #fed7aa;
-}
-
-.risk-badge.p2 {
-  background: var(--p2-soft);
-  color: #fde68a;
-}
-
-.risk-badge.p3 {
-  background: var(--p3-soft);
-  color: #bae6fd;
-}
-
-.link-button {
-  min-height: 40px;
-  padding: 0 14px;
-  border: 1px solid var(--line-strong);
-  border-radius: 8px;
-  color: #bae6fd;
-  background: rgba(10, 18, 32, 0.7);
-  font-size: 12px;
-  touch-action: manipulation;
-}
-
-.link-button:hover {
-  border-color: rgba(56, 189, 248, 0.55);
-}
-
 /* 「在 Odoo 打开」按钮 —— 跳转到对应采购单表单 */
 .odoo-open-btn {
   min-height: 40px;
@@ -1077,38 +857,6 @@ button {
   pointer-events: auto;
 }
 
-.expand-row td {
-  padding: 0 14px 14px;
-  background: rgba(8, 14, 26, 0.3);
-}
-
-.evidence-box {
-  padding: 14px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: rgba(8, 14, 26, 0.4);
-}
-
-.evidence-box b {
-  color: var(--text);
-}
-
-.evidence-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.evidence-box ul {
-  margin: 8px 0 0;
-  padding-left: 18px;
-}
-
-.evidence-box li {
-  margin: 5px 0;
-}
-
 .side-stack {
   grid-area: side;
   display: flex;
@@ -1133,41 +881,7 @@ button {
   -webkit-overflow-scrolling: touch;
 }
 
-.side-stack .level-bars {
-  margin: 0 12px 8px;
-}
-
-.ai-summary {
-  border-color: var(--line);
-  background: linear-gradient(135deg, rgba(56, 189, 248, 0.08), rgba(129, 140, 248, 0.06)), rgba(13, 22, 38, 0.9);
-}
-
-.ai-summary .panel-heading h3::before {
-  content: "";
-  display: inline-block;
-  width: 8px;
-  height: 8px;
-  margin-right: 8px;
-  border-radius: 50%;
-  background: var(--accent);
-}
-
-.ai-summary ol {
-  margin: 0;
-  padding: 0 12px 10px 28px;
-  overflow: hidden;
-  font-size: 11px;
-  line-height: 1.42;
-}
-
-.ai-summary li {
-  margin: 5px 0;
-  color: var(--soft);
-  line-height: 1.5;
-}
-
-.ranking-panel,
-.trend-panel {
+.ranking-panel {
   overflow: hidden;
 }
 
@@ -1213,57 +927,6 @@ button {
   display: block;
   margin-top: 3px;
   color: var(--muted);
-  font-size: 11px;
-}
-
-.rank-metrics {
-  grid-column: 2;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 5px;
-  align-items: center;
-}
-
-.rank-metrics span:not(.risk-badge) {
-  padding: 4px 8px;
-  border-radius: 999px;
-  color: var(--muted);
-  background: rgba(148, 163, 184, 0.08);
-  font-size: 11px;
-}
-
-.level-bars {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  margin: 0 12px 8px;
-}
-
-.level-bar {
-  display: grid;
-  grid-template-columns: 92px 1fr 36px;
-  align-items: center;
-  gap: 8px;
-  color: var(--muted);
-  font-size: 11px;
-}
-
-.level-bar div {
-  height: 9px;
-  overflow: hidden;
-  border-radius: 999px;
-  background: rgba(148, 163, 184, 0.12);
-}
-
-.level-bar i {
-  display: block;
-  height: 100%;
-  border-radius: inherit;
-}
-
-.level-bar b {
-  color: var(--text);
-  text-align: right;
   font-size: 11px;
 }
 
@@ -1792,9 +1455,7 @@ button {
 
   .tool-button,
   .icon-button,
-  .filter-control,
   .search-control,
-  .link-button,
   .odoo-open-btn,
   .show-more-tiles,
   .back-to-lists {
@@ -1885,10 +1546,6 @@ button {
   .list-card-wall {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
-
-  .trace-dock {
-    height: 320px;
-  }
 }
 
 @media (max-width: 720px) {
@@ -1910,10 +1567,8 @@ button {
     display: none;
   }
 
-  .filter-control,
   .search-control,
-  .search-control input,
-  .filter-control select {
+  .search-control input {
     width: 100%;
   }
 
