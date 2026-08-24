@@ -18,6 +18,7 @@ class Settings(BaseSettings):
     ODOO_USER: str = "admin"
     ODOO_PASSWORD: str = ""
     SESSION_TTL: int = 1800  # Odoo 会话有效时长（秒）
+    EMERGENCY_SYNC_INTERVAL: int = 300  # 紧急继承自动同步间隔（秒）；0 表示关闭自动同步（仅靠手动 /sync/emergency）
 
     # ---- Mock 降级 ----
     USE_MOCK: bool = False            # 全局强制 Mock

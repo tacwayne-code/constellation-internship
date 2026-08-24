@@ -18,6 +18,7 @@ from app.routers import procurement as procurement_router
 from app.routers import list_import as list_import_router
 from app.services.cache import get_cache
 from app.services.odoo.client import OdooClient
+from app.services.sync.emergency_propagation import propagate_emergency
 
 logger = logging.getLogger("delivery-control-tower")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
@@ -51,6 +52,7 @@ async def no_cache_for_api(request: Request, call_next):
     return response
 
 _heartbeat_task: asyncio.Task | None = None
+_emergency_sync_task: asyncio.Task | None = None
 
 
 async def _heartbeat():
@@ -66,9 +68,27 @@ async def _heartbeat():
             logger.warning("Odoo 心跳失败: %s", e)
 
 
+async def _emergency_sync_loop():
+    """定期执行紧急继承同步（SO 紧急 tag → PO/MO priority=1，含反向传播）"""
+    client = OdooClient.get_instance(settings)
+    while True:
+        await asyncio.sleep(settings.EMERGENCY_SYNC_INTERVAL)
+        try:
+            if client.is_configured():
+                result = await propagate_emergency(client)
+                logger.info(
+                    "紧急继承自动同步完成: 紧急SO=%d 影响PO=%d MO=%d",
+                    len(result.get("emergency_sales", [])),
+                    result.get("affected_po", 0),
+                    result.get("affected_mo", 0),
+                )
+        except Exception as e:  # noqa: BLE001
+            logger.warning("紧急继承自动同步失败: %s", e)
+
+
 @app.on_event("startup")
 async def startup():
-    global _heartbeat_task
+    global _heartbeat_task, _emergency_sync_task
     if settings.USE_MOCK:
         logger.info("USE_MOCK=true，后端运行在离线演示模式")
         return
@@ -76,14 +96,19 @@ async def startup():
         logger.warning("Odoo 凭据未配置（ODOO_PASSWORD 为空），health 端点将报告未就绪")
         return
     _heartbeat_task = asyncio.create_task(_heartbeat())
+    if settings.EMERGENCY_SYNC_INTERVAL > 0:
+        _emergency_sync_task = asyncio.create_task(_emergency_sync_loop())
+        logger.info("紧急继承自动同步已启用（间隔 %s 秒）", settings.EMERGENCY_SYNC_INTERVAL)
     logger.info("交付控制塔后端已启动（Odoo: %s/%s）", settings.ODOO_URL, settings.ODOO_DB)
 
 
 @app.on_event("shutdown")
 async def shutdown():
-    global _heartbeat_task
+    global _heartbeat_task, _emergency_sync_task
     if _heartbeat_task:
         _heartbeat_task.cancel()
+    if _emergency_sync_task:
+        _emergency_sync_task.cancel()
 
 
 @app.get(f"{settings.API_PREFIX}/health", tags=["system"])

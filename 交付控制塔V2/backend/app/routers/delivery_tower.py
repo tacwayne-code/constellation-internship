@@ -9,6 +9,7 @@ from fastapi.responses import Response
 from pydantic import BaseModel
 
 from app.config import get_settings
+from app.services.cache import get_cache
 from app.services.aggregation import (
     _ref_id,
     _ref_name,
@@ -104,6 +105,145 @@ async def delivery_overview(
     }
 
 
+@router.get("/shortage-overview")
+async def shortage_overview(
+    client: ClientDep,
+    resp: Response,
+    limit: int = Query(200, ge=1, le=1000),
+):
+    """全局缺料看板：未完成 SO 的订单产品需求 vs 现存量，聚合缺口（轻量，不做 BOM 展开）"""
+    from app.services.odoo.models import MODEL_SALE_ORDER, MODEL_SALE_ORDER_LINE
+
+    cache = get_cache()
+    key = f"shortage_overview:{limit}"
+    if (cached_hit := cache.get(key)) is not None:
+        resp.headers["X-Data-Source"] = "odoo"
+        return cached_hit
+
+    sos = await client.search_read(
+        MODEL_SALE_ORDER, [["state", "not in", ["cancel", "done"]]],
+        ["id", "name", "state"], limit=limit, order="commitment_date asc, id desc",
+    )
+    if not sos:
+        empty_result = {"stats": {"orders_scanned": 0, "shortage_products": 0, "orders_affected": 0}, "shortages": []}
+        cache.set(key, empty_result, ttl=300)
+        resp.headers["X-Data-Source"] = "empty"
+        return empty_result
+
+    so_ids = [s["id"] for s in sos]
+    so_name = {s["id"]: s["name"] for s in sos}
+    sols = await client.search_read(
+        MODEL_SALE_ORDER_LINE, [["order_id", "in", so_ids]],
+        ["id", "order_id", "product_id", "product_uom_qty"], limit=None,
+    )
+    demand: dict[int, float] = {}
+    so_by_product: dict[int, set[int]] = {}
+    for l in sols:
+        pid = _ref_id(l.get("product_id"))
+        if pid is None:
+            continue
+        oid = _ref_id(l.get("order_id"))
+        demand[pid] = demand.get(pid, 0) + (l.get("product_uom_qty") or 0)
+        so_by_product.setdefault(pid, set()).add(oid)
+
+    pids = list(demand.keys())
+    smap: dict[int, dict] = {}
+    if pids:
+        stocks = await client.search_read(
+            "product.product", [["id", "in", pids]],
+            ["id", "name", "default_code", "qty_available"], limit=None,
+        )
+        smap = {s["id"]: s for s in stocks}
+
+    shortages = []
+    affected_orders: set[int] = set()
+    for pid, d in demand.items():
+        s = smap.get(pid, {})
+        available = s.get("qty_available") or 0
+        gap = round(d - available, 3)
+        if gap > 0:
+            so_ids_for_p = sorted(so_by_product.get(pid, set()))
+            affected_orders.update(so_ids_for_p)
+            shortages.append({
+                "product_id": pid,
+                "product": s.get("name") or f"P{pid}",
+                "default_code": s.get("default_code"),
+                "demand": d,
+                "available": available,
+                "gap": gap,
+                "order_count": len(so_ids_for_p),
+                "orders": [so_name[i] for i in so_ids_for_p if i in so_name],
+            })
+    shortages.sort(key=lambda x: -x["gap"])
+
+    result = {
+        "stats": {
+            "orders_scanned": len(sos),
+            "shortage_products": len(shortages),
+            "orders_affected": len(affected_orders),
+        },
+        "shortages": shortages,
+    }
+    cache.set(key, result, ttl=300)
+    resp.headers["X-Data-Source"] = "odoo"
+    return result
+
+
+@router.get("/stock-alerts")
+async def stock_alerts(
+    client: ClientDep,
+    resp: Response,
+    limit: int = Query(200, ge=1, le=1000),
+):
+    """安全库存预警：现存量低于再订货点（stock.warehouse.orderpoint.product_min_qty）的物料"""
+    cache = get_cache()
+    key = f"stock_alerts:{limit}"
+    if (cached_hit := cache.get(key)) is not None:
+        resp.headers["X-Data-Source"] = "odoo"
+        return cached_hit
+
+    ops = await client.search_read(
+        "stock.warehouse.orderpoint", [],
+        ["id", "product_id", "product_min_qty", "location_id"], limit=limit,
+    )
+    if not ops:
+        empty_result = {"stats": {"total": 0}, "items": []}
+        cache.set(key, empty_result, ttl=300)
+        resp.headers["X-Data-Source"] = "empty"
+        return empty_result
+
+    pids = {_ref_id(op.get("product_id")) for op in ops if _ref_id(op.get("product_id"))}
+    pmap: dict[int, dict] = {}
+    if pids:
+        products = await client.search_read(
+            "product.product", [["id", "in", list(pids)]],
+            ["id", "name", "default_code", "qty_available"], limit=None,
+        )
+        pmap = {p["id"]: p for p in products}
+
+    items = []
+    for op in ops:
+        pid = _ref_id(op.get("product_id"))
+        if pid is None:
+            continue
+        min_qty = op.get("product_min_qty") or 0
+        available = (pmap.get(pid) or {}).get("qty_available") or 0
+        if available < min_qty:
+            items.append({
+                "product_id": pid,
+                "product": (pmap.get(pid) or {}).get("name") or f"P{pid}",
+                "default_code": (pmap.get(pid) or {}).get("default_code"),
+                "min_qty": min_qty,
+                "available": available,
+                "gap": round(min_qty - available, 3),
+            })
+    items.sort(key=lambda x: -x["gap"])
+    result = {"stats": {"total": len(items)}, "items": items}
+    cache.set(key, result, ttl=300)
+    resp.headers["X-Data-Source"] = "odoo"
+    return result
+
+
 @router.get("/logistics")
 async def logistics(
     client: ClientDep,
@@ -113,13 +253,21 @@ async def logistics(
     """物流查看：销售出货(outgoing) + 采购收货(incoming) + 内部流转，按 flow 分组（全量）"""
     from app.services.odoo.models import FIELDS_PICKING
 
+    cache = get_cache()
+    key = f"logistics:{limit}"
+    if (cached_hit := cache.get(key)) is not None:
+        resp.headers["X-Data-Source"] = "odoo"
+        return cached_hit
+
     picks = await client.search_read(
         "stock.picking", [], FIELDS_PICKING,
         limit=limit, order="scheduled_date desc, id desc",
     )
     if not picks:
+        empty_result = {"stats": {"total": 0, "incoming": 0, "outgoing": 0, "internal": 0, "in_transit": 0}, "incoming": [], "outgoing": [], "internal": []}
+        cache.set(key, empty_result, ttl=120)
         resp.headers["X-Data-Source"] = "empty"
-        return {"stats": {"total": 0, "incoming": 0, "outgoing": 0, "internal": 0, "in_transit": 0}, "incoming": [], "outgoing": [], "internal": []}
+        return empty_result
 
     pt_ids = list({_ref_id(p.get("picking_type_id")) for p in picks if p.get("picking_type_id")})
     pt_map: dict[int, str] = {}
@@ -172,8 +320,7 @@ async def logistics(
     internal = [i for i in items if i["flow"] == "internal"]
     in_transit = [i for i in items if i["state"] in ("assigned", "confirmed", "waiting")]
 
-    resp.headers["X-Data-Source"] = "odoo"
-    return {
+    result = {
         "stats": {
             "total": len(items),
             "incoming": len(incoming),
@@ -186,6 +333,9 @@ async def logistics(
         "outgoing": outgoing,
         "internal": internal,
     }
+    cache.set(key, result, ttl=120)
+    resp.headers["X-Data-Source"] = "odoo"
+    return result
 
 
 @router.get("/orders/lookup")
@@ -258,6 +408,7 @@ async def order_create_urgent_purchases(
         raise HTTPException(status_code=500, detail=str(e))
     if "error" in data:
         raise HTTPException(status_code=404, detail=data["error"])
+    get_cache().clear()  # 写操作：建紧急 PO 后失效只读聚合缓存
     resp.headers["X-Data-Source"] = "odoo"
     return data
 
@@ -305,7 +456,7 @@ async def sync_emergency(
     client: ClientDep,
     resp: Response,
 ):
-    """手动触发：扫描带紧急 tag 的销售订单，写回 PO/MO priority=3
+    """手动触发：扫描带紧急 tag 的销售订单，写回 PO/MO priority=1（PRIORITY_URGENT）
 
     正常情况下由调度任务触发；前端"立即同步"按钮可调此接口。
     """
@@ -314,6 +465,7 @@ async def sync_emergency(
     except Exception as e:  # noqa: BLE001
         logger.exception("sync_emergency failed")
         raise HTTPException(status_code=500, detail=str(e))
+    get_cache().clear()  # 写操作：紧急继承回写后失效只读聚合缓存
     resp.headers["X-Data-Source"] = "odoo"
     return result
 
@@ -332,6 +484,12 @@ async def productions(
     """生产工单（MO）列表 + 工序进度汇总（mrp.production + mrp.workorder 聚合）"""
     from app.services.odoo.models import FIELDS_MRP_PRODUCTION
 
+    cache = get_cache()
+    key = f"productions:{limit}:{urgent_only}"
+    if (cached_hit := cache.get(key)) is not None:
+        resp.headers["X-Data-Source"] = "odoo"
+        return cached_hit
+
     domain: list = [["state", "not in", ["cancel"]]]
     if urgent_only:
         domain.append(["priority", "=", "1"])
@@ -341,8 +499,10 @@ async def productions(
         limit=limit, order="id desc",
     )
     if not mos:
+        empty_result = {"stats": {"total": 0, "progress": 0, "done": 0, "urgent": 0}, "items": []}
+        cache.set(key, empty_result, ttl=120)
         resp.headers["X-Data-Source"] = "empty"
-        return {"stats": {"total": 0, "progress": 0, "done": 0, "urgent": 0}, "items": []}
+        return empty_result
 
     mo_ids = [m["id"] for m in mos]
     wos = await client.search_read(
@@ -362,6 +522,18 @@ async def productions(
     for m in mos:
         wo_list = wo_by_mo.get(m["id"], [])
         states = [w.get("state") for w in wo_list]
+        # 生产逾期：计划完成日已过且未完成/未取消
+        overdue = False
+        overdue_days = 0
+        if (m.get("state") not in ("done", "cancel")) and m.get("date_finished"):
+            from datetime import date as _date
+
+            try:
+                _df = _date.fromisoformat((m.get("date_finished") or "")[:10])
+                overdue_days = (_date.today() - _df).days
+                overdue = overdue_days > 0
+            except ValueError:
+                pass
         items.append({
             "id": m["id"],
             "name": m.get("name"),
@@ -370,6 +542,8 @@ async def productions(
             "state": m.get("state"),
             "priority": m.get("priority") or "0",
             "is_urgent": (m.get("priority") or "") == "1",
+            "overdue": overdue,
+            "overdue_days": overdue_days,
             "date_start": m.get("date_start"),
             "date_finished": m.get("date_finished"),
             "bom_id": _ref_id(m.get("bom_id")),
@@ -385,9 +559,12 @@ async def productions(
         "progress": sum(1 for i in items if i["state"] == "progress"),
         "done": sum(1 for i in items if i["state"] == "done"),
         "urgent": sum(1 for i in items if i["is_urgent"]),
+        "overdue": sum(1 for i in items if i["overdue"]),
     }
+    result = {"stats": stats, "items": items}
+    cache.set(key, result, ttl=120)
     resp.headers["X-Data-Source"] = "odoo"
-    return {"stats": stats, "items": items}
+    return result
 
 
 @router.get("/productions/{mo_id}/workorders")

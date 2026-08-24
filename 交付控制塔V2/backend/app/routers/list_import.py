@@ -11,6 +11,7 @@ from fastapi import APIRouter, Depends, File, Query, Response, UploadFile
 from pydantic import BaseModel, Field
 
 from app.config import get_settings
+from app.services.cache import get_cache
 from app.services.import_matching import (
     batch_create_purchase_orders,
     load_product_index,
@@ -387,6 +388,7 @@ async def create_po_list(
     except Exception as e:  # noqa: BLE001
         logger.exception("create_po_list failed")
         return {"ok": False, "error": str(e)[:160]}
+    get_cache().clear()  # 写操作：批量建 PO 后失效只读聚合缓存
     resp.headers["X-Data-Source"] = "odoo"
     return {"ok": True, **data}
 

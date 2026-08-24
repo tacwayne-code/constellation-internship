@@ -1,10 +1,10 @@
 /**
- * 销售订单视图（交付塔入口）：订单四链路聚合 + 紧急标记 + 配件紧急继承
+ * 销售订单视图（交付塔入口）：订单四链路聚合 + 紧急标记继承
  *
  * 数据源（后端 /api/delivery-tower/*，均已就绪）：
  *   GET /delivery-tower/sales?limit=200          → 销售订单总览（紧急判定 + PO/MO/picking 计数）
  *   GET /delivery-tower/orders/{so_id}           → 单订单四链路聚合（PO/MO/picking/BOM）
- *   POST /delivery-tower/sync/emergency          → 手动触发紧急继承（含 BOM 配件级传播）
+ *   POST /delivery-tower/sync/emergency          → 手动触发紧急继承
  *
  * 采购 / 生产 / 物流 已拆到左侧对应模块（见 ModuleView.tsx 的 ProcurementView / ManufacturingView / LogisticsView）。
  * 本文件导出的 ProcurementBoard / ProcurementTable / LogisticsTable / PoDrawer / MoDrawer 供左侧模块复用。
@@ -20,6 +20,7 @@ import { EmptyState } from '../common/EmptyState'
 import { Pagination } from '../common/Pagination'
 import { toast } from '../../store/uiStore'
 import { getModule } from '../../config/modules'
+import { useNavigation } from '../../store/navigationStore'
 import type { SRow, Tone } from '../../types/contract'
 
 /* ====================================================================
@@ -53,6 +54,8 @@ export interface PoItem {
   state: string
   priority: number
   is_urgent: boolean
+  overdue: boolean
+  overdue_days: number
   date_planned: string | null
   amount_total: number | null
   line_count: number
@@ -61,7 +64,7 @@ export interface PoItem {
 }
 
 export interface ProcurementOverview {
-  stats: { total: number; urgent: number; urgent_pending?: number; urgent_transit?: number; by_priority: Record<string, number>; by_state: Record<string, number> }
+  stats: { total: number; urgent: number; urgent_pending?: number; urgent_transit?: number; overdue?: number; by_priority: Record<string, number>; by_state: Record<string, number> }
   by_priority: Record<string, PoItem[]>
   urgent_pending?: PoItem[]
   urgent_transit?: PoItem[]
@@ -200,6 +203,23 @@ interface DeliveryOverview {
   urgent_orders: Array<{
     id: number; name: string; partner: string; state: string
     po_count: number; po_urgent: number; mo_count: number; mo_urgent: number
+  }>
+}
+
+interface ShortageOverview {
+  stats: { orders_scanned: number; shortage_products: number; orders_affected: number }
+  shortages: Array<{
+    product_id: number; product: string; default_code: string | null
+    demand: number; available: number; gap: number
+    order_count: number; orders: string[]
+  }>
+}
+
+interface StockAlerts {
+  stats: { total: number }
+  items: Array<{
+    product_id: number; product: string; default_code: string | null
+    min_qty: number; available: number; gap: number
   }>
 }
 
@@ -1140,7 +1160,11 @@ export function ProcurementTable({ items, onOpenPo, title = '采购订单 · 全
                     ? <span className="urgent-badge">紧急</span>
                     : <span className="muted" style={{ fontSize: 12 }}>—</span>}
                 </td>
-                <td style={{ whiteSpace: 'nowrap' }}>{fmtDate(p.date_planned)}</td>
+                <td style={{ whiteSpace: 'nowrap' }}>
+                  {p.overdue
+                    ? <span style={{ color: 'var(--red)', fontWeight: 600 }}>{fmtDate(p.date_planned)} · 逾期{p.overdue_days}天</span>
+                    : fmtDate(p.date_planned)}
+                </td>
                 <td style={{ whiteSpace: 'nowrap' }}>{fmtMoney(p.amount_total)}</td>
                 <td>{p.line_count} 行</td>
               </tr>
@@ -1240,6 +1264,11 @@ export function DeliveryTowerView() {
   const [view, setView] = useState<'overview' | 'urgent' | 'confirmed' | 'done' | 'all'>('overview')
   const [bizFilter, setBizFilter] = useState<'all' | 'warehouse' | 'led' | 'other'>('all')
   const SALES_PAGE_SIZE = 10
+  const RISK_PAGE_SIZE = 5
+  const { openModule } = useNavigation()
+  const [ovPage, setOvPage] = useState(1)
+  const [shortagePage, setShortagePage] = useState(1)
+  const [alertsPage, setAlertsPage] = useState(1)
 
   const salesQ = useQuery({
     queryKey: ['delivery-tower-sales'],
@@ -1249,6 +1278,21 @@ export function DeliveryTowerView() {
   const deliveryOverviewQ = useQuery({
     queryKey: ['delivery-overview'],
     queryFn: () => apiFetch<DeliveryOverview>('/delivery-tower/delivery-overview').then((r) => r.data),
+    staleTime: 60_000,
+  })
+  const shortageQ = useQuery({
+    queryKey: ['shortage-overview'],
+    queryFn: () => apiFetch<ShortageOverview>('/delivery-tower/shortage-overview').then((r) => r.data),
+    staleTime: 120_000,
+  })
+  const stockAlertsQ = useQuery({
+    queryKey: ['stock-alerts'],
+    queryFn: () => apiFetch<StockAlerts>('/delivery-tower/stock-alerts').then((r) => r.data),
+    staleTime: 120_000,
+  })
+  const procurementQ = useQuery({
+    queryKey: ['delivery-tower-procurement'],
+    queryFn: () => apiFetch<ProcurementOverview>('/delivery-tower/procurement/overview?limit=500').then((r) => r.data),
     staleTime: 60_000,
   })
 
@@ -1308,39 +1352,43 @@ export function DeliveryTowerView() {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
           {view === 'overview' ? (
             <>
-              <QueryView query={deliveryOverviewQ} empty={null}>
-                {(ov) => (
-                  <div className="panel">
-                    <div className="panel-header">
-                      <span className="panel-title">
-                        <Icon name="alert" size={16} style={{ color: 'var(--red)' } as React.CSSProperties} /> 交付风险 · 逾期订单
-                      </span>
-                      <span className="muted" style={{ fontSize: 12 }}>{ov.stats.overdue} 单逾期</span>
+              <div className="panel">
+                <div className="panel-header">
+                  <span className="panel-title">
+                    <Icon name="chart" size={16} style={{ color: 'var(--blue)' } as React.CSSProperties} /> 今日交付全景
+                  </span>
+                </div>
+                <div className="kpi-grid" style={{ gridTemplateColumns: 'repeat(4, 1fr)' }}>
+                  <div className="kpi-card" style={{ cursor: 'pointer' }} onClick={() => document.getElementById('panel-overdue')?.scrollIntoView({ behavior: 'smooth' })}>
+                    <div className="kpi-icon red"><Icon name="alert" size={16} /></div>
+                    <div className="kpi-copy">
+                      <div className="num" style={{ color: 'var(--red)' }}>{deliveryOverviewQ.data?.stats.overdue ?? 0}</div>
+                      <div className="label">逾期订单</div>
                     </div>
-                    {ov.overdue_orders.length > 0 && (
-                      <div>
-                        {ov.overdue_orders.slice(0, 5).map((o) => (
-                          <div key={o.id} className="chain-item" style={{ cursor: 'pointer' }} onClick={() => setSelectedSo(o.id)}>
-                            <div className="chain-item-head">
-                              <span className="chain-item-name">{o.name}</span>
-                              {o.is_emergency && <span className="urgent-badge">紧急</span>}
-                              <span className="chain-item-state" style={{ color: 'var(--red)' }}>逾期 {o.overdue_days} 天</span>
-                            </div>
-                            <div className="chain-item-meta">
-                              {o.partner} · 承诺交期 {fmtDate(o.commitment_date)}
-                              {o.po_count > 0 ? ` · 采购 ${o.po_count} 单` : ''}
-                              {o.mo_count > 0 ? ` · 生产 ${o.mo_count} 单` : ''}
-                            </div>
-                          </div>
-                        ))}
-                        {ov.stats.overdue > 5 && (
-                          <div className="muted" style={{ fontSize: 12, marginTop: 6 }}>… 共 {ov.stats.overdue} 单逾期，点「全部订单」查看</div>
-                        )}
-                      </div>
-                    )}
                   </div>
-                )}
-              </QueryView>
+                  <div className="kpi-card" style={{ cursor: 'pointer' }} onClick={() => document.getElementById('panel-shortage')?.scrollIntoView({ behavior: 'smooth' })}>
+                    <div className="kpi-icon orange"><Icon name="box" size={16} /></div>
+                    <div className="kpi-copy">
+                      <div className="num" style={{ color: 'var(--orange)' }}>{shortageQ.data?.stats.shortage_products ?? 0}</div>
+                      <div className="label">缺料</div>
+                    </div>
+                  </div>
+                  <div className="kpi-card" style={{ cursor: 'pointer' }} onClick={() => document.getElementById('panel-stock-alert')?.scrollIntoView({ behavior: 'smooth' })}>
+                    <div className="kpi-icon blue"><Icon name="bell" size={16} /></div>
+                    <div className="kpi-copy">
+                      <div className="num" style={{ color: 'var(--blue)' }}>{stockAlertsQ.data?.stats.total ?? 0}</div>
+                      <div className="label">安全库存</div>
+                    </div>
+                  </div>
+                  <div className="kpi-card" style={{ cursor: 'pointer' }} onClick={() => openModule('procurement')}>
+                    <div className="kpi-icon red"><Icon name="truck" size={16} /></div>
+                    <div className="kpi-copy">
+                      <div className="num" style={{ color: 'var(--red)' }}>{procurementQ.data?.stats.urgent ?? 0}</div>
+                      <div className="label">紧急采购</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
 
               <div className="panel">
                 <div className="panel-header">
@@ -1364,6 +1412,112 @@ export function DeliveryTowerView() {
                   ))}
                 </div>
               </div>
+
+              <QueryView query={deliveryOverviewQ} empty={null}>
+                {(ov) => {
+                  const total = ov.overdue_orders.length
+                  const pageItems = ov.overdue_orders.slice((ovPage - 1) * RISK_PAGE_SIZE, ovPage * RISK_PAGE_SIZE)
+                  return (
+                    <div className="panel" id="panel-overdue" style={{ scrollMarginTop: 80 }}>
+                      <div className="panel-header">
+                        <span className="panel-title">
+                          <Icon name="alert" size={16} style={{ color: 'var(--red)' } as React.CSSProperties} /> 交付风险 · 逾期订单
+                        </span>
+                        <span className="muted" style={{ fontSize: 12 }}>{ov.stats.overdue} 单逾期</span>
+                      </div>
+                      {total > 0 && (
+                        <div>
+                          {pageItems.map((o) => (
+                            <div key={o.id} className="chain-item" style={{ cursor: 'pointer' }} onClick={() => setSelectedSo(o.id)}>
+                              <div className="chain-item-head">
+                                <span className="chain-item-name">{o.name}</span>
+                                {o.is_emergency && <span className="urgent-badge">紧急</span>}
+                                <span className="chain-item-state" style={{ color: 'var(--red)' }}>逾期 {o.overdue_days} 天</span>
+                              </div>
+                              <div className="chain-item-meta">
+                                {o.partner} · 承诺交期 {fmtDate(o.commitment_date)}
+                                {o.po_count > 0 ? ` · 采购 ${o.po_count} 单` : ''}
+                                {o.mo_count > 0 ? ` · 生产 ${o.mo_count} 单` : ''}
+                              </div>
+                            </div>
+                          ))}
+                          {total > RISK_PAGE_SIZE && (
+                            <Pagination page={ovPage} total={total} pageSize={RISK_PAGE_SIZE} onChange={setOvPage} />
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )
+                }}
+              </QueryView>
+
+              <QueryView query={shortageQ} empty={null}>
+                {(so) => {
+                  const total = so.shortages.length
+                  const pageItems = so.shortages.slice((shortagePage - 1) * RISK_PAGE_SIZE, shortagePage * RISK_PAGE_SIZE)
+                  return (
+                    <div className="panel" id="panel-shortage" style={{ scrollMarginTop: 80 }}>
+                      <div className="panel-header">
+                        <span className="panel-title">
+                          <Icon name="alert" size={16} style={{ color: 'var(--orange)' } as React.CSSProperties} /> 物料缺口 · 缺料看板
+                        </span>
+                        <span className="muted" style={{ fontSize: 12 }}>{so.stats.shortage_products} 种缺料 · 影响 {so.stats.orders_affected} 单</span>
+                      </div>
+                      {total > 0 && (
+                        <div>
+                          {pageItems.map((s) => (
+                            <div key={s.product_id} className="chain-item">
+                              <div className="chain-item-head">
+                                <span className="chain-item-name">{s.product}</span>
+                                <span className="chain-item-state" style={{ color: 'var(--red)' }}>缺 {s.gap}</span>
+                              </div>
+                              <div className="chain-item-meta">
+                                需求 {s.demand} · 现有 {s.available} · 影响 {s.order_count} 单
+                              </div>
+                            </div>
+                          ))}
+                          {total > RISK_PAGE_SIZE && (
+                            <Pagination page={shortagePage} total={total} pageSize={RISK_PAGE_SIZE} onChange={setShortagePage} />
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )
+                }}
+              </QueryView>
+
+              <QueryView query={stockAlertsQ} empty={null}>
+                {(sa) => {
+                  const total = sa.items.length
+                  const pageItems = sa.items.slice((alertsPage - 1) * RISK_PAGE_SIZE, alertsPage * RISK_PAGE_SIZE)
+                  return (
+                    <div className="panel" id="panel-stock-alert" style={{ scrollMarginTop: 80 }}>
+                      <div className="panel-header">
+                        <span className="panel-title">
+                          <Icon name="alert" size={16} style={{ color: 'var(--blue)' } as React.CSSProperties} /> 安全库存预警
+                        </span>
+                        <span className="muted" style={{ fontSize: 12 }}>{sa.stats.total} 种低于再订货点</span>
+                      </div>
+                      {total > 0 && (
+                        <div>
+                          {pageItems.map((it) => (
+                            <div key={it.product_id} className="chain-item">
+                              <div className="chain-item-head">
+                                <span className="chain-item-name">{it.product}</span>
+                                <span className="chain-item-state" style={{ color: 'var(--orange)' }}>差 {it.gap}</span>
+                              </div>
+                              <div className="chain-item-meta">现有 {it.available} · 下限 {it.min_qty}</div>
+                            </div>
+                          ))}
+                          {total > RISK_PAGE_SIZE && (
+                            <Pagination page={alertsPage} total={total} pageSize={RISK_PAGE_SIZE} onChange={setAlertsPage} />
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )
+                }}
+              </QueryView>
             </>
           ) : (
             <>

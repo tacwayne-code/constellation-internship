@@ -9,6 +9,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 from app.config import get_settings
+from app.services.cache import get_cache
 from app.services.adapters.base import fetch_mock_rows, fetch_with_fallback
 from app.services.adapters.business import (
     BomAdapter,
@@ -213,9 +214,14 @@ async def module_config(module: str, client: ClientDep, resp: Response):
         from fastapi import HTTPException
 
         raise HTTPException(status_code=404, detail=f"未知模块: {module}")
-    # 动态统计（从 Odoo 实时计算）
+    # 动态统计（从 Odoo 实时计算，带 TTL 缓存）
+    cache = get_cache()
+    key = f"module_config:{module}"
+    if (cached_hit := cache.get(key)) is not None:
+        resp.headers["X-Data-Source"] = "odoo"
+        return cached_hit
     stats = await compute_module_stats(client, module)
-    return {
+    result = {
         "id": module,
         "title": cfg["title"],
         "subtitle": "来自 Odoo 标准模块数据",
@@ -224,6 +230,8 @@ async def module_config(module: str, client: ClientDep, resp: Response):
         "focus": "",
         "workflow": [],
     }
+    cache.set(key, result, ttl=300)
+    return result
 
 
 async def _count(client, model: str, domain: list | None = None) -> int:

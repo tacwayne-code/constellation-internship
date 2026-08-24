@@ -4,6 +4,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+from app.services.cache import cached
 from app.services.odoo.client import OdooClient
 from app.services.odoo.models import (
     FIELDS_BOM,
@@ -24,6 +25,7 @@ from app.services.odoo.models import (
     MODEL_SALE_ORDER_LINE,
     TAG_NAMES_EMERGENCY,
 )
+from app.services.odoo.refs import _ref_id, _ref_name
 
 logger = logging.getLogger(__name__)
 
@@ -49,20 +51,6 @@ def _has_emergency_tag(tag_ids: list, emergency_ids: set[int]) -> bool:
     if not tag_ids or not emergency_ids:
         return False
     return any(_tag_id_of(t) in emergency_ids for t in tag_ids)
-
-
-def _ref_name(ref: Any) -> str:
-    if isinstance(ref, (list, tuple)) and len(ref) > 1:
-        return str(ref[1])
-    return str(ref) if ref else "—"
-
-
-def _ref_id(ref: Any) -> int | None:
-    if isinstance(ref, (list, tuple)) and ref:
-        return ref[0]
-    if isinstance(ref, int):
-        return ref
-    return None
 
 
 # ---- 业务类型归类（按订单行产品分类） ----
@@ -103,6 +91,7 @@ async def _get_so_business_types(client: OdooClient, so_ids: list[int]) -> dict[
     return result
 
 
+@cached(ttl=120, key_fn=lambda client, limit=100: f"sales_overview:{limit}")
 async def get_sales_overview(client: OdooClient, limit: int = 100) -> list[dict[str, Any]]:
     """销售订单列表 + 紧急判定 + 关联子单聚合（PO/MO/picking 数量）"""
     emergency_ids = await _get_emergency_tag_ids(client)
@@ -299,16 +288,23 @@ async def aggregate_order(client: OdooClient, so_id: int) -> dict[str, Any]:
             } for p in po_recs
         ]
 
-    # 3. MO：通过 origin 匹配 + 同步拉取每 MO 的工序进度
+    # 3. MO：通过 origin 匹配 + 批量拉取工序进度（消除 N+1）
     mos = await client.search_read(MODEL_MRP_PRODUCTION, [["origin", "=", so_name]],
         FIELDS_MRP_PRODUCTION, limit=None)
-    mo_list = []
-    for m in mos:
-        # 工序（mrp.workorder）
-        wos = await client.search_read(
-            "mrp.workorder", [["production_id", "=", m["id"]]],
+    mo_ids = [m["id"] for m in mos]
+    wo_by_mo: dict[int, list[dict]] = {}
+    if mo_ids:
+        wos_all = await client.search_read(
+            "mrp.workorder", [["production_id", "in", mo_ids]],
             FIELDS_WORKORDER, limit=None, order="sequence, id",
         )
+        for w in wos_all:
+            _pid = _ref_id(w.get("production_id"))
+            if _pid is not None:
+                wo_by_mo.setdefault(_pid, []).append(w)
+    mo_list = []
+    for m in mos:
+        wos = wo_by_mo.get(m["id"], [])
         workorders = [
             {
                 "id": w["id"],

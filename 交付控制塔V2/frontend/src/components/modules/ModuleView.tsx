@@ -1262,6 +1262,7 @@ function VendorOrders({ partnerId }: { partnerId: string }) {
                 onClick={() => setSelected({
                   id: o.id, name: o.name, partner: o.partner, state: o.state,
                   priority: Number(o.priority) || 0, is_urgent: o.is_urgent,
+                  overdue: false, overdue_days: 0,
                   date_planned: o.date_planned, amount_total: o.amount_total,
                   line_count: o.line_count, project: '', user: '',
                 })}

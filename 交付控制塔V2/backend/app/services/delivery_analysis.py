@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from app.services.cache import cached
 from app.services.odoo.client import OdooClient
 from app.services.odoo.models import (
     FIELDS_SALE_ORDER,
@@ -21,20 +22,7 @@ from app.services.odoo.models import (
     MODEL_SALE_ORDER,
     MODEL_SALE_ORDER_LINE,
 )
-
-
-def _ref_id(ref) -> int | None:
-    if isinstance(ref, (list, tuple)):
-        return ref[0] if ref else None
-    if isinstance(ref, int):
-        return ref
-    return None
-
-
-def _ref_name(ref) -> str:
-    if isinstance(ref, (list, tuple)) and len(ref) > 1:
-        return str(ref[1])
-    return str(ref) if ref else "—"
+from app.services.odoo.refs import _ref_id, _ref_name
 
 
 # ---- 物流分类：标准件 vs 加工周期件（按产品分类关键词） ----
@@ -52,8 +40,12 @@ def _material_type(categ_name: str) -> str:
     return "other"
 
 
+@cached(ttl=30, key_fn=lambda client, so_id: f"delivery_analysis:{so_id}")
 async def analyze_delivery(client: OdooClient, so_id: int) -> dict[str, Any]:
-    """按销售订单做交付日期估算。返回含 materials / eta_summary / estimated_delivery。"""
+    """按销售订单做交付日期估算。返回含 materials / eta_summary / estimated_delivery。
+
+    TTL 缓存：一键采购的 options + create 两次调用在 30s 内复用结果，避免重复展开 BOM。
+    """
     sos = await client.search_read(MODEL_SALE_ORDER, [["id", "=", so_id]], FIELDS_SALE_ORDER)
     if not sos:
         return {"error": f"sale.order id={so_id} 不存在"}
