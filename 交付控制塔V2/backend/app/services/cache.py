@@ -19,8 +19,13 @@ class MemoryCache:
     """线程安全的内存 TTL 缓存"""
 
     def __init__(self, maxsize: int = 512, default_ttl: int = 60):
+        self._default_ttl = default_ttl
+        # 底层 TTLCache 的 ttl 设为 float('inf')（禁用 cachetools 内置 TTL 逐出），
+        # 由自定义 expires 字段控制逐出——否则 ttl=60 会在 60s 物理逐出所有条目，
+        # 导致 cache.set(..., ttl=300) / @cached(ttl=120) 的 expires 形同虚设。
+        # 注意：ttl=0 会让条目立即过期，必须用 inf。
         self._cache: TTLCache[str, tuple[Any, float]] = TTLCache(
-            maxsize=maxsize, ttl=default_ttl
+            maxsize=maxsize, ttl=float("inf")
         )
 
     def get(self, key: str) -> Any | None:
@@ -35,9 +40,8 @@ class MemoryCache:
 
     def set(self, key: str, value: Any, ttl: int | None = None) -> None:
         if ttl is None:
-            self._cache[key] = (value, time.time() + self._cache.ttl)
-        else:
-            self._cache[key] = (value, time.time() + ttl)
+            ttl = self._default_ttl
+        self._cache[key] = (value, time.time() + ttl)
 
     def delete(self, key: str) -> None:
         self._cache.pop(key, None)

@@ -14,6 +14,7 @@ import logging
 from datetime import date, timedelta
 from typing import Any
 
+from app.services.cache import get_cache
 from app.services.delivery_analysis import _ref_id, _ref_name, analyze_delivery
 from app.services.odoo.client import OdooClient
 
@@ -137,6 +138,9 @@ async def create_urgent_purchases(
         except Exception as e:  # noqa: BLE001
             logger.exception("create urgent PO failed for %s", m["product"])
             skipped.append({"product": m["product"], "reason": str(e)[:120]})
+
+    # 建单后失效 analyze_delivery 缓存，避免 30s 内重复点「一键采购」命中旧结果重复建单
+    get_cache().delete(f"delivery_analysis:{so_id}")
 
     return {
         "so_name": data["so"]["name"],
