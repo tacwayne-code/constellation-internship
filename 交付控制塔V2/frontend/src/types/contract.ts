@@ -27,8 +27,8 @@ export interface Project {
   status: string
   tone: Tone
   progress: number
-  risks: number
-  blockers: number
+  active: number
+  overdue: number
   due: string
   phase: string
   start?: string
@@ -48,8 +48,8 @@ export interface GanttTask extends SRow {
   _date_end?: string
 }
 
-/** 风险/问题 */
-export interface RiskItem extends SRow {
+/** 任务项（project.task 记录） */
+export interface TaskItem extends SRow {
   category?: string
   level?: string
   tag?: string
@@ -63,8 +63,8 @@ export interface PortfolioSummary {
   projects_total: number
   projects_active: number
   progress_avg: number
-  risks_total: number
-  blockers_total: number
+  tasks_active: number
+  tasks_overdue: number
   by_tone: { green: number; amber: number; red: number }
   projects: Project[]
 }

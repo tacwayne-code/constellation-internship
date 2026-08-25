@@ -40,7 +40,7 @@ _MODULES = {
     "people": {"title": "人员管理", "adapter": PeopleAdapter(), "mock": "people"},
     "vendors": {"title": "供应商交付", "adapter": VendorsAdapter(), "mock": "vendors"},
     "electrical": {"title": "电气施工", "adapter": ElectricalAdapter(), "mock": None},
-    "field": {"title": "风险控制", "adapter": GanttAdapter(), "mock": "risks"},
+    "field": {"title": "任务状态", "adapter": GanttAdapter(), "mock": "risks"},
     "mes": {"title": "MES / WCS 实施", "adapter": GanttAdapter(), "mock": None},
     "commissioning": {"title": "调试与验收", "adapter": None, "mock": None},
     # ---- B 组：新增业务模块 ----
@@ -59,7 +59,7 @@ _ADAPTER_DOMAIN = {
     "people": [],
     "vendors": [("supplier_rank", ">", 0)],
     "electrical": [("state", "not in", ["cancel"])],
-    "field": [],  # 风险控制：显示全部 task（含已完成 + 进行中 + 未开始）
+    "field": [],  # 任务状态：显示全部 task（含已完成 + 进行中 + 未开始）
     "commissioning": [],
     # MES/软件实施：任务名含软件相关关键词
     "mes": ["|", "|", "|",
@@ -330,10 +330,11 @@ async def compute_module_stats(client, module: str) -> list[list[str]]:
             # 单 stats 无意义，让前端用通用表格直接展示验收清单
             return []
         if module == "field":
-            total = await _count(client, "project.task", [("state", "!=", "1_done")])
-            high = await _count(client, "project.task", [("state", "not in", ["1_done", "03_approved"])])
+            active = await _count(client, "project.task", [("state", "not in", ["1_done", "1_canceled"])])
+            done = await _count(client, "project.task", [("state", "=", "1_done")])
             return [
-                ["活跃风险", str(total)],
+                ["进行中任务", str(active)],
+                ["已完成任务", str(done)],
             ]
         if module == "design":
             total = await _count(client, "mrp.bom", [("active", "=", True)])

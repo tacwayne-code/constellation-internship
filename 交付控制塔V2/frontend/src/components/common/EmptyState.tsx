@@ -98,7 +98,7 @@ function getContent(moduleId: string): {
       }
     default:
       return {
-        icon: moduleId === 'field' ? 'alert' : 'clock',
+        icon: moduleId === 'field' ? 'grid' : 'clock',
         title: '暂无数据',
         desc: '该模块当前没有可显示的数据。',
         actions: ['在 Odoo 中创建相关记录', '刷新页面或检查过滤条件'],

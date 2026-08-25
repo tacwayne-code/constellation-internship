@@ -3,7 +3,7 @@
  */
 import { useQuery } from '@tanstack/react-query'
 import { apiFetch, type ApiResult } from '../client'
-import type { GanttTask, ModuleConfig, PortfolioSummary, Project, RiskItem, SRow } from '../../types/contract'
+import type { GanttTask, ModuleConfig, PortfolioSummary, Project, TaskItem, SRow } from '../../types/contract'
 
 /** 通用请求包装：忽略 source，返回 data */
 async function get<T>(path: string): Promise<T> {
@@ -42,19 +42,19 @@ export function useGantt(projectId: string) {
   })
 }
 
-export function useRisks() {
+export function useActiveTasks() {
   return useQuery({
-    queryKey: ['risks'],
-    queryFn: () => get<RiskItem[]>('/risks?limit=500'),
+    queryKey: ['active-tasks'],
+    queryFn: () => get<TaskItem[]>('/risks?limit=500'),
     staleTime: 0,
     refetchOnMount: 'always',
   })
 }
 
-export function useBlockers() {
+export function useOverdueTasks() {
   return useQuery({
-    queryKey: ['blockers'],
-    queryFn: () => get<RiskItem[]>('/risks/blockers?limit=500'),
+    queryKey: ['overdue-tasks'],
+    queryFn: () => get<TaskItem[]>('/risks/blockers?limit=500'),
     staleTime: 0,
     refetchOnMount: 'always',
   })

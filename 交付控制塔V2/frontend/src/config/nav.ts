@@ -35,7 +35,7 @@ export const NAV_SECTIONS: NavSection[] = [
       { id: 'people', label: '人员管理', icon: 'users' },
       { id: 'vendors', label: '供应商交付', icon: 'handshake' },
       { id: 'workshop', label: '生产车间', icon: 'factory' },
-      { id: 'field', label: '风险控制', icon: 'shield' },
+      { id: 'field', label: '任务状态', icon: 'grid' },
     ],
   },
   {

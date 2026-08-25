@@ -48,18 +48,38 @@ async def portfolio_summary(client: ClientDep, resp: Response):
     if not projects:
         projects = await fetch_mock_rows("projects")
 
-    risks, risk_source = await fetch_with_fallback(
-        client, GanttAdapter(), domain=[("stage_id", "!=", False)], mock_key="risks"
-    )
-    risk_count = len(risks) if risk_source == "odoo" else len(await fetch_mock_rows("risks"))
-    blockers = sum(p.get("blockers") or 0 for p in projects)
+    # 任务口径：Odoo 标准模型无「风险」对象，用 project.task 的进行中 / 逾期状态作为真实指标
+    tasks_active = 0
+    tasks_overdue = 0
+    if source == "odoo":
+        from datetime import date
+
+        tasks = await client.search_read(
+            MODEL_TASK,
+            [],
+            ["state", "date_deadline"],
+            limit=5000,
+        )
+        today = date.today().isoformat()
+        for t in tasks:
+            if t.get("state") in ("1_done", "1_canceled"):
+                continue
+            tasks_active += 1
+            if t.get("date_deadline") and str(t["date_deadline"])[:10] < today:
+                tasks_overdue += 1
+
+    # 平均进度：仅统计有任务的项目，避免「无任务=0%」拉低均值
+    scored = [p for p in projects if p.get("_has_tasks")]
+    progress_avg = round(sum(p.get("progress", 0) for p in scored) / max(len(scored), 1))
+    for p in projects:
+        p.pop("_has_tasks", None)
 
     summary = {
         "projects_total": len(projects),
         "projects_active": len(projects),
-        "progress_avg": round(sum(p.get("progress", 0) for p in projects) / max(len(projects), 1)),
-        "risks_total": risk_count,
-        "blockers_total": blockers,
+        "progress_avg": progress_avg,
+        "tasks_active": tasks_active,
+        "tasks_overdue": tasks_overdue,
         "by_tone": {
             "green": sum(1 for p in projects if p.get("tone") == "success"),
             "amber": sum(1 for p in projects if p.get("tone") == "warning"),
@@ -106,8 +126,10 @@ async def project_gantt(project_id: str, client: ClientDep, resp: Response, limi
 
 @router.get("/risks")
 async def list_risks(client: ClientDep, resp: Response, category: str | None = None, limit: int = Query(500, ge=1, le=500)):
+    # 进行中任务（未完成且未取消），作为「进行中任务」列表
+    domain = [("state", "not in", ["1_done", "1_canceled"])]
     rows, source = await fetch_with_fallback(
-        client, GanttAdapter(), domain=[], mock_key="risks", limit=limit
+        client, GanttAdapter(), domain=domain, mock_key="risks", limit=limit
     )
     if not rows:
         rows = await fetch_mock_rows("risks")
@@ -119,11 +141,18 @@ async def list_risks(client: ClientDep, resp: Response, category: str | None = N
 
 @router.get("/risks/blockers")
 async def list_blockers(client: ClientDep, resp: Response):
+    # 逾期任务（未完成且已过截止日）
+    from datetime import date
+
+    today = date.today().isoformat()
+    domain = [
+        ("state", "not in", ["1_done", "1_canceled"]),
+        ("date_deadline", "<", today),
+    ]
     rows, source = await fetch_with_fallback(
-        client, GanttAdapter(), mock_key="risks"
+        client, GanttAdapter(), domain=domain, mock_key="risks"
     )
     if not rows:
         rows = await fetch_mock_rows("risks")
-    blockers = [r for r in rows if r.get("is_blocker") or "ISS" in str(r.get("id", ""))]
     _mock_header(resp, source)
-    return blockers or rows[:3]
+    return rows

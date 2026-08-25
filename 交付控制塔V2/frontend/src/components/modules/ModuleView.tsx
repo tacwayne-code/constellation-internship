@@ -703,7 +703,7 @@ function RiskSummaryCard() {
       <div className="panel-header">
         <span className="panel-title">
           <Icon name="alert" size={16} style={{ color: 'var(--red)' } as React.CSSProperties} />
-          风险严重度分布
+          任务状态分布
         </span>
       </div>
       <div className="kpi-grid" style={{ gridTemplateColumns: 'repeat(3, 1fr)' }}>
@@ -711,21 +711,21 @@ function RiskSummaryCard() {
           <div className="kpi-icon red"><Icon name="alert" size={16} /></div>
           <div className="kpi-copy">
             <div className="num">{groups.high}</div>
-            <div className="label">高危</div>
+            <div className="label">需修改</div>
           </div>
         </div>
         <div className="kpi-card">
           <div className="kpi-icon orange"><Icon name="alert" size={16} /></div>
           <div className="kpi-copy">
             <div className="num">{groups.medium}</div>
-            <div className="label">中等</div>
+            <div className="label">进行中</div>
           </div>
         </div>
         <div className="kpi-card">
           <div className="kpi-icon green"><Icon name="check" size={16} /></div>
           <div className="kpi-copy">
             <div className="num">{groups.low}</div>
-            <div className="label">一般</div>
+            <div className="label">已完成</div>
           </div>
         </div>
       </div>
@@ -736,12 +736,12 @@ function RiskSummaryCard() {
 function BlockerSummaryCard() {
   const rowsQ = useModuleRows('overview')
   const stats = useMemo(() => {
-    const projects = (rowsQ.data ?? []) as Array<SRow & { risks?: number; blockers?: number }>
+    const projects = (rowsQ.data ?? []) as Array<SRow & { active?: number; overdue?: number }>
     let activeTasks = 0
     let overdue = 0
     for (const p of projects) {
-      activeTasks += p.risks ?? 0
-      overdue += p.blockers ?? 0
+      activeTasks += p.active ?? 0
+      overdue += p.overdue ?? 0
     }
     return { activeTasks, overdue }
   }, [rowsQ.data])
@@ -782,9 +782,9 @@ function BlockerSummaryCard() {
 }
 
 /* ====================================================================
- *  RiskControlView（field）
+ *  TaskStatusView（field）— 项目任务状态分布
  * ==================================================================== */
-function RiskControlView() {
+function TaskStatusView() {
   const rowsQ = useModuleRows('field')
   const [filter, setFilter] = useState('全部')
   const filtered = filter === '全部' ? (rowsQ.data ?? []) : (rowsQ.data ?? []).filter((r) => r.status === filter)
@@ -793,9 +793,9 @@ function RiskControlView() {
     <QueryView query={rowsQ} empty={<EmptyState module={getModule('field')} />}>
       {() => {
         const grouped = {
-          high: filtered.filter((r) => r.tone === 'danger'),
-          medium: filtered.filter((r) => r.tone === 'warning'),
-          low: filtered.filter((r) => r.tone !== 'danger' && r.tone !== 'warning'),
+          changes: filtered.filter((r) => r.tone === 'danger'),
+          progress: filtered.filter((r) => r.tone === 'warning'),
+          done: filtered.filter((r) => r.tone !== 'danger' && r.tone !== 'warning'),
         }
         return (
           <>
@@ -804,21 +804,21 @@ function RiskControlView() {
             </div>
             <div className="risk-matrix">
               <div className="risk-matrix-cell high">
-                <div className="num">{grouped.high.length}</div>
-                <div className="label">高危 · 需立即处理</div>
+                <div className="num">{grouped.changes.length}</div>
+                <div className="label">需修改 · 待处理</div>
               </div>
               <div className="risk-matrix-cell medium">
-                <div className="num">{grouped.medium.length}</div>
-                <div className="label">中等 · 持续关注</div>
+                <div className="num">{grouped.progress.length}</div>
+                <div className="label">进行中 · 推进中</div>
               </div>
               <div className="risk-matrix-cell low">
-                <div className="num">{grouped.low.length}</div>
-                <div className="label">一般 · 观察</div>
+                <div className="num">{grouped.done.length}</div>
+                <div className="label">已完成 · 已归档</div>
               </div>
             </div>
-            <RiskGroup title="高危风险" items={grouped.high} />
-            <RiskGroup title="中等风险" items={grouped.medium} />
-            <RiskGroup title="一般风险" items={grouped.low} />
+            <TaskGroup title="需修改" items={grouped.changes} />
+            <TaskGroup title="进行中" items={grouped.progress} />
+            <TaskGroup title="已完成" items={grouped.done} />
           </>
         )
       }}
@@ -826,7 +826,7 @@ function RiskControlView() {
   )
 }
 
-function RiskGroup({ title, items }: { title: string; items: SRow[] }) {
+function TaskGroup({ title, items }: { title: string; items: SRow[] }) {
   const [page, setPage] = useState(1)
   const [selected, setSelected] = useState<SRow | null>(null)
   const start = (page - 1) * PAGE_SIZE
@@ -1394,6 +1394,69 @@ function WorkshopView() {
   )
 }
 
+
+/* ====================================================================
+ *  ProductsView（products）：产品主数据（分类筛选 + 表格）
+ * ==================================================================== */
+function ProductsView() {
+  const rowsQ = useModuleRows('products')
+  const [biz, setBiz] = useState<string>('all')
+  const rows = rowsQ.data ?? []
+
+  const categories = useMemo(() => {
+    const map = new Map<string, number>()
+    for (const r of rows) {
+      const c = r.cells?.[2] ?? '未分类'
+      map.set(c, (map.get(c) ?? 0) + 1)
+    }
+    return Array.from(map.entries()).sort((a, b) => b[1] - a[1])
+  }, [rows])
+
+  const filtered = biz === 'all' ? rows : rows.filter((r) => (r.cells?.[2] ?? '未分类') === biz)
+
+  return (
+    <QueryView query={rowsQ} empty={<EmptyState module={getModule('products')} />}>
+      {() => (
+        <div className="module-view">
+          {categories.length > 0 && (
+            <div className="panel">
+              <div className="panel-header">
+                <span className="panel-title">产品分类 · 点击筛选</span>
+              </div>
+              <div className="category-grid">
+                {categories.map(([name, count]) => (
+                  <div
+                    className="category-card"
+                    key={name}
+                    onClick={() => setBiz(biz === name ? 'all' : name)}
+                    style={biz === name ? { borderColor: 'var(--blue)' } : undefined}
+                  >
+                    <div className="category-card-head">
+                      <StatusDot tone="blue" />
+                      <span className="category-card-title">{name}</span>
+                    </div>
+                    <div className="category-card-count">{count}</div>
+                    <div className="category-card-desc">{biz === name ? '已筛选 · 点击取消' : '点击筛选'}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+          {biz !== 'all' && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <button className="ghost-btn" onClick={() => setBiz('all')}>
+                <Icon name="arrow" size={13} /> 清除筛选
+              </button>
+              <span className="muted" style={{ fontSize: 12 }}>{biz} · {filtered.length} 个产品</span>
+            </div>
+          )}
+          <GenericTableView rows={filtered} showProgress={false} />
+        </div>
+      )}
+    </QueryView>
+  )
+}
+
 /* ====================================================================
  *  DefaultView：通用表格（未专门实现的模块兜底）
  * ==================================================================== */
@@ -1419,7 +1482,7 @@ export function ModuleView({ projectId }: { projectId: string | null }) {
     case 'delivery':
       return <ModuleShell><DeliveryView /></ModuleShell>
     case 'field':
-      return <ModuleShell><RiskControlView /></ModuleShell>
+      return <ModuleShell><TaskStatusView /></ModuleShell>
     case 'procurement':
       return <ModuleShell><ProcurementView /></ModuleShell>
     case 'people':
@@ -1436,6 +1499,8 @@ export function ModuleView({ projectId }: { projectId: string | null }) {
     case 'manufacturing':
     case 'workshop':
       return <ModuleShell><WorkshopView /></ModuleShell>
+    case 'products':
+      return <ModuleShell><ProductsView /></ModuleShell>
     case 'sales':
     case 'deliveryTower': // 兼容旧 hash 直达（#/deliveryTower）
       return <ModuleShell><DeliveryTowerView /></ModuleShell>

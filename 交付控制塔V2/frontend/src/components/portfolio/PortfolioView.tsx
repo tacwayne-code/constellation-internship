@@ -1,4 +1,4 @@
-import { usePortfolioSummary, useRisks, useBlockers } from '../../api/modules/useData'
+import { usePortfolioSummary, useActiveTasks, useOverdueTasks } from '../../api/modules/useData'
 import { NAV_SECTIONS } from '../../config/nav'
 import { getModule } from '../../config/modules'
 import { useNavigation } from '../../store/navigationStore'
@@ -6,7 +6,7 @@ import { Icon } from '../common/Icon'
 import { ProgressBar, StatusDot } from '../common/Status'
 import { QueryView } from '../common/QueryView'
 import { Drawer } from '../common/Drawer'
-import type { Project, RiskItem } from '../../types/contract'
+import type { Project, TaskItem } from '../../types/contract'
 import { useState } from 'react'
 
 const MARK_COLORS: Record<string, string> = {
@@ -34,8 +34,8 @@ function ProjectCard({ project, onOpen }: { project: Project; onOpen: (id: strin
         <ProgressBar value={project.progress} />
         <div className="project-card-meta">
           <span>进度 <b>{project.progress}%</b></span>
-          <span>风险 <b style={{ color: 'var(--red)' }}>{project.risks}</b></span>
-          <span>阻塞 <b style={{ color: project.blockers > 0 ? 'var(--orange)' : 'var(--green)' }}>{project.blockers}</b></span>
+          <span>进行中 <b style={{ color: 'var(--red)' }}>{project.active}</b></span>
+          <span>逾期 <b style={{ color: project.overdue > 0 ? 'var(--orange)' : 'var(--green)' }}>{project.overdue}</b></span>
         </div>
         <div className="project-card-foot">
           <span className="phase-text">{project.phase}</span>
@@ -68,18 +68,18 @@ function ProjectCard({ project, onOpen }: { project: Project; onOpen: (id: strin
   )
 }
 
-function RiskList({ risks }: { risks: RiskItem[] }) {
+function ActiveTaskList({ tasks }: { tasks: TaskItem[] }) {
   return (
     <div className="panel portfolio-risk-panel">
       <div className="panel-header">
         <span className="panel-title">
           <Icon name="shield" size={16} style={{ color: 'var(--red)' } as React.CSSProperties} />
-          任务风险与活动
+          进行中任务
         </span>
-        <span className="subtitle" style={{ margin: 0 }}>{risks.length} 项</span>
+        <span className="subtitle" style={{ margin: 0 }}>{tasks.length} 项</span>
       </div>
       <div className="risk-list-scroll">
-        {risks.map((r, i) => (
+        {tasks.map((r, i) => (
           <div className="risk-item" key={r.id ?? i}>
             <div className={`risk-icon ${r.tone === 'danger' ? 'red' : r.tone === 'warning' ? 'orange' : r.tone === 'success' ? 'green' : 'blue'}`}>
               <Icon name={r.icon ?? 'alert'} size={15} />
@@ -102,20 +102,20 @@ function RiskList({ risks }: { risks: RiskItem[] }) {
           </div>
         ))}
       </div>
-      {risks.length === 0 && <div className="state-block" style={{ padding: 24 }}>暂无活跃风险</div>}
+      {tasks.length === 0 && <div className="state-block" style={{ padding: 24 }}>暂无进行中任务</div>}
     </div>
   )
 }
 
-function BlockersTable({ blockers }: { blockers: RiskItem[] }) {
+function OverdueTaskTable({ tasks }: { tasks: TaskItem[] }) {
   return (
     <div className="panel portfolio-blocker-panel">
       <div className="panel-header">
         <span className="panel-title">
           <Icon name="pin" size={16} style={{ color: 'var(--orange)' } as React.CSSProperties} />
-          跨项目任务
+          逾期任务
         </span>
-        <span className="subtitle" style={{ margin: 0 }}>{blockers.length} 项</span>
+        <span className="subtitle" style={{ margin: 0 }}>{tasks.length} 项</span>
       </div>
       <div className="blocker-table-scroll">
         <table className="blocker-table">
@@ -123,11 +123,11 @@ function BlockersTable({ blockers }: { blockers: RiskItem[] }) {
             <tr>
               <th>事项</th>
               <th>状态</th>
-              <th>下一步</th>
+              <th>截止日期</th>
             </tr>
           </thead>
           <tbody>
-            {blockers.map((b, i) => (
+            {tasks.map((b, i) => (
               <tr key={b.id ?? i}>
                 <td>
                   <div className="blocker-desc">{b.title ?? b.name}</div>
@@ -143,13 +143,13 @@ function BlockersTable({ blockers }: { blockers: RiskItem[] }) {
                     {b.status ?? '跟进中'}
                   </span>
                 </td>
-                <td className="blocker-action">{b.fields?.find((f) => f[0] === '下一步动作')?.[1] ?? '—'}</td>
+                <td className="blocker-action">{b.fields?.find((f) => f[0] === '截止日期')?.[1] ?? '—'}</td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
-      {blockers.length === 0 && <div className="state-block" style={{ padding: 24 }}>暂无阻塞事项</div>}
+      {tasks.length === 0 && <div className="state-block" style={{ padding: 24 }}>暂无逾期任务</div>}
     </div>
   )
 }
@@ -185,8 +185,8 @@ function ModuleMap() {
 /** 驾驶舱（Portfolio View） */
 export function PortfolioView() {
   const summary = usePortfolioSummary()
-  const risks = useRisks()
-  const blockers = useBlockers()
+  const activeTasks = useActiveTasks()
+  const overdueTasks = useOverdueTasks()
   const openProject = useNavigation((s) => s.openProject)
   const projectCount = summary.data?.projects_total
 
@@ -226,15 +226,15 @@ export function PortfolioView() {
               <div className="kpi-card">
                 <div className="kpi-icon red"><Icon name="alert" size={18} /></div>
                 <div className="kpi-copy">
-                  <div className="num">{s.risks_total}</div>
-                  <div className="label">活跃风险</div>
+                  <div className="num">{s.tasks_active}</div>
+                  <div className="label">进行中任务</div>
                 </div>
               </div>
               <div className="kpi-card">
                 <div className="kpi-icon orange"><Icon name="pin" size={18} /></div>
                 <div className="kpi-copy">
-                  <div className="num">{s.blockers_total}</div>
-                  <div className="label">阻塞事项</div>
+                  <div className="num">{s.tasks_overdue}</div>
+                  <div className="label">逾期任务</div>
                 </div>
               </div>
               <div className="kpi-card">
@@ -253,10 +253,10 @@ export function PortfolioView() {
               ))}
             </div>
 
-            {/* 风险 + 阻塞 */}
+            {/* 进行中任务 + 逾期任务 */}
             <div className="portfolio-summary-grid">
-              <RiskList risks={risks.data ?? []} />
-              <BlockersTable blockers={blockers.data ?? []} />
+              <ActiveTaskList tasks={activeTasks.data ?? []} />
+              <OverdueTaskTable tasks={overdueTasks.data ?? []} />
             </div>
 
             {/* 模块地图 */}

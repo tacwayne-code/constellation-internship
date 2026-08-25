@@ -70,9 +70,9 @@ export const MODULES: Record<string, ModuleConfig> = {
   },
   field: {
     id: 'field',
-    title: '风险控制',
-    subtitle: '潜在问题预警与解除计划',
-    icon: 'shield',
+    title: '任务状态',
+    subtitle: '项目任务状态分布与进度',
+    icon: 'grid',
     stats: [],
   },
   mes: {

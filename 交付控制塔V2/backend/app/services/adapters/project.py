@@ -54,8 +54,8 @@ class ProjectAdapter(BaseRowAdapter):
             "status": {"success": "绿灯", "warning": "黄灯", "danger": "红灯"}.get(tone, "绿灯"),
             "tone": tone,
             "progress": progress,
-            "risks": 0,
-            "blockers": 0,
+            "active": 0,
+            "overdue": 0,
             "due": due,
             "phase": phase,
             "start": date_start,
@@ -256,17 +256,18 @@ async def enrich_projects(client, projects: list[dict], today: str | None = None
         if not ts:
             continue
         done = sum(1 for t in ts if t.get("state") == "1_done" or (t.get("progress") or 0) >= 100)
-        active = sum(1 for t in ts if t.get("state") != "1_done")
+        active = sum(1 for t in ts if t.get("state") not in ("1_done", "1_canceled"))
         overdue = sum(
             1 for t in ts
-            if t.get("state") != "1_done"
+            if t.get("state") not in ("1_done", "1_canceled")
             and t.get("date_deadline")
             and str(t["date_deadline"])[:10] < today_iso
         )
 
         p["progress"] = round(done / len(ts) * 100)
-        p["risks"] = active
-        p["blockers"] = overdue
+        p["active"] = active
+        p["overdue"] = overdue
+        p["_has_tasks"] = True
 
         deadlines = [str(t["date_deadline"])[:10] for t in ts if t.get("date_deadline")]
         if deadlines:
