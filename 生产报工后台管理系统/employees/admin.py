@@ -33,15 +33,19 @@ class AdministratorOnlyMixin:
 
 @admin.register(JobPosition)
 class JobPositionAdmin(AdministratorOnlyMixin, admin.ModelAdmin):
-    list_display = ("code", "name", "is_active", "process_count", "updated_at")
+    list_display = ("display_code", "name", "is_active", "process_count", "updated_at")
     list_filter = ("is_active",)
     search_fields = ("code", "name")
     readonly_fields = ("created_at", "updated_at")
     fields = ("code", "name", "is_active", "created_at", "updated_at")
 
-    @admin.display(description="Processes", ordering="process_total")
+    @admin.display(description="具体工艺数量", ordering="process_total")
     def process_count(self, obj):
         return obj.process_total
+
+    @admin.display(description="岗位编码", ordering="code")
+    def display_code(self, obj):
+        return _display_legacy_code(obj.code, "legacy-position-", "历史岗位-")
 
     def get_queryset(self, request):
         return super().get_queryset(request).annotate(process_total=Count("processes"))
@@ -55,12 +59,16 @@ class JobPositionAdmin(AdministratorOnlyMixin, admin.ModelAdmin):
 
 @admin.register(WorkProcess)
 class WorkProcessAdmin(AdministratorOnlyMixin, admin.ModelAdmin):
-    list_display = ("code", "name", "position", "is_active", "updated_at")
+    list_display = ("display_code", "name", "position", "is_active", "updated_at")
     list_filter = ("is_active", "position")
     search_fields = ("code", "name", "position__code", "position__name")
     list_select_related = ("position",)
     readonly_fields = ("created_at", "updated_at")
-    fieldsets = ((None, {"fields": ("position", "code", "name", "is_active", "wo_match_rules")}), ("Audit", {"fields": ("created_at", "updated_at")}))
+    fieldsets = ((None, {"fields": ("position", "code", "name", "is_active", "wo_match_rules")}), ("审计信息", {"fields": ("created_at", "updated_at")}))
+
+    @admin.display(description="具体工艺编码", ordering="code")
+    def display_code(self, obj):
+        return _display_legacy_code(obj.code, "legacy-process-", "历史工艺-")
 
     def save_model(self, request, obj, form, change):
         super().save_model(request, obj, form, change)
@@ -92,6 +100,13 @@ class EmployeeProcessAuthorizationAdmin(AdministratorOnlyMixin, admin.ModelAdmin
         super().save_model(request, obj, form, change)
         transaction.on_commit(lambda employee_id=obj.employee_id: enqueue_sop_employee_sync(employee_id))
         AuditLog.objects.create(actor=request.user, action="employee_process_authorization.update", target_type="EmployeeProcessAuthorization", target_id=str(obj.pk), metadata={"employee": obj.employee_id, "position": obj.position.code, "process": obj.process.code, "is_active": obj.is_active})
+
+
+def _display_legacy_code(value, legacy_prefix, display_prefix):
+    """Translate migration-only display prefixes without changing stored IDs."""
+    if value.startswith(legacy_prefix):
+        return f"{display_prefix}{value[len(legacy_prefix):]}"
+    return value
 
 
 @admin.register(Department)

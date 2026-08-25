@@ -11,6 +11,13 @@ phone_validator = RegexValidator(
 )
 
 
+def _display_legacy_identifier(value, legacy_prefix, display_prefix):
+    """Localize compatibility IDs for admin display without changing stored values."""
+    if value.startswith(legacy_prefix):
+        return f"{display_prefix}{value[len(legacy_prefix):]}"
+    return value
+
+
 class Department(models.Model):
     name = models.CharField("部门名称", max_length=128, unique=True)
     created_at = models.DateTimeField("创建时间", auto_now_add=True)
@@ -27,55 +34,57 @@ class Department(models.Model):
 
 class JobPosition(models.Model):
     """Stable employee position used as the first level of SOP selection."""
-    code = models.CharField("Position code", max_length=64, unique=True)
-    name = models.CharField("Position name", max_length=128)
-    is_active = models.BooleanField("Enabled", default=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
+    code = models.CharField("岗位编码", max_length=64, unique=True)
+    name = models.CharField("岗位名称", max_length=128)
+    is_active = models.BooleanField("是否启用", default=True)
+    created_at = models.DateTimeField("创建时间", auto_now_add=True)
+    updated_at = models.DateTimeField("更新时间", auto_now=True)
 
     class Meta:
-        verbose_name = "Job position"
-        verbose_name_plural = "Job positions"
+        verbose_name = "岗位"
+        verbose_name_plural = "岗位"
         ordering = ("name", "code")
 
     def __str__(self):
-        return f"{self.name} ({self.code})"
+        code = _display_legacy_identifier(self.code, "legacy-position-", "历史岗位-")
+        return f"{self.name} ({code})"
 
 
 class WorkProcess(models.Model):
     """A concrete process under a position and its non-authoritative WO rules."""
-    position = models.ForeignKey(JobPosition, on_delete=models.PROTECT, related_name="processes")
-    code = models.CharField("Process code", max_length=128, unique=True)
-    name = models.CharField("Process name", max_length=128)
-    is_active = models.BooleanField("Enabled", default=True)
+    position = models.ForeignKey(JobPosition, verbose_name="岗位", on_delete=models.PROTECT, related_name="processes")
+    code = models.CharField("具体工艺编码", max_length=128, unique=True)
+    name = models.CharField("具体工艺名称", max_length=128)
+    is_active = models.BooleanField("是否启用", default=True)
     # Matching hints are used only to filter Odoo WOs; BOM/stock remain Odoo facts.
-    wo_match_rules = models.JSONField(default=dict, blank=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
+    wo_match_rules = models.JSONField("工单匹配规则", default=dict, blank=True)
+    created_at = models.DateTimeField("创建时间", auto_now_add=True)
+    updated_at = models.DateTimeField("更新时间", auto_now=True)
 
     class Meta:
-        verbose_name = "Work process"
-        verbose_name_plural = "Work processes"
+        verbose_name = "具体工艺"
+        verbose_name_plural = "具体工艺"
         ordering = ("position__name", "name", "code")
 
     def __str__(self):
-        return f"{self.position.name} / {self.name} ({self.code})"
+        code = _display_legacy_identifier(self.code, "legacy-process-", "历史工艺-")
+        return f"{self.position.name} / {self.name} ({code})"
 
 
 class EmployeeProcessAuthorization(models.Model):
     """Audited employee -> position -> process grant."""
-    employee = models.ForeignKey("Employee", on_delete=models.PROTECT, related_name="process_authorizations")
-    position = models.ForeignKey(JobPosition, on_delete=models.PROTECT, related_name="employee_authorizations")
-    process = models.ForeignKey(WorkProcess, on_delete=models.PROTECT, related_name="employee_authorizations")
-    is_active = models.BooleanField("Enabled", default=True)
-    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name="created_process_authorizations")
-    updated_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name="updated_process_authorizations")
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
+    employee = models.ForeignKey("Employee", verbose_name="员工", on_delete=models.PROTECT, related_name="process_authorizations")
+    position = models.ForeignKey(JobPosition, verbose_name="岗位", on_delete=models.PROTECT, related_name="employee_authorizations")
+    process = models.ForeignKey(WorkProcess, verbose_name="具体工艺", on_delete=models.PROTECT, related_name="employee_authorizations")
+    is_active = models.BooleanField("是否启用", default=True)
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, verbose_name="创建人", null=True, blank=True, on_delete=models.SET_NULL, related_name="created_process_authorizations")
+    updated_by = models.ForeignKey(settings.AUTH_USER_MODEL, verbose_name="更新人", null=True, blank=True, on_delete=models.SET_NULL, related_name="updated_process_authorizations")
+    created_at = models.DateTimeField("创建时间", auto_now_add=True)
+    updated_at = models.DateTimeField("更新时间", auto_now=True)
 
     class Meta:
-        verbose_name = "Employee process authorization"
-        verbose_name_plural = "Employee process authorizations"
+        verbose_name = "员工工艺授权"
+        verbose_name_plural = "员工工艺授权"
         ordering = ("employee__name", "position__name", "process__name")
         constraints = [
             models.UniqueConstraint(fields=("employee", "position", "process"), name="employee_position_process_unique"),
@@ -84,7 +93,7 @@ class EmployeeProcessAuthorization(models.Model):
     def clean(self):
         super().clean()
         if self.process_id and self.position_id and self.process.position_id != self.position_id:
-            raise ValidationError({"process": "Process must belong to the selected position."})
+            raise ValidationError({"process": "所选具体工艺必须属于所选岗位。"})
 
     def __str__(self):
         return f"{self.employee.name} / {self.position.name} / {self.process.name}"
