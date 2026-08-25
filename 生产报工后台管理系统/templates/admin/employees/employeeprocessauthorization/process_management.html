@@ -1,0 +1,36 @@
+{% extends "admin/base_site.html" %}
+
+{% block content %}
+  <div id="content-main">
+    <ul class="object-tools">
+      <li><a href="{% url 'admin:employees_employeeprocessauthorization_process_add' %}" class="addlink">新增工艺</a></li>
+      <li><a href="{% url 'admin:employees_employeeprocessauthorization_changelist' %}">返回员工工艺授权</a></li>
+    </ul>
+    <div class="module" id="changelist">
+      <table id="result_list">
+        <thead>
+          <tr>
+            <th>岗位</th>
+            <th>具体工艺名称</th>
+            <th>是否启用</th>
+            <th>更新时间</th>
+            <th>操作</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for process in processes %}
+            <tr class="{% cycle 'row1' 'row2' %}">
+              <td>{{ process.position.name }}</td>
+              <td>{{ process.name }}</td>
+              <td>{% if process.is_active %}是{% else %}否{% endif %}</td>
+              <td>{{ process.updated_at|date:"Y年n月j日 H:i" }}</td>
+              <td><a href="{% url 'admin:employees_employeeprocessauthorization_process_change' process.pk %}">编辑</a></td>
+            </tr>
+          {% empty %}
+            <tr><td colspan="5">暂无具体工艺。</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+{% endblock %}

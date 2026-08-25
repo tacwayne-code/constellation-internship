@@ -1,0 +1,25 @@
+{% extends "admin/base_site.html" %}
+
+{% block content %}
+  <div id="content-main">
+    <form method="post" novalidate>
+      {% csrf_token %}
+      <div class="module aligned">
+        {% for field in form %}
+          <div class="form-row{% if field.errors %} errors{% endif %}">
+            <div>
+              {{ field.errors }}
+              <label{% if field.id_for_label %} for="{{ field.id_for_label }}"{% endif %}>{{ field.label }}：</label>
+              {{ field }}
+              {% if field.help_text %}<div class="help">{{ field.help_text }}</div>{% endif %}
+            </div>
+          </div>
+        {% endfor %}
+      </div>
+      <div class="submit-row">
+        <input type="submit" value="保存" class="default">
+        <a href="{% url 'admin:employees_employeeprocessauthorization_processes' %}" class="closelink">取消</a>
+      </div>
+    </form>
+  </div>
+{% endblock %}

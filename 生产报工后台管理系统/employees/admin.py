@@ -1,11 +1,15 @@
 from django.contrib import admin
+from django.contrib import messages
+from django.core.exceptions import PermissionDenied
 from django.db import transaction
 from django.db.models import Count
-from django.urls import reverse
+from django.shortcuts import get_object_or_404, redirect
+from django.template.response import TemplateResponse
+from django.urls import path, reverse
 from django.utils.html import format_html
 from uuid import uuid4
 
-from .forms import EmployeeCreateForm, EmployeeReportPanelAccountForm
+from .forms import EmployeeCreateForm, EmployeeReportPanelAccountForm, WorkProcessManagementForm
 from .models import (
     Department,
     Employee,
@@ -81,11 +85,100 @@ class WorkProcessAdmin(AdministratorOnlyMixin, admin.ModelAdmin):
 
 @admin.register(EmployeeProcessAuthorization)
 class EmployeeProcessAuthorizationAdmin(AdministratorOnlyMixin, admin.ModelAdmin):
+    change_list_template = "admin/employees/employeeprocessauthorization/change_list.html"
     list_display = ("employee", "position", "process", "is_active", "updated_at")
     list_filter = ("is_active", "position", "process")
     search_fields = ("employee__name", "employee__source_worker_id", "position__name", "process__name")
     list_select_related = ("employee", "position", "process")
     readonly_fields = ("created_by", "updated_by", "created_at", "updated_at")
+
+    def get_urls(self):
+        urls = super().get_urls()
+        custom_urls = [
+            path(
+                "processes/",
+                self.admin_site.admin_view(self.process_management_view),
+                name="employees_employeeprocessauthorization_processes",
+            ),
+            path(
+                "processes/add/",
+                self.admin_site.admin_view(self.process_add_view),
+                name="employees_employeeprocessauthorization_process_add",
+            ),
+            path(
+                "processes/<int:process_id>/change/",
+                self.admin_site.admin_view(self.process_change_view),
+                name="employees_employeeprocessauthorization_process_change",
+            ),
+        ]
+        return custom_urls + urls
+
+    def _require_superuser(self, request):
+        if not request.user.is_superuser:
+            raise PermissionDenied
+
+    def _process_management_context(self, request, **extra):
+        context = {
+            **self.admin_site.each_context(request),
+            "opts": self.model._meta,
+            "title": "员工工艺授权 - 工艺管理",
+            "processes": WorkProcess.objects.select_related("position").order_by("position__name", "name"),
+        }
+        context.update(extra)
+        return context
+
+    def process_management_view(self, request):
+        self._require_superuser(request)
+        return TemplateResponse(
+            request,
+            "admin/employees/employeeprocessauthorization/process_management.html",
+            self._process_management_context(request),
+        )
+
+    def process_add_view(self, request):
+        self._require_superuser(request)
+        form = WorkProcessManagementForm(request.POST or None)
+        if request.method == "POST" and form.is_valid():
+            process = form.save(commit=False)
+            process.code = f"process-{uuid4().hex}"
+            process.save()
+            AuditLog.objects.create(
+                actor=request.user,
+                action="work_process.create",
+                target_type="WorkProcess",
+                target_id=str(process.pk),
+                metadata={"code": process.code, "name": process.name, "position": process.position.code},
+            )
+            self.message_user(request, "具体工艺已新增。", messages.SUCCESS)
+            return redirect("admin:employees_employeeprocessauthorization_processes")
+        return TemplateResponse(
+            request,
+            "admin/employees/employeeprocessauthorization/process_form.html",
+            self._process_management_context(request, title="员工工艺授权 - 新增工艺", form=form, process=None),
+        )
+
+    def process_change_view(self, request, process_id):
+        self._require_superuser(request)
+        process = get_object_or_404(WorkProcess, pk=process_id)
+        form = WorkProcessManagementForm(request.POST or None, instance=process)
+        if request.method == "POST" and form.is_valid():
+            process = form.save()
+            AuditLog.objects.create(
+                actor=request.user,
+                action="work_process.update",
+                target_type="WorkProcess",
+                target_id=str(process.pk),
+                metadata={"code": process.code, "name": process.name, "position": process.position.code, "is_active": process.is_active},
+            )
+            employee_ids = list(process.employee_authorizations.values_list("employee_id", flat=True).distinct())
+            transaction.on_commit(lambda: [enqueue_sop_employee_sync(employee_id) for employee_id in employee_ids])
+            self.message_user(request, "具体工艺已更新。", messages.SUCCESS)
+            return redirect("admin:employees_employeeprocessauthorization_processes")
+        return TemplateResponse(
+            request,
+            "admin/employees/employeeprocessauthorization/process_form.html",
+            self._process_management_context(request, title="员工工艺授权 - 编辑工艺", form=form, process=process),
+        )
 
     def get_form(self, request, obj=None, **kwargs):
         form = super().get_form(request, obj, **kwargs)
