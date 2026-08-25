@@ -91,7 +91,10 @@ def operation_codes_for_job_title(value):
 
 
 def _job_title_from_sop_worker(worker):
-    names = worker.get("jobOperationNames")
+    roles = worker.get("jobRoles")
+    names = [role.get("name", "") for role in roles if isinstance(role, dict)] if isinstance(roles, list) else None
+    if not names:
+        names = worker.get("jobOperationNames")
     if not isinstance(names, list):
         names = split_job_title(worker.get("jobTitle", ""))
     if not names:
@@ -112,6 +115,21 @@ def _operation_codes_from_sop_worker(worker, job_title):
         codes = [str(code) for code in incoming if str(code) in allowed]
         if codes:
             return codes
+    if isinstance(incoming, list) and incoming:
+        return [str(code).strip() for code in incoming if str(code).strip()]
+    roles = worker.get("jobRoles")
+    if isinstance(roles, list):
+        codes = []
+        for role in roles:
+            if not isinstance(role, dict):
+                continue
+            for process in role.get("operations", []):
+                if isinstance(process, dict) and process.get("enabled", True):
+                    code = str(process.get("code", "")).strip()
+                    if code and code not in codes:
+                        codes.append(code)
+        if codes:
+            return codes
     return operation_codes_for_job_title(job_title)
 
 
@@ -127,6 +145,39 @@ def department_name_from_sop_team(team, job_title):
 
 def employee_source_worker_id(employee):
     return employee.source_worker_id or f"ADMIN_EMP_{employee.pk}"
+
+
+def _authorized_process_payload(employee):
+    rows = (employee.process_authorizations.filter(
+        is_active=True, position__is_active=True, process__is_active=True,
+    ).select_related("position", "process").order_by(
+        "position__name", "process__name", "process__code",
+    ))
+    roles = []
+    by_position = {}
+    for row in rows:
+        role = by_position.get(row.position_id)
+        if role is None:
+            role = {
+                "code": row.position.code,
+                "name": row.position.name,
+                "enabled": bool(row.position.is_active),
+                "operations": [],
+            }
+            by_position[row.position_id] = role
+            roles.append(role)
+        rules = row.process.wo_match_rules if isinstance(row.process.wo_match_rules, dict) else {}
+        role["operations"].append({
+            "code": row.process.code,
+            "name": row.process.name,
+            "enabled": bool(row.process.is_active),
+            "woMatch": rules,
+        })
+    return roles
+
+
+# Public alias for integrations and isolated contract tests.
+authorized_process_payload = _authorized_process_payload
 
 
 def employee_payload(employee):
@@ -159,6 +210,14 @@ def employee_payload(employee):
         "operationCodes": operation_codes,
         "source": "report_admin",
     }
+    roles = _authorized_process_payload(employee)
+    if roles:
+        payload["jobRoles"] = roles
+        payload["positions"] = roles
+        payload["processes"] = [
+            {**operation, "positionCode": role["code"], "positionName": role["name"]}
+            for role in roles for operation in role["operations"]
+        ]
     static_codes = {code for codes in OPERATION_CODES_BY_NAME.values() for code in codes}
     custom_bindings = [binding for binding in bindings if binding["code"] not in static_codes]
     if is_host_department:

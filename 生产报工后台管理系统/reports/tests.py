@@ -7,7 +7,14 @@ from django.contrib.auth import get_user_model
 from django.urls import reverse
 
 from .models import WorkReport
-from employees.models import Department, Employee, EmployeeReportPanelAccount
+from employees.models import (
+    Department,
+    Employee,
+    EmployeeReportPanelAccount,
+    EmployeeProcessAuthorization,
+    JobPosition,
+    WorkProcess,
+)
 from employees.sop_sync import (
     department_name_from_sop_team,
     employee_payload,
@@ -250,6 +257,37 @@ class EmployeeAdministrationTests(TestCase):
             "worker_packing",
             "legacy_operation",
         ])
+
+    def test_payload_exposes_only_active_two_level_process_grants(self):
+        department = Department.objects.create(name="生产车间")
+        employee = Employee.objects.create(name="张三", department=department, job_title="组装")
+        assembly = JobPosition.objects.create(code="assembly", name="组装")
+        packing = JobPosition.objects.create(code="packing", name="打包")
+        locating = WorkProcess.objects.create(
+            position=assembly, code="locating-assembly", name="定位结构组装",
+            wo_match_rules={"routingOperationIds": [101], "workcenterIds": [5]},
+        )
+        disabled = WorkProcess.objects.create(position=packing, code="packing-a", name="打包", is_active=False)
+        EmployeeProcessAuthorization.objects.create(employee=employee, position=assembly, process=locating)
+        EmployeeProcessAuthorization.objects.create(employee=employee, position=packing, process=disabled)
+
+        self.assertEqual(employee_payload(employee)["jobRoles"], [{
+            "code": "assembly", "name": "组装", "enabled": True,
+            "operations": [{
+                "code": "locating-assembly", "name": "定位结构组装", "enabled": True,
+                "woMatch": {"routingOperationIds": [101], "workcenterIds": [5]},
+            }],
+        }])
+
+    def test_process_authorization_rejects_process_from_another_position(self):
+        department = Department.objects.create(name="生产车间")
+        employee = Employee.objects.create(name="张三", department=department, job_title="组装")
+        assembly = JobPosition.objects.create(code="assembly", name="组装")
+        packing = JobPosition.objects.create(code="packing", name="打包")
+        process = WorkProcess.objects.create(position=assembly, code="locating-assembly", name="定位结构组装")
+        grant = EmployeeProcessAuthorization(employee=employee, position=packing, process=process)
+        with self.assertRaises(Exception):
+            grant.full_clean()
 
     def test_assembly_department_normalizes_legacy_and_generic_codes_to_host_routes(self):
         department = Department.objects.create(name="组装部")

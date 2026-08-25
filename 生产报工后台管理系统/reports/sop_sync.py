@@ -62,7 +62,13 @@ def _reported_at(data):
 def _fetch_sop_data(url, label):
     request = Request(
         url,
-        headers={"Accept": "application/json"},
+        headers={
+            "Accept": "application/json",
+            # SOP exposes these endpoints to the management service as
+            # read-only internal APIs. The same key authenticates push and
+            # pull without sharing a browser session.
+            "X-Internal-API-Key": settings.INTERNAL_REPORT_API_KEY,
+        },
         method="GET",
     )
     try:
@@ -199,6 +205,10 @@ def _report_values(data, production_details=None):
         "worker_team": str(_value(data, "workerTeam", "worker_team", "")),
         "operation_code": str(required["operation"]),
         "operation_name": str(required["operationLabel"]),
+        "job_role_code": str(_value(data, "jobRoleCode", "job_role_code", "")),
+        "job_role_name": str(_value(data, "jobRoleName", "job_role_name", "")),
+        "process_code": str(_value(data, "processCode", "process_code", required["operation"])),
+        "process_name": str(_value(data, "processName", "process_name", required["operationLabel"])),
         "order_id": str(_value(data, "orderId", "order_id", "")),
         "order_customer": str(_value(data, "orderCustomer", "order_customer", "")),
         "order_product": product_name,

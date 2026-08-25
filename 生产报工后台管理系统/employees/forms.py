@@ -17,8 +17,8 @@ class EmployeeCreateForm(forms.ModelForm):
 
     def clean_job_title(self):
         value = self.cleaned_data["job_title"].strip()
-        if not operation_codes_for_job_title(value):
-            raise forms.ValidationError("工作岗位必须填写已有工序名称，例如：组装，打包。")
+        if not value:
+            raise forms.ValidationError("工作岗位不能为空。")
         return value
 
     @transaction.atomic
