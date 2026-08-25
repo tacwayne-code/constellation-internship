@@ -13,7 +13,7 @@ class ReportMaterialSnapshotInline(admin.TabularInline):
     model = ReportMaterialSnapshot
     extra = 0
     can_delete = False
-    fields = ("product_id", "bom_line_id", "default_code", "actual_quantity", "uom_id", "created_at")
+    fields = ("actual_quantity", "created_at")
     readonly_fields = fields
 
 
@@ -21,17 +21,17 @@ class ReportSyncEventInline(admin.TabularInline):
     model = ReportSyncEvent
     extra = 0
     can_delete = False
-    fields = ("event_key", "step", "status", "message", "payload", "occurred_at", "created_at")
+    fields = ("step", "status", "message", "occurred_at", "created_at")
     readonly_fields = fields
 
 
 @admin.register(AuditLog)
 class AuditLogAdmin(admin.ModelAdmin):
-    list_display = ("created_at", "actor", "action", "target_type", "target_id")
+    list_display = ("created_at", "actor", "action", "target_type")
     list_filter = ("action", "target_type", "created_at")
     search_fields = ("action", "target_type", "target_id", "actor__username")
     ordering = ("-created_at", "-id")
-    readonly_fields = ("actor", "action", "target_type", "target_id", "metadata", "created_at")
+    readonly_fields = ("actor", "action", "target_type", "created_at")
 
     def has_add_permission(self, request):
         return False
@@ -45,21 +45,19 @@ class AuditLogAdmin(admin.ModelAdmin):
 
 @admin.register(WorkReport)
 class WorkReportAdmin(admin.ModelAdmin):
-    list_display = ("production_order", "reported_at", "worker_name", "operation_name", "production_id", "workorder_id", "quantity", "sync_status", "review_status")
-    list_filter = ("reported_at", "worker_name", "operation_code", "production_id", "workorder_id", "sync_status", "review_status")
-    search_fields = ("source_report_id", "production_name", "worker_id", "worker_name", "production_id", "workorder_id", "order_id", "operation_name")
+    list_display = ("production_order", "reported_at", "worker_name", "operation_name", "quantity", "sync_status", "review_status")
+    list_filter = ("reported_at", "worker_name", "sync_status", "review_status")
+    search_fields = ("production_name", "worker_name", "order_customer", "order_product", "operation_name")
     ordering = ("-reported_at",)
     date_hierarchy = "reported_at"
     list_per_page = 50
     actions = ("approve_reports", "void_reports")
     fields = (
-        "source_report_id", "idempotency_key",
-        "production_name", "production_id", "workorder_id",
+        "production_name",
         "worker_name", "worker_team", "operation_name",
         "order_customer", "order_product", "quantity", "qualified_quantity", "reported_at",
         "hours", "remark", "sync_status", "material_sync_status",
-        "odoo_report_id", "odoo_stock_move_ids", "odoo_progress_quantity",
-        "error_message", "review_status", "reviewed_by", "reviewed_at", "created_at", "updated_at",
+        "odoo_progress_quantity", "error_message", "review_status", "reviewed_by", "reviewed_at", "created_at", "updated_at",
     )
     readonly_fields = fields
     inlines = (ReportMaterialSnapshotInline, ReportSyncEventInline)

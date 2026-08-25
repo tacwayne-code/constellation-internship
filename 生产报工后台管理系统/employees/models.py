@@ -11,13 +11,6 @@ phone_validator = RegexValidator(
 )
 
 
-def _display_legacy_identifier(value, legacy_prefix, display_prefix):
-    """Localize compatibility IDs for admin display without changing stored values."""
-    if value.startswith(legacy_prefix):
-        return f"{display_prefix}{value[len(legacy_prefix):]}"
-    return value
-
-
 class Department(models.Model):
     name = models.CharField("部门名称", max_length=128, unique=True)
     created_at = models.DateTimeField("创建时间", auto_now_add=True)
@@ -46,8 +39,7 @@ class JobPosition(models.Model):
         ordering = ("name", "code")
 
     def __str__(self):
-        code = _display_legacy_identifier(self.code, "legacy-position-", "历史岗位-")
-        return f"{self.name} ({code})"
+        return self.name
 
 
 class WorkProcess(models.Model):
@@ -67,8 +59,7 @@ class WorkProcess(models.Model):
         ordering = ("position__name", "name", "code")
 
     def __str__(self):
-        code = _display_legacy_identifier(self.code, "legacy-process-", "历史工艺-")
-        return f"{self.position.name} / {self.name} ({code})"
+        return f"{self.position.name} / {self.name}"
 
 
 class EmployeeProcessAuthorization(models.Model):
