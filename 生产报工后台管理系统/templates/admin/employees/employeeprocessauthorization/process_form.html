@@ -24,6 +24,10 @@
       {% csrf_token %}
       <fieldset class="module aligned">
         {% for field in form %}
+          {% if field.name == 'wo_match_workorder_names' %}
+            <h2 class="fieldset-heading">工单匹配规则（可选）</h2>
+            <div class="help" style="margin-bottom: 8px;">以下各项均可留空；全部留空表示沿用默认 BOM 组件匹配。</div>
+          {% endif %}
           <div class="form-row{% if field.errors %} errors{% endif %}{% if field.name %} field-{{ field.name }}{% endif %}">
             {% if field.is_checkbox %}
               <div class="checkbox-row">
