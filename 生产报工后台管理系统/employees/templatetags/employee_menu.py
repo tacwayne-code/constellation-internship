@@ -27,4 +27,16 @@ def department_menu_items():
                 {"name": department.name, "icon": "fa fa-building-o"},
             ],
         })
-    return mark_safe(json.dumps(items, ensure_ascii=False))
+    payload = json.dumps(items, ensure_ascii=False)
+    # The payload is embedded directly inside an inline <script> element
+    # (var departmentItems = ...). Escape the characters that can break out of
+    # that element or terminate a JS string so a department name can never
+    # inject markup or script (stored XSS).
+    payload = (
+        payload.replace("<", "\\u003c")
+        .replace(">", "\\u003e")
+        .replace("&", "\\u0026")
+        .replace("\u2028", "\\u2028")
+        .replace("\u2029", "\\u2029")
+    )
+    return mark_safe(payload)

@@ -1,7 +1,7 @@
 .env
-__pycache__/
-*.py[cod]
-staticfiles/
 .mysql-data/
 login-response.html
 my-dev.cnf
+__pycache__/
+*.py[cod]
+staticfiles/

@@ -45,6 +45,19 @@ def _value(data, camel, snake=None, default=""):
     return data.get(camel, data.get(snake or camel, default))
 
 
+def _csv_safe(value):
+    """Escape CSV cells that Excel would otherwise interpret as a formula.
+
+    A leading ``=``, ``+``, ``-`` or ``@`` triggers formula injection when a
+    spreadsheet opens the export, so prepend a single quote to render the cell
+    as literal text.
+    """
+    text = str(value if value is not None else "")
+    if text and text[0] in ("=", "+", "-", "@"):
+        return "'" + text
+    return text
+
+
 def _parse_reported_at(data):
     value = _value(data, "reportedAt", "reported_at")
     if value:
@@ -221,6 +234,13 @@ def receive_work_report(request):
         "odoo_report_id": str(_value(data, "odooReportId", "odoo_report_id", "")), "odoo_stock_move_ids": _value(data, "odooStockMoveIds", "odoo_stock_move_ids", []),
         "odoo_progress_quantity": _value(data, "odooProgressQty", "odoo_progress_qty", None), "error_message": str(_value(data, "errorMessage", "error_message", "")),
     }
+    if defaults["odoo_progress_quantity"] in (None, ""):
+        defaults["odoo_progress_quantity"] = None
+    else:
+        try:
+            defaults["odoo_progress_quantity"] = Decimal(str(defaults["odoo_progress_quantity"]))
+        except (InvalidOperation, TypeError, ValueError):
+            return JsonResponse({"detail": "odooProgressQty must be numeric"}, status=400)
     if isinstance(defaults["odoo_stock_move_ids"], str):
         try: defaults["odoo_stock_move_ids"] = json.loads(defaults["odoo_stock_move_ids"])
         except json.JSONDecodeError:
@@ -400,6 +420,6 @@ def export_csv(request):
     writer = csv.writer(response)
     writer.writerow(["原系统报工ID", "报工时间", "员工", "工序", "MO", "WO", "数量", "同步状态", "审核状态", "错误信息"])
     for report in reports.order_by("-reported_at", "-id").iterator():
-        writer.writerow([report.source_report_id, report.reported_at.isoformat(), report.worker_name, report.operation_name, report.production_id, report.workorder_id, report.quantity, report.sync_status, report.review_status, report.error_message])
+        writer.writerow([_csv_safe(report.source_report_id), report.reported_at.isoformat(), _csv_safe(report.worker_name), _csv_safe(report.operation_name), _csv_safe(report.production_id), _csv_safe(report.workorder_id), report.quantity, _csv_safe(report.sync_status), _csv_safe(report.review_status), _csv_safe(report.error_message)])
     _audit(request.user, "export", target_type="work_report", **applied_filters)
     return response

@@ -101,26 +101,13 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 INTERNAL_REPORT_API_KEY = required_env("INTERNAL_REPORT_API_KEY")
 
 # Read-only SOP HTTP source. The management system never accesses SOP SQLite.
-SOP_REPORTS_API_URL = os.environ.get(
-    "SOP_REPORTS_API_URL",
-    "http://192.168.1.100:8093/api/reports",
-).strip()
-SOP_WORKORDERS_API_URL = os.environ.get(
-    "SOP_WORKORDERS_API_URL",
-    "http://192.168.1.100:8093/api/workorders",
-).strip()
-SOP_ORDER_SUMMARY_API_URL = os.environ.get(
-    "SOP_ORDER_SUMMARY_API_URL",
-    "http://192.168.1.100:8093/api/order-summary",
-).strip()
-SOP_WORKERS_API_URL = os.environ.get(
-    "SOP_WORKERS_API_URL",
-    "http://192.168.1.100:8093/api/workers",
-).strip()
-SOP_EMPLOYEE_SYNC_URL = os.environ.get(
-    "SOP_EMPLOYEE_SYNC_URL",
-    "http://192.168.1.100:8093/api/workers/sync",
-).strip()
+# The SOP host is environment-specific (previously a hard-coded internal IP was
+# silently used as the default), so require each URL to be configured explicitly.
+SOP_REPORTS_API_URL = required_env("SOP_REPORTS_API_URL")
+SOP_WORKORDERS_API_URL = required_env("SOP_WORKORDERS_API_URL")
+SOP_ORDER_SUMMARY_API_URL = required_env("SOP_ORDER_SUMMARY_API_URL")
+SOP_WORKERS_API_URL = required_env("SOP_WORKERS_API_URL")
+SOP_EMPLOYEE_SYNC_URL = required_env("SOP_EMPLOYEE_SYNC_URL")
 SOP_REPORTS_SYNC_INTERVAL = max(
     10,
     int(os.environ.get("SOP_REPORTS_SYNC_INTERVAL", "30")),

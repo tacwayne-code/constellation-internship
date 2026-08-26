@@ -255,6 +255,8 @@ def sync_report(data, production_details=None):
                 occurred_at=timezone.now(),
             )
             return "created"
+        if report.review_status == WorkReport.ReviewStatus.VOIDED:
+            return "skipped"
         previous_sync_values = {
             field: getattr(report, field)
             for field in (
