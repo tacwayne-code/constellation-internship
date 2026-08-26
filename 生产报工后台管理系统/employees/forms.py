@@ -76,28 +76,18 @@ class WorkProcessManagementForm(forms.ModelForm):
 
     class Meta:
         model = WorkProcess
-        fields = ("position", "name", "is_active", "wo_match_rules")
+        fields = ("position", "name", "is_active")
         labels = {
             "position": "岗位",
             "name": "具体工艺名称",
             "is_active": "是否启用",
-            "wo_match_rules": "工单匹配规则",
-        }
-        help_texts = {
-            "wo_match_rules": "留空或填写 {} 表示沿用现有 BOM 组件匹配；可配置 routingOperationIds、productIds、productClasses、workcenterIds 或 workorderNames。",
         }
         widgets = {
-            "wo_match_rules": forms.Textarea(attrs={"rows": 5}),
+            # Offer the system's existing process names as suggestions via a
+            # datalist while still letting an administrator type a new name.
+            "name": forms.TextInput(attrs={"list": "process-name-options"}),
         }
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields["position"].queryset = JobPosition.objects.filter(is_active=True).order_by("name")
-
-    def clean_wo_match_rules(self):
-        rules = self.cleaned_data.get("wo_match_rules")
-        if rules in (None, ""):
-            return {}
-        if not isinstance(rules, dict):
-            raise forms.ValidationError("工单匹配规则必须是 JSON 对象。")
-        return rules

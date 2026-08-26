@@ -123,6 +123,9 @@ class EmployeeProcessAuthorizationAdmin(AdministratorOnlyMixin, admin.ModelAdmin
             "opts": self.model._meta,
             "title": "员工工艺授权 - 工艺管理",
             "processes": WorkProcess.objects.select_related("position").order_by("position__name", "name"),
+            "process_name_options": list(
+                WorkProcess.objects.filter(is_active=True).values_list("name", flat=True).distinct().order_by("name")
+            ),
         }
         context.update(extra)
         return context

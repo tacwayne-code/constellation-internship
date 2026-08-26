@@ -1,25 +1,66 @@
 {% extends "admin/base_site.html" %}
+{% load i18n static %}
+
+{% block title %}{{ title }} | {{ block.super }}{% endblock %}
+
+{% block extrastyle %}
+  {{ block.super }}
+  <link rel="stylesheet" type="text/css" href="{% static 'admin/css/forms.css' %}"/>
+  <style type="text/css">
+    /* Keep anchor element-ui buttons free of the default underline so the
+       toolbar/submit actions sit flush with the rest of the module. */
+    a.el-button { text-decoration: none; }
+  </style>
+{% endblock %}
 
 {% block content %}
-  <div id="content-main">
+  <div id="content-main" class="form-main">
+    {% if '_popup' not in request.GET %}
+      <div class="page-header">
+        <el-page-header title="返回" @back="goBack" content="{{ title }}"/>
+      </div>
+    {% endif %}
     <form method="post" novalidate>
       {% csrf_token %}
-      <div class="module aligned">
+      <fieldset class="module aligned">
         {% for field in form %}
-          <div class="form-row{% if field.errors %} errors{% endif %}">
-            <div>
+          <div class="form-row{% if field.errors %} errors{% endif %}{% if field.name %} field-{{ field.name }}{% endif %}">
+            {% if field.is_checkbox %}
+              <div class="checkbox-row">
+                {{ field }}{{ field.label_tag }}
+              </div>
+            {% else %}
               {{ field.errors }}
-              <label{% if field.id_for_label %} for="{{ field.id_for_label }}"{% endif %}>{{ field.label }}：</label>
+              {{ field.label_tag }}
               {{ field }}
-              {% if field.help_text %}<div class="help">{{ field.help_text }}</div>{% endif %}
-            </div>
+              {% if field.help_text %}<div class="help">{{ field.help_text|safe }}</div>{% endif %}
+            {% endif %}
           </div>
         {% endfor %}
-      </div>
+      </fieldset>
+      <datalist id="process-name-options">
+        {% for name in process_name_options %}<option value="{{ name }}"></option>{% endfor %}
+      </datalist>
       <div class="submit-row">
-        <input type="submit" value="保存" class="default">
-        <a href="{% url 'admin:employees_employeeprocessauthorization_processes' %}" class="closelink">取消</a>
+        <div class="other-wrap">
+          <button type="submit" class="el-button el-button--primary el-button--small" name="_save">保存</button>
+        </div>
+        <div class="delete-wrap">
+          <a href="{% url 'admin:employees_employeeprocessauthorization_processes' %}" class="el-button el-button--default el-button--small">取消</a>
+        </div>
       </div>
     </form>
   </div>
+  <script type="text/javascript">
+    if (document.querySelector && document.querySelector('.page-header') && window.Vue) {
+      new Vue({
+        el: '.page-header',
+        methods: {
+          goBack: function () {
+            window.history.back();
+          }
+        }
+      });
+    }
+  </script>
 {% endblock %}
