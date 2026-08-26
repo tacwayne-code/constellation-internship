@@ -27,17 +27,4 @@ def department_menu_items():
                 {"name": department.name, "icon": "fa fa-building-o"},
             ],
         })
-    # Keep process administration in the existing Department submenu so the
-    # sidebar remains compact and consistent with the established layout.
-    items.append({
-        "name": "员工工艺管理",
-        "icon": "fa fa-cogs",
-        "url": reverse("admin:employees_employeeprocessauthorization_changelist"),
-        "eid": "employee-process-management",
-        "breadcrumbs": [
-            {"name": "员工", "icon": "fa fa-user"},
-            {"name": "部门", "icon": "fa fa-building"},
-            {"name": "员工工艺管理", "icon": "fa fa-cogs"},
-        ],
-    })
     return mark_safe(json.dumps(items, ensure_ascii=False))

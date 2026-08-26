@@ -22,8 +22,10 @@
       padding-left: 10px;
     }
     .menu .el-menu-item.report-panel-account-menu-item,
-    .menu .el-menu-item.report-panel-account-menu-item:hover {
-      background-color: #304156 !important;
+    .menu .el-menu-item.report-panel-account-menu-item:hover,
+    .menu .el-menu-item.report-panel-account-menu-item:focus,
+    .menu .el-menu-item.report-panel-account-menu-item.is-active {
+      background-color: #1f2d3d !important;
     }
     .menu .el-submenu.employee-menu-module > .el-submenu__title,
     .menu .el-submenu.employee-menu-module > .el-submenu__title:hover,
@@ -70,6 +72,6 @@
       };
     }(window.open));
   </script>
-  <script type="text/javascript" src="{% static 'admin/simpleui-menu.js' %}?v=4"></script>
+  <script type="text/javascript" src="{% static 'admin/simpleui-menu.js' %}?v=5"></script>
   <script type="text/javascript" src="{% static 'admin/simpleui-x/js/index.js' %}"></script>
 {% endblock %}

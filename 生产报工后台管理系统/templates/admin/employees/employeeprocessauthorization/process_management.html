@@ -1,5 +1,34 @@
 {% extends "admin/base_site.html" %}
 
+{% block bodyclass %}{{ block.super }} app-employees model-employeeprocessauthorization change-list{% endblock %}
+
+{% block extrastyle %}
+  {{ block.super }}
+  <style type="text/css">
+    /* The process-management view keeps its five existing columns but uses the full content width. */
+    body.model-employeeprocessauthorization #content,
+    body.model-employeeprocessauthorization #content-main {
+      width: 100% !important;
+      max-width: none !important;
+      box-sizing: border-box;
+    }
+    body.model-employeeprocessauthorization #content-main {
+      padding: 0;
+    }
+    body.model-employeeprocessauthorization #content-main > #changelist {
+      width: auto !important;
+      margin: 20px !important;
+      padding: 10px !important;
+      box-sizing: border-box;
+    }
+    body.model-employeeprocessauthorization #result_list {
+      width: 100% !important;
+      max-width: none !important;
+      table-layout: auto;
+    }
+  </style>
+{% endblock %}
+
 {% block content %}
   <div id="content-main">
     <ul class="object-tools">

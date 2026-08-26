@@ -1,5 +1,27 @@
 {% extends "admin/change_list.html" %}
 
+{% block extrastyle %}
+  {{ block.super }}
+  <style type="text/css">
+    /* Keep the authorization table aligned with the full SimpleUI content area. */
+    body.model-employeeprocessauthorization #content,
+    body.model-employeeprocessauthorization #content-main,
+    body.model-employeeprocessauthorization #changelist,
+    body.model-employeeprocessauthorization #changelist-form,
+    body.model-employeeprocessauthorization #changelist-form .results {
+      width: 100% !important;
+      max-width: none !important;
+      min-width: 0;
+      box-sizing: border-box;
+    }
+    body.model-employeeprocessauthorization #result_list {
+      width: 100% !important;
+      max-width: none !important;
+      table-layout: auto;
+    }
+  </style>
+{% endblock %}
+
 {% block object-tools-items %}
   <li>
     <a href="{% url 'admin:employees_employeeprocessauthorization_processes' %}" class="addlink">工艺管理</a>
