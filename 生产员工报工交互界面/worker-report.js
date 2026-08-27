@@ -509,20 +509,65 @@ function renderOperations() {
     el.innerHTML = '<div class="overview-empty">该工人暂未绑定工序</div>';
     return;
   }
-  const roleHtml = roles.length ? '<div class="role-chips">' + roles.map((role) =>
+  if (!roles.length) {
+    el.innerHTML = ops.map((op) => operationChipHtml(op)).join("");
+    return;
+  }
+  el.innerHTML = '<div class="role-chips">' + roles.map((role) =>
     '<button class="chip role-chip' + (S.selRole?.code === role.code ? ' active' : '') + '" data-role="' + esc(role.code) + '">' + esc(role.name) + '</button>'
-  ).join('') + '</div>' : '';
-  const visibleOps = roles.length && S.selRole ? ops.filter((op) => op.roleCode === S.selRole.code) : (roles.length ? [] : ops);
-  const opHtml = visibleOps.map((op) => {
-    const active = S.selOperation === op.code ? " active" : "";
-    return '<button class="chip op-chip' + active + '" data-op="' + esc(op.code) + '">' +
-      esc(op.name || OP[op.code] || op.code) + '</button>';
-  }).join("");
-  el.innerHTML = roleHtml + opHtml;
+  ).join('') + '</div>';
+}
+
+function operationChipHtml(op) {
+  const active = S.selOperation === op.code ? " active" : "";
+  return '<button class="chip op-chip' + active + '" data-op="' + esc(op.code) + '">' +
+    esc(op.name || OP[op.code] || op.code) + '</button>';
+}
+
+function openOperationSelector(role) {
+  const overlay = $("#operationSelectorOverlay");
+  const title = $("#operationSelectorTitle");
+  const chips = $("#operationSelectorChips");
+  if (!overlay || !title || !chips) return;
+  const allowed = new Set(S.selWorker?.operationCodes || []);
+  const ops = (role?.operations || []).filter((op) => op && op.enabled !== false && allowed.has(op.code));
+  title.textContent = role?.name || "选择工序";
+  chips.innerHTML = ops.length ? ops.map((op) => operationChipHtml(op)).join("") : '<div class="overview-empty">该岗位暂未绑定工序</div>';
+  overlay.classList.add("show");
+  overlay.setAttribute("aria-hidden", "false");
+}
+
+function closeOperationSelector() {
+  const overlay = $("#operationSelectorOverlay");
+  if (!overlay) return;
+  overlay.classList.remove("show");
+  overlay.setAttribute("aria-hidden", "true");
+}
+
+function selectOperation(opCode, opInfo) {
+  if (!S.selWorker || !(S.selWorker.operationCodes || []).includes(opCode)) return;
+  S.selOperation = opCode;
+  S.selectedOperation = opInfo || { code: opCode, name: OP[opCode] || opCode };
+  if (S.selectedWorkorder && !workorderMatchesSelectedOperation(S.selectedWorkorder)) {
+    S.selectedWorkorder = null;
+    S.selectedProduction = null;
+    toast(`已清掉不匹配的工单（${S.selectedOperation.workorderNames?.join("/") || S.selectedOperation.name}工序）`, "info");
+  }
+  S.bomItems = [];
+  S.bomConfirmed = false;
+  S.bomError = "";
+  renderOperations();
+  closeOperationSelector();
+  if (operationRequiresBom()) openBomModal();
+  renderOrders();
+  updateSubmit();
 }
 
 function workorderMatchesSelectedOperation(workorder) {
   if (!S.selOperation) return false;
+  if (Array.isArray(workorder.allowedOperationCodes)) {
+    return workorder.allowedOperationCodes.includes(S.selOperation);
+  }
   const operation = (S.operations || []).find((op) => op.code === S.selOperation);
   if (!operation) return false;
   if (operation.hostType && workorder.hostType !== operation.hostType) return false;
@@ -1020,41 +1065,27 @@ function setupEvents() {
       renderOperations();
       renderOrders();
       updateSubmit();
+      openOperationSelector(S.selRole);
       return;
     }
     const chip = e.target.closest(".op-chip");
     if (!chip || !chip.dataset.op) return;
     const opCode = chip.dataset.op;
-    if (!S.selWorker || !(S.selWorker.operationCodes || []).includes(opCode)) return;
-    S.selOperation = opCode;
-
-    // 查找对应工序的完整信息
     const opInfo = (S.selRole?.operations || []).find((o) => o.code === opCode) || S.operations.find((o) => o.code === opCode);
-    S.selectedOperation = opInfo || { code: opCode, name: OP[opCode] || opCode };
+    selectOperation(opCode, opInfo);
+  });
 
-    // 切换工序：若已选工单与新工序不匹配，自动清掉
-    if (S.selectedWorkorder && !workorderMatchesSelectedOperation(S.selectedWorkorder)) {
-      S.selectedWorkorder = null;
-      S.selectedProduction = null;
-      toast(`已清掉不匹配的工单（${opInfo.workorderNames?.join("/") || opInfo.name}工序）`, "info");
-    }
-
-    // 清理旧 BOM
-    S.bomItems = [];
-    S.bomConfirmed = false;
-    S.bomError = "";
-
-    $$(".op-chip").forEach((c) => c.classList.remove("active"));
-    chip.classList.add("active");
-
-    // 主机类组装工序：直接弹出物料清单
-    if (operationRequiresBom()) {
-      openBomModal();
-    }
-
-    // 重新渲染工单卡片（让不匹配的卡变灰）
-    renderOrders();
-    updateSubmit();
+  $("#operationSelectorChips")?.addEventListener("click", (e) => {
+    const chip = e.target.closest(".op-chip");
+    if (!chip?.dataset.op) return;
+    const opCode = chip.dataset.op;
+    const opInfo = (S.selRole?.operations || []).find((op) => op.code === opCode) ||
+      S.operations.find((op) => op.code === opCode);
+    selectOperation(opCode, opInfo);
+  });
+  $("#operationSelectorClose")?.addEventListener("click", closeOperationSelector);
+  $("#operationSelectorOverlay")?.addEventListener("click", (e) => {
+    if (e.target === e.currentTarget) closeOperationSelector();
   });
 
   // V2: 工单点击（支持新旧格式）

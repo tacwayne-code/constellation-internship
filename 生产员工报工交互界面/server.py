@@ -199,16 +199,20 @@ def _panel_worker_from_identity(identity):
     operation_codes = [binding["code"] for binding in bindings]
     if not operation_codes:
         return None
-    return {
+    normalized = {
         "id": worker_id,
         "name": name,
         "team": team,
         "source": "report_admin",
         "odooEmployeeId": 0,
         "operationCodes": operation_codes,
-        "jobRoles": roles,
         **({"operationBindings": bindings} if include_bindings else {}),
     }
+    # Preserve the legacy identity shape when older management responses do
+    # not include job roles; newer responses still expose the full hierarchy.
+    if roles or isinstance(raw_roles, list) and raw_roles:
+        normalized["jobRoles"] = roles
+    return normalized
 
 
 def authenticate_panel_account(username, password):
@@ -1261,12 +1265,18 @@ def panel_worker_allows_workorder(worker, workorder):
     if (get_odoo_mode() == "real" and required_product_class
             and workorder.get("productClass") != required_product_class):
         return False
+    return bool(panel_worker_matching_operation_codes(worker, workorder))
+
+
+def panel_worker_matching_operation_codes(worker, workorder):
+    """Return the worker's authorized operation codes that match a WO."""
+    if not worker or not workorder:
+        return []
     operation_map = {op["code"]: op for op in get_operations_for_worker(worker)}
-    return any(
-        operation_matches_workorder(operation_map[code], workorder)
-        for code in worker.get("operationCodes", [])
-        if code in operation_map
-    )
+    return [
+        code for code in worker.get("operationCodes", [])
+        if code in operation_map and operation_matches_workorder(operation_map[code], workorder)
+    ]
 
 
 def panel_accessible_workorders(worker):
@@ -3626,6 +3636,18 @@ class Handler(SimpleHTTPRequestHandler):
         elif path == "/api/workorders":
             try:
                 wos = get_workorders_data() if internal else panel_accessible_workorders(panel_worker)
+                if not internal:
+                    # The server owns employee-operation-to-WO authorization.
+                    # The client uses this result rather than duplicating matching rules.
+                    wos = [
+                        {
+                            **workorder,
+                            "allowedOperationCodes": panel_worker_matching_operation_codes(
+                                panel_worker, workorder
+                            ),
+                        }
+                        for workorder in wos
+                    ]
                 self.write_json({"ok": True, "data": wos,
                                  "meta": {"mode": get_odoo_mode(), "count": len(wos),
                                           "source": "internal" if internal else "session"}})

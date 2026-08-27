@@ -13,7 +13,6 @@ class PanelAuthTests(unittest.TestCase):
             "source": "report_admin",
             "odooEmployeeId": 0,
             "operationCodes": ["worker_assembly", "worker_packing"],
-            "jobRoles": [],
         }
 
     def test_session_token_round_trip(self):
@@ -60,6 +59,22 @@ class PanelAuthTests(unittest.TestCase):
         self.assertEqual(round_trip["operationCodes"], identity["operationCodes"])
         self.assertEqual(round_trip["operationBindings"][0]["name"], "定位结构组装")
         self.assertTrue(round_trip["operationBindings"][0]["requiresBom"])
+
+    def test_custom_operation_uses_server_authorized_workorder_mapping(self):
+        worker = {
+            "id": "ADMIN_EMP_8",
+            "operationCodes": ["worker_assembly_custom_locating"],
+            "operationBindings": [{
+                "code": "worker_assembly_custom_locating",
+                "name": "定位结构组装",
+                "woMatch": {"operationId": 321},
+            }],
+        }
+        workorder = {"operationId": 321, "workorderName": "与工序名称不同的 Odoo 工单"}
+        self.assertEqual(
+            server.panel_worker_matching_operation_codes(worker, workorder),
+            ["worker_assembly_custom_locating"],
+        )
 
     def test_assembly_department_requires_host_workorders(self):
         worker = {
