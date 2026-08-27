@@ -125,18 +125,28 @@ def _panel_worker_from_identity(identity):
                 for raw_op in raw_ops:
                     if not isinstance(raw_op, dict):
                         continue
-                    op_code = str(raw_op.get("code", raw_op.get("operationCode", ""))).strip()
+                    process_code = str(raw_op.get(
+                        "processCode", raw_op.get("code", raw_op.get("operationCode", ""))
+                    )).strip()
+                    rules = raw_op.get("woMatch") if isinstance(raw_op.get("woMatch"), dict) else {}
+                    # WorkProcess.code is a management-side process identifier.
+                    # Legacy migration records carry their Odoo/SOP operation
+                    # code separately, so use it for authorization and retain
+                    # the process code only as the report/audit snapshot.
+                    op_code = str(rules.get("legacyOperationCode", "")).strip() or process_code
                     op_name = str(raw_op.get("name", raw_op.get("operationName", op_code))).strip()
                     if not op_code or not op_name or raw_op.get("enabled", True) is False:
                         continue
                     ops.append({
                         "code": op_code, "name": op_name,
+                        "processCode": process_code,
+                        "processName": op_name,
                         "enabled": True,
                         "workorderNames": list(raw_op.get("workorderNames") or []),
                         "productClass": raw_op.get("productClass"),
                         "hostType": raw_op.get("hostType"),
                         "requiresBom": bool(raw_op.get("requiresBom")),
-                        "woMatch": raw_op.get("woMatch") if isinstance(raw_op.get("woMatch"), dict) else {},
+                        "woMatch": rules,
                     })
             if ops:
                 roles.append({"code": role_code, "name": role_name, "enabled": True, "operations": ops})
@@ -167,11 +177,23 @@ def _panel_worker_from_identity(identity):
             })
     binding_by_code = {binding["code"]: binding for binding in bindings}
     for role in roles:
-        for operation in role.get("operations", []):
+        for index, operation in enumerate(role.get("operations", [])):
             code = str(operation.get("code", ""))
+            binding = binding_by_code.get(code)
+            if binding:
+                # The job-title binding contains the Odoo routing/BOM metadata;
+                # the role entry carries the concrete process audit identity.
+                operation = {
+                    **binding,
+                    "processCode": operation.get("processCode", code),
+                    "processName": operation.get("processName", operation.get("name", code)),
+                }
+                role["operations"][index] = operation
             if code and code not in binding_by_code:
                 binding_by_code[code] = {
                     "code": code, "name": operation.get("name", code),
+                    "processCode": operation.get("processCode", code),
+                    "processName": operation.get("processName", operation.get("name", code)),
                     "workorderNames": list(operation.get("workorderNames") or []),
                     "productClass": operation.get("productClass"),
                     "hostType": operation.get("hostType"),
@@ -1133,6 +1155,7 @@ def get_operations_for_worker(worker):
     """Return static operations plus trusted job-specific bindings."""
     static = {op["code"]: op for op in get_operations()}
     result = []
+    custom_codes = set()
     role_bindings = []
     for role in worker.get("jobRoles", []) if worker else []:
         if not isinstance(role, dict) or role.get("enabled", True) is False:
@@ -1151,15 +1174,19 @@ def get_operations_for_worker(worker):
         if code in static:
             merged = dict(static[code])
             merged.update({
-                key: binding[key] for key in ("name", "hostType", "productClass", "workorderNames", "requiresBom", "roleCode", "roleName", "woMatch")
+                key: binding[key] for key in ("name", "processCode", "processName", "hostType", "productClass", "workorderNames", "requiresBom", "roleCode", "roleName", "woMatch")
                 if key in binding and binding[key] not in (None, "", [])
             })
             static[code] = merged
+            continue
+        if code in custom_codes:
             continue
         result.append({
             "id": code,
             "code": code,
             "name": str(binding.get("name", code)),
+            "processCode": str(binding.get("processCode", code)),
+            "processName": str(binding.get("processName", binding.get("name", code))),
             "hostType": binding.get("hostType"),
             "productClass": binding.get("productClass"),
             "workorderNames": list(binding.get("workorderNames") or []),
@@ -1169,6 +1196,7 @@ def get_operations_for_worker(worker):
             "woMatch": binding.get("woMatch") if isinstance(binding.get("woMatch"), dict) else {},
             "meta": {"mode": get_odoo_mode(), "source": "report_admin"},
         })
+        custom_codes.add(code)
     return list(static.values()) + result
 
 
@@ -4129,8 +4157,8 @@ class Handler(SimpleHTTPRequestHandler):
             if selected_role:
                 report["jobRoleCode"] = str(selected_role.get("code", ""))
                 report["jobRoleName"] = str(selected_role.get("name", ""))
-                report["processCode"] = str(role_operation.get("code", operation))
-                report["processName"] = str(role_operation.get("name", report.get("operationLabel", operation)))
+                report["processCode"] = str(role_operation.get("processCode", operation))
+                report["processName"] = str(role_operation.get("processName", role_operation.get("name", report.get("operationLabel", operation))))
             machine_operation = False
             assembly_operation = _operation_requires_workorder_bom(op_info)
             machine_assembly = False

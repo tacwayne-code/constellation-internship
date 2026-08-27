@@ -60,6 +60,51 @@ class PanelAuthTests(unittest.TestCase):
         self.assertEqual(round_trip["operationBindings"][0]["name"], "定位结构组装")
         self.assertTrue(round_trip["operationBindings"][0]["requiresBom"])
 
+    def test_legacy_process_code_maps_to_the_authorized_operation_code(self):
+        legacy_process_code = "legacy-process-bbbb"
+        operation_code = "worker_assembly_custom_0123456789abcdef"
+        identity = {
+            "sourceWorkerId": "ADMIN_EMP_8",
+            "name": "周小明",
+            "departmentName": "生产车间",
+            "operationCodes": [operation_code],
+            "operationBindings": [{
+                "code": operation_code,
+                "name": "定位结构组装",
+                "workorderNames": ["定位结构组装"],
+                "productClass": "machine",
+                "requiresBom": True,
+            }],
+            "jobRoles": [{
+                "code": "legacy-position", "name": "结构组装", "enabled": True,
+                "operations": [{
+                    "code": legacy_process_code,
+                    "name": "定位结构组装",
+                    "enabled": True,
+                    "woMatch": {"legacyOperationCode": operation_code},
+                }],
+            }],
+        }
+
+        worker = server._panel_worker_from_identity(identity)
+        role_operation = worker["jobRoles"][0]["operations"][0]
+        self.assertEqual(worker["operationCodes"], [operation_code])
+        self.assertEqual(role_operation["code"], operation_code)
+        self.assertEqual(role_operation["processCode"], legacy_process_code)
+        self.assertTrue(role_operation["requiresBom"])
+        self.assertEqual(
+            [op["code"] for op in server.get_operations_for_worker(worker)].count(operation_code),
+            1,
+        )
+        self.assertTrue(server.operation_matches_workorder(
+            server.operation_for_worker(worker, operation_code),
+            {"workorderName": "定位结构组装", "productClass": "machine"},
+        ))
+
+        with patch.object(server, "PANEL_SESSION_SECRET", "test-session-secret"):
+            round_trip = server._panel_session_worker(server._panel_session_token(worker))
+        self.assertEqual(round_trip["jobRoles"][0]["operations"][0]["processCode"], legacy_process_code)
+
     def test_custom_operation_uses_server_authorized_workorder_mapping(self):
         worker = {
             "id": "ADMIN_EMP_8",
