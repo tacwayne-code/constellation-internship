@@ -107,8 +107,41 @@ def _panel_worker_from_identity(identity):
     team = str(identity.get("departmentName", identity.get("team", ""))).strip()
     raw_codes = identity.get("operationCodes", [])
     raw_bindings = identity.get("operationBindings", [])
+    raw_roles = identity.get("jobRoles", identity.get("roles", identity.get("operationGroups", [])))
     if not worker_id or not name or not isinstance(raw_codes, list):
         return None
+    roles = []
+    if isinstance(raw_roles, list):
+        for raw_role in raw_roles:
+            if not isinstance(raw_role, dict):
+                continue
+            role_code = str(raw_role.get("code", raw_role.get("roleCode", ""))).strip()
+            role_name = str(raw_role.get("name", raw_role.get("roleName", role_code))).strip()
+            if not role_code or not role_name or raw_role.get("enabled", True) is False:
+                continue
+            raw_ops = raw_role.get("operations", raw_role.get("processes", []))
+            ops = []
+            if isinstance(raw_ops, list):
+                for raw_op in raw_ops:
+                    if not isinstance(raw_op, dict):
+                        continue
+                    op_code = str(raw_op.get("code", raw_op.get("operationCode", ""))).strip()
+                    op_name = str(raw_op.get("name", raw_op.get("operationName", op_code))).strip()
+                    if not op_code or not op_name or raw_op.get("enabled", True) is False:
+                        continue
+                    ops.append({
+                        "code": op_code, "name": op_name,
+                        "enabled": True,
+                        "workorderNames": list(raw_op.get("workorderNames") or []),
+                        "productClass": raw_op.get("productClass"),
+                        "hostType": raw_op.get("hostType"),
+                        "requiresBom": bool(raw_op.get("requiresBom")),
+                        "woMatch": raw_op.get("woMatch") if isinstance(raw_op.get("woMatch"), dict) else {},
+                    })
+            if ops:
+                roles.append({"code": role_code, "name": role_name, "enabled": True, "operations": ops})
+    if not raw_codes and roles:
+        raw_codes = [op["code"] for role in roles for op in role.get("operations", [])]
     bindings = []
     include_bindings = isinstance(raw_bindings, list) and bool(raw_bindings)
     if isinstance(raw_bindings, list):
@@ -130,8 +163,21 @@ def _panel_worker_from_identity(identity):
                 "workorderNames": [str(value) for value in names if str(value).strip()],
                 "productClass": raw.get("productClass") or None,
                 "requiresBom": bool(raw.get("requiresBom")),
+                "woMatch": raw.get("woMatch") if isinstance(raw.get("woMatch"), dict) else {},
             })
     binding_by_code = {binding["code"]: binding for binding in bindings}
+    for role in roles:
+        for operation in role.get("operations", []):
+            code = str(operation.get("code", ""))
+            if code and code not in binding_by_code:
+                binding_by_code[code] = {
+                    "code": code, "name": operation.get("name", code),
+                    "workorderNames": list(operation.get("workorderNames") or []),
+                    "productClass": operation.get("productClass"),
+                    "hostType": operation.get("hostType"),
+                    "requiresBom": bool(operation.get("requiresBom")),
+                    "woMatch": operation.get("woMatch") if isinstance(operation.get("woMatch"), dict) else {},
+                }
     operation_codes = [
         str(code) for code in raw_codes
         if str(code) in VALID_OPERATIONS or str(code) in binding_by_code
@@ -160,6 +206,7 @@ def _panel_worker_from_identity(identity):
         "source": "report_admin",
         "odooEmployeeId": 0,
         "operationCodes": operation_codes,
+        "jobRoles": roles,
         **({"operationBindings": bindings} if include_bindings else {}),
     }
 
@@ -202,6 +249,7 @@ def _panel_session_token(worker):
         "team": worker.get("team", ""),
         "operationCodes": worker.get("operationCodes", []),
         "operationBindings": worker.get("operationBindings", []),
+        "jobRoles": worker.get("jobRoles", []),
         "expiresAt": int(time.time()) + PANEL_SESSION_TTL_SECONDS,
     }
     encoded = base64.urlsafe_b64encode(
@@ -235,6 +283,7 @@ def _panel_session_worker(token):
         "departmentName": payload.get("team", ""),
         "operationCodes": payload.get("operationCodes", []),
         "operationBindings": payload.get("operationBindings", []),
+        "jobRoles": payload.get("jobRoles", []),
     })
 
 
@@ -249,6 +298,10 @@ def _report_admin_payload(report, materials):
         "workerId": str(report["workerId"]),
         "workerName": str(report["workerName"]),
         "workerTeam": str(report.get("workerTeam", "")),
+        "jobRoleCode": str(report.get("jobRoleCode", "")),
+        "jobRoleName": str(report.get("jobRoleName", "")),
+        "processCode": str(report.get("processCode", report.get("operation", ""))),
+        "processName": str(report.get("processName", report.get("operationLabel", ""))),
         "operation": str(report["operation"]),
         "operationLabel": str(report["operationLabel"]),
         "orderId": str(report.get("orderId", "")),
@@ -437,6 +490,7 @@ def _migrate_db():
             ("source", "TEXT DEFAULT 'local'"),
             ("odoo_employee_id", "INTEGER DEFAULT 0"),
             ("operation_codes", "TEXT DEFAULT '[]'"),
+            ("job_roles", "TEXT DEFAULT '[]'"),
         ]
         for col_name, col_def in worker_migrations:
             if col_name not in existing_wcols:
@@ -457,6 +511,10 @@ def _migrate_db():
             ("material_sync_status", "TEXT DEFAULT 'unknown'"),
             ("odoo_progress_qty", "REAL DEFAULT NULL"),
             ("error_message", "TEXT DEFAULT ''"),
+            ("job_role_code", "TEXT DEFAULT ''"),
+            ("job_role_name", "TEXT DEFAULT ''"),
+            ("process_code", "TEXT DEFAULT ''"),
+            ("process_name", "TEXT DEFAULT ''"),
         ]
 
         for col_name, col_def in migrations:
@@ -528,6 +586,7 @@ def _init_db():
                 source TEXT DEFAULT 'local',
                 odoo_employee_id INTEGER DEFAULT 0,
                 operation_codes TEXT DEFAULT '[]',
+                job_roles TEXT DEFAULT '[]',
                 created_at TEXT DEFAULT (datetime('now','localtime'))
             );
             CREATE TABLE IF NOT EXISTS reports (
@@ -557,6 +616,10 @@ def _init_db():
                  material_sync_status TEXT DEFAULT 'unknown',
                  odoo_progress_qty REAL DEFAULT NULL,
                  error_message TEXT DEFAULT '',
+                 job_role_code TEXT DEFAULT '',
+                 job_role_name TEXT DEFAULT '',
+                 process_code TEXT DEFAULT '',
+                 process_name TEXT DEFAULT '',
                  created_at TEXT DEFAULT (datetime('now','localtime'))
             );
             CREATE INDEX IF NOT EXISTS idx_reports_date ON reports(date);
@@ -649,7 +712,7 @@ def db_workers():
         c = sqlite3.connect(str(DB_FILE))
         c.row_factory = sqlite3.Row
         rows = c.execute(
-            "SELECT id, name, team, source, odoo_employee_id, operation_codes "
+            "SELECT id, name, team, source, odoo_employee_id, operation_codes, job_roles "
             "FROM workers ORDER BY id"
         ).fetchall()
         c.close()
@@ -661,12 +724,19 @@ def db_workers():
             operation_codes = []
         if not isinstance(operation_codes, list):
             operation_codes = []
+        try:
+            job_roles = json.loads(r["job_roles"] or "[]")
+        except (TypeError, ValueError):
+            job_roles = []
+        if not isinstance(job_roles, list):
+            job_roles = []
         w = {"id": r["id"], "name": r["name"], "team": r["team"],
              "source": _effective_worker_source(
                  r["id"], r["source"] if "source" in r.keys() else "local"
              ),
              "odooEmployeeId": r["odoo_employee_id"] if "odoo_employee_id" in r.keys() else 0,
-             "operationCodes": [str(code) for code in operation_codes]}
+             "operationCodes": [str(code) for code in operation_codes],
+             "jobRoles": job_roles}
         results.append(w)
     return results
 
@@ -688,20 +758,22 @@ def db_add_worker(wid, name, team, source="local", odoo_employee_id=0,
     logger.info(f"添加工人: {name} ({wid}), source={source}")
 
 
-def db_upsert_worker(wid, name, team, source="report_admin", operation_codes=None):
+def db_upsert_worker(wid, name, team, source="report_admin", operation_codes=None, job_roles=None):
     operation_codes = operation_codes or []
     with DB_LOCK:
         c = sqlite3.connect(str(DB_FILE))
         c.execute(
-            """INSERT INTO workers (id, name, team, source, odoo_employee_id, operation_codes)
-               VALUES (?, ?, ?, ?, 0, ?)
+            """INSERT INTO workers (id, name, team, source, odoo_employee_id, operation_codes, job_roles)
+               VALUES (?, ?, ?, ?, 0, ?, ?)
                ON CONFLICT(id) DO UPDATE SET
                  name=excluded.name,
                  team=excluded.team,
                  source=excluded.source,
                  odoo_employee_id=0,
-                 operation_codes=excluded.operation_codes""",
-            (wid, name, team, source, json.dumps(operation_codes, ensure_ascii=False)),
+                 operation_codes=excluded.operation_codes,
+                 job_roles=excluded.job_roles""",
+            (wid, name, team, source, json.dumps(operation_codes, ensure_ascii=False),
+             json.dumps(job_roles or [], ensure_ascii=False)),
         )
         c.commit()
         c.close()
@@ -715,6 +787,8 @@ def _normalize_report(row):
         "orderId": row["order_id"], "orderCustomer": row.get("order_customer", ""),
         "orderProduct": row.get("order_product", ""),
         "operation": row["operation"], "operationLabel": row["operation_label"],
+        "jobRoleCode": row.get("job_role_code", ""), "jobRoleName": row.get("job_role_name", ""),
+        "processCode": row.get("process_code", row["operation"]), "processName": row.get("process_name", row["operation_label"]),
         "qty": row["qty"], "qualified": row["qualified"], "hours": row["hours"],
         "remark": row.get("remark", ""), "date": row["date"], "time": row["time"],
         "timestamp": row["timestamp"],
@@ -746,7 +820,7 @@ REPORT_COLS = ["id", "worker_id", "worker_name", "worker_team", "order_id",
                "production_id", "workorder_id", "odoo_employee_id",
                "idempotency_key", "odoo_report_id", "odoo_stock_move_ids",
                "sync_status", "material_sync_status", "odoo_progress_qty",
-               "error_message", "created_at"]
+               "error_message", "job_role_code", "job_role_name", "process_code", "process_name", "created_at"]
 
 
 def db_reports(date_filter=None, limit=500):
@@ -829,8 +903,9 @@ def db_add_report(report, materials=None):
                  remark, date, time, timestamp, production_id, workorder_id,
                  odoo_employee_id, idempotency_key, odoo_report_id,
                  odoo_stock_move_ids, sync_status, material_sync_status,
-                 odoo_progress_qty, error_message)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                 odoo_progress_qty, error_message, job_role_code, job_role_name,
+                 process_code, process_name)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (report["id"], report["workerId"], report["workerName"],
                  report.get("workerTeam", ""), report["orderId"],
                  report.get("orderCustomer", ""), report.get("orderProduct", ""),
@@ -843,7 +918,10 @@ def db_add_report(report, materials=None):
                  report.get("odooReportId", ""), report.get("odooStockMoveIds", ""),
                  report.get("syncStatus", "local"),
                  report.get("materialSyncStatus", "unknown"),
-                 report.get("odooProgressQty"), report.get("errorMessage", "")),
+                 report.get("odooProgressQty"), report.get("errorMessage", ""),
+                 report.get("jobRoleCode", ""), report.get("jobRoleName", ""),
+                 report.get("processCode", report.get("operation", "")),
+                 report.get("processName", report.get("operationLabel", ""))),
             )
             # 保存物料记录
             if materials:
@@ -917,6 +995,7 @@ def _load_report_admin_workers():
         if not worker_id or not name or not isinstance(operation_codes, list):
             continue
         operation_bindings = row.get("operationBindings", [])
+        job_roles = row.get("jobRoles", row.get("roles", row.get("operationGroups", [])))
         valid_binding_codes = {
             str(binding.get("code", "")) for binding in operation_bindings
             if isinstance(binding, dict)
@@ -934,6 +1013,7 @@ def _load_report_admin_workers():
                 if str(code) in VALID_OPERATIONS or str(code) in valid_binding_codes
             ],
             "operationBindings": operation_bindings if isinstance(operation_bindings, list) else [],
+            "jobRoles": job_roles if isinstance(job_roles, list) else [],
         })
     return workers
 
@@ -1049,9 +1129,28 @@ def get_operations_for_worker(worker):
     """Return static operations plus trusted job-specific bindings."""
     static = {op["code"]: op for op in get_operations()}
     result = []
-    for binding in worker.get("operationBindings", []) if worker else []:
+    role_bindings = []
+    for role in worker.get("jobRoles", []) if worker else []:
+        if not isinstance(role, dict) or role.get("enabled", True) is False:
+            continue
+        for operation in role.get("operations", []):
+            if isinstance(operation, dict):
+                enriched = dict(operation)
+                enriched.setdefault("roleCode", role.get("code", ""))
+                enriched.setdefault("roleName", role.get("name", ""))
+                role_bindings.append(enriched)
+    legacy_bindings = worker.get("operationBindings", []) if worker else []
+    for binding in [*role_bindings, *legacy_bindings]:
         code = str(binding.get("code", ""))
-        if not code or code in static:
+        if not code:
+            continue
+        if code in static:
+            merged = dict(static[code])
+            merged.update({
+                key: binding[key] for key in ("name", "hostType", "productClass", "workorderNames", "requiresBom", "roleCode", "roleName", "woMatch")
+                if key in binding and binding[key] not in (None, "", [])
+            })
+            static[code] = merged
             continue
         result.append({
             "id": code,
@@ -1061,6 +1160,9 @@ def get_operations_for_worker(worker):
             "productClass": binding.get("productClass"),
             "workorderNames": list(binding.get("workorderNames") or []),
             "requiresBom": bool(binding.get("requiresBom")),
+            "roleCode": binding.get("roleCode", ""),
+            "roleName": binding.get("roleName", ""),
+            "woMatch": binding.get("woMatch") if isinstance(binding.get("woMatch"), dict) else {},
             "meta": {"mode": get_odoo_mode(), "source": "report_admin"},
         })
     return list(static.values()) + result
@@ -1069,6 +1171,16 @@ def get_operations_for_worker(worker):
 def operation_for_worker(worker, code):
     code = str(code or "")
     return next((op for op in get_operations_for_worker(worker) if op["code"] == code), None)
+
+
+def role_for_worker_operation(worker, code):
+    for role in worker.get("jobRoles", []) if worker else []:
+        if not isinstance(role, dict) or role.get("enabled", True) is False:
+            continue
+        for operation in role.get("operations", []):
+            if isinstance(operation, dict) and str(operation.get("code", "")) == str(code):
+                return role, operation
+    return None, None
 
 
 def get_operation_map():
@@ -1100,9 +1212,14 @@ def check_auth(handler):
 
 
 def check_report_admin_auth(handler):
-    """Authenticate employee mirror updates from the management service only."""
+    """Authenticate internal read and employee mirror calls from the admin service."""
     supplied = handler.headers.get("X-Internal-API-Key", "")
     return bool(REPORT_ADMIN_API_KEY and supplied and hmac.compare_digest(supplied, REPORT_ADMIN_API_KEY))
+
+
+def is_report_admin_read_path(path):
+    """Return whether a read-only endpoint may be accessed by the admin service."""
+    return path in {"/api/reports", "/api/workers", "/api/workorders", "/api/order-summary"}
 
 
 _worker_ids_lock = threading.Lock()
@@ -1254,6 +1371,33 @@ def operation_matches_workorder(operation, workorder):
     """Return whether an operation binding can use a specific Odoo WO."""
     if not operation or not workorder:
         return False
+    # The management service owns the explicit, stable WO matching rules.
+    # Evaluate them in descending specificity. Labels never authorize BOM use.
+    match = operation.get("woMatch") if isinstance(operation.get("woMatch"), dict) else {}
+    def _values(*keys):
+        values = []
+        for key in keys:
+            value = match.get(key)
+            if isinstance(value, list):
+                values.extend(str(item) for item in value if item not in (None, ""))
+            elif value not in (None, ""):
+                values.append(str(value))
+        return set(values)
+    operation_ids = _values("operationId", "operationIds", "routingOperationId", "routingOperationIds")
+    if operation_ids:
+        return str(workorder.get("operationId", "")) in operation_ids
+    product_ids = _values("productId", "productIds")
+    product_classes = _values("productClass", "productClasses")
+    workcenter_ids = _values("workcenterId", "workcenterIds")
+    if product_ids or product_classes or workcenter_ids:
+        return ((not product_ids or str(workorder.get("productId", "")) in product_ids)
+                and (not product_classes or str(workorder.get("productClass", "")) in product_classes)
+                and (not workcenter_ids or str(workorder.get("workcenterId", "")) in workcenter_ids))
+    controlled_names = _values("workorderName", "workorderNames", "controlledWorkorderNames")
+    if controlled_names:
+        return _match_text(workorder.get("workorderName", "")) in {
+            _match_text(value) for value in controlled_names
+        }
     expected_host = operation.get("hostType")
     if expected_host and workorder.get("hostType") != expected_host:
         return False
@@ -1269,9 +1413,9 @@ def operation_matches_workorder(operation, workorder):
         # while the employee binding is named by the material.  Odoo data can
         # use slightly different material wording (for example 杯/环), so
         # retain the exact WO match and then fall back to the selected MO BOM.
-        custom_assembly = bool(operation.get("requiresBom")) or str(
+        custom_assembly = (not workorder.get("operationId")) and (bool(operation.get("requiresBom")) or str(
             operation.get("code", "")
-        ).startswith("worker_assembly_custom_")
+        ).startswith("worker_assembly_custom_"))
         component_names = workorder.get("bomComponentNames") or []
         component_codes = workorder.get("bomComponentCodes") or []
         if not custom_assembly or not any(
@@ -3415,6 +3559,8 @@ class Handler(SimpleHTTPRequestHandler):
         if path.startswith("/api/"):
             if path == "/api/health":
                 return self._route_get_api(path, params, None)
+            if is_report_admin_read_path(path) and check_report_admin_auth(self):
+                return self._route_get_api(path, params, None, internal=True)
             worker = self.require_panel_worker()
             if worker is None:
                 return
@@ -3447,7 +3593,7 @@ class Handler(SimpleHTTPRequestHandler):
             return super().do_GET()
         self.send_error(HTTPStatus.NOT_FOUND)
 
-    def _route_get_api(self, path, params, panel_worker=None):
+    def _route_get_api(self, path, params, panel_worker=None, internal=False):
         if path == "/api/health":
             self.write_json({"ok": True, "mode": get_odoo_mode()})
         elif path == "/api/session":
@@ -3456,13 +3602,17 @@ class Handler(SimpleHTTPRequestHandler):
                 return
             self.write_json({"ok": True, "data": panel_worker})
         elif path == "/api/workers":
-            self.write_json({"ok": True, "data": [panel_worker],
-                             "meta": {"mode": get_odoo_mode(), "count": 1}})
+            workers = db_workers() if internal else [panel_worker]
+            self.write_json({"ok": True, "data": workers,
+                             "meta": {"mode": get_odoo_mode(), "count": len(workers),
+                                      "source": "internal" if internal else "session"}})
         elif path == "/api/reports":
-            reports = [
-                report for report in load_reports()
-                if str(report.get("worker_id", "")) == str(panel_worker["id"])
-            ]
+            reports = load_reports()
+            if not internal:
+                reports = [
+                    report for report in reports
+                    if str(report.get("worker_id", "")) == str(panel_worker["id"])
+                ]
             self.write_json({"ok": True, "data": [_normalize_report(r) for r in reports]})
         elif path == "/api/report-stats":
             payload = self.report_stats_payload(panel_worker)
@@ -3475,9 +3625,10 @@ class Handler(SimpleHTTPRequestHandler):
                              "meta": {"mode": get_odoo_mode(), "count": len(ops)}})
         elif path == "/api/workorders":
             try:
-                wos = panel_accessible_workorders(panel_worker)
+                wos = get_workorders_data() if internal else panel_accessible_workorders(panel_worker)
                 self.write_json({"ok": True, "data": wos,
-                                 "meta": {"mode": get_odoo_mode(), "count": len(wos)}})
+                                 "meta": {"mode": get_odoo_mode(), "count": len(wos),
+                                          "source": "internal" if internal else "session"}})
             except Exception as e:
                 self.write_json({"ok": False, "error": f"获取工单失败: {e}"},
                                 status=HTTPStatus.INTERNAL_SERVER_ERROR)
@@ -3558,7 +3709,7 @@ class Handler(SimpleHTTPRequestHandler):
             try:
                 allowed_workorder_ids = {
                     str(workorder.get("workorderId"))
-                    for workorder in panel_accessible_workorders(panel_worker)
+                    for workorder in (get_workorders_data() if internal else panel_accessible_workorders(panel_worker))
                 }
                 client = get_odoo()
                 mo_domain = [("state", "not in", ["done", "cancel"])]
@@ -3935,6 +4086,7 @@ class Handler(SimpleHTTPRequestHandler):
 
             operation = str(report["operation"])
             op_info = operation_for_worker(worker, operation)
+            selected_role, role_operation = role_for_worker_operation(worker, operation)
             if not op_info:
                 self.write_json({"ok": False, "error": f"无效工序: {operation}"},
                                 status=HTTPStatus.BAD_REQUEST)
@@ -3949,6 +4101,14 @@ class Handler(SimpleHTTPRequestHandler):
                     "error": "当前工人未绑定该工序，不能提交报工",
                 }, status=HTTPStatus.FORBIDDEN)
                 return
+            if worker.get("jobRoles") and not role_operation:
+                self.write_json({"ok": False, "error": "所选具体工艺不属于当前岗位授权"}, status=HTTPStatus.FORBIDDEN)
+                return
+            if selected_role:
+                report["jobRoleCode"] = str(selected_role.get("code", ""))
+                report["jobRoleName"] = str(selected_role.get("name", ""))
+                report["processCode"] = str(role_operation.get("code", operation))
+                report["processName"] = str(role_operation.get("name", report.get("operationLabel", operation)))
             machine_operation = False
             assembly_operation = _operation_requires_workorder_bom(op_info)
             machine_assembly = False
@@ -4395,11 +4555,21 @@ class Handler(SimpleHTTPRequestHandler):
             team = str(worker.get("departmentName", worker.get("team", ""))).strip()
             operation_codes = worker.get("operationCodes", [])
             operation_bindings = worker.get("operationBindings", [])
+            job_roles = worker.get("jobRoles", worker.get("roles", []))
             if not wid or not name or not team:
                 self.write_json({"ok": False, "error": "工人编号、姓名和所属部门不能为空"},
                                 status=HTTPStatus.BAD_REQUEST)
                 return
-            if not isinstance(operation_codes, list) or not operation_codes:
+            if not isinstance(operation_codes, list):
+                operation_codes = []
+            if not operation_codes and isinstance(job_roles, list):
+                operation_codes = [
+                    str(op.get("code", ""))
+                    for role in job_roles if isinstance(role, dict)
+                    for op in (role.get("operations", []) if isinstance(role.get("operations", []), list) else [])
+                    if isinstance(op, dict) and op.get("code")
+                ]
+            if not operation_codes:
                 self.write_json({"ok": False, "error": "工作岗位未匹配到工序"}, status=HTTPStatus.BAD_REQUEST)
                 return
             operation_codes = [str(code) for code in operation_codes]
@@ -4411,7 +4581,7 @@ class Handler(SimpleHTTPRequestHandler):
                 self.write_json({"ok": False, "error": "包含无效工序绑定"}, status=HTTPStatus.BAD_REQUEST)
                 return
             source = _effective_worker_source(wid, "report_admin")
-            db_upsert_worker(wid, name, team, source, operation_codes)
+            db_upsert_worker(wid, name, team, source, operation_codes, job_roles)
             with _WORKER_CACHE_LOCK:
                 _WORKER_CACHE["data"] = None
                 _WORKER_CACHE["ts"] = 0
@@ -4419,6 +4589,7 @@ class Handler(SimpleHTTPRequestHandler):
                 "id": wid, "name": name, "team": team, "source": source,
                 "odooEmployeeId": 0, "operationCodes": operation_codes,
                 "operationBindings": operation_bindings if isinstance(operation_bindings, list) else [],
+                "jobRoles": job_roles if isinstance(job_roles, list) else [],
             }})
         except (ValueError, json.JSONDecodeError) as exc:
             self.write_json({"ok": False, "error": str(exc)}, status=HTTPStatus.BAD_REQUEST)

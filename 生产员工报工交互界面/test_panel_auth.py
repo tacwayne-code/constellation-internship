@@ -13,6 +13,7 @@ class PanelAuthTests(unittest.TestCase):
             "source": "report_admin",
             "odooEmployeeId": 0,
             "operationCodes": ["worker_assembly", "worker_packing"],
+            "jobRoles": [],
         }
 
     def test_session_token_round_trip(self):
@@ -78,6 +79,22 @@ class PanelAuthTests(unittest.TestCase):
         context = {"productClass": "host", "items": [{"defaultCode": "P-DIV"}]}
         self.assertTrue(server._should_use_workorder_bom(operation, context))
         self.assertTrue(server._should_fail_workorder_bom_lookup(operation, "tape"))
+
+    def test_report_admin_read_paths_are_explicit(self):
+        self.assertTrue(server.is_report_admin_read_path("/api/reports"))
+        self.assertTrue(server.is_report_admin_read_path("/api/workorders"))
+        self.assertTrue(server.is_report_admin_read_path("/api/order-summary"))
+        self.assertTrue(server.is_report_admin_read_path("/api/workers"))
+        self.assertFalse(server.is_report_admin_read_path("/api/bom"))
+
+    def test_report_admin_read_auth_uses_constant_time_key_match(self):
+        class Request:
+            headers = {"X-Internal-API-Key": "test-report-admin-key"}
+
+        with patch.object(server, "REPORT_ADMIN_API_KEY", "test-report-admin-key"):
+            self.assertTrue(server.check_report_admin_auth(Request()))
+        with patch.object(server, "REPORT_ADMIN_API_KEY", "different-key"):
+            self.assertFalse(server.check_report_admin_auth(Request()))
 
     def test_legacy_host_assembly_can_use_generic_host_bom(self):
         operation = {"code": "pc_assembly_tape", "requiresBom": False}

@@ -44,6 +44,7 @@ const S = {
   selWorker: null,
   selOrder: null,
   selOperation: "",
+  selRole: null,
   qty: 0,
   submitting: false,
 
@@ -501,16 +502,23 @@ function renderOperations() {
     el.innerHTML = '<div class="overview-empty">请先选择工人</div>';
     return;
   }
-  const ops = (S.operations || []).filter((op) => allowed.has(op.code));
+  const roles = Array.isArray(worker.jobRoles) ? worker.jobRoles.filter((r) => r && r.enabled !== false) : [];
+  const roleOps = roles.flatMap((role) => (role.operations || []).filter((op) => op && op.enabled !== false).map((op) => ({...op, roleCode: role.code, roleName: role.name})));
+  const ops = roleOps.length ? roleOps : (S.operations || []).filter((op) => allowed.has(op.code));
   if (!ops.length) {
     el.innerHTML = '<div class="overview-empty">该工人暂未绑定工序</div>';
     return;
   }
-  el.innerHTML = ops.map((op) => {
+  const roleHtml = roles.length ? '<div class="role-chips">' + roles.map((role) =>
+    '<button class="chip role-chip' + (S.selRole?.code === role.code ? ' active' : '') + '" data-role="' + esc(role.code) + '">' + esc(role.name) + '</button>'
+  ).join('') + '</div>' : '';
+  const visibleOps = roles.length && S.selRole ? ops.filter((op) => op.roleCode === S.selRole.code) : (roles.length ? [] : ops);
+  const opHtml = visibleOps.map((op) => {
     const active = S.selOperation === op.code ? " active" : "";
     return '<button class="chip op-chip' + active + '" data-op="' + esc(op.code) + '">' +
       esc(op.name || OP[op.code] || op.code) + '</button>';
   }).join("");
+  el.innerHTML = roleHtml + opHtml;
 }
 
 function workorderMatchesSelectedOperation(workorder) {
@@ -986,6 +994,7 @@ function setupEvents() {
     S.selWorkerIdx = idx;
     S.selWorker = S.workers[idx];
     S.selOperation = "";
+    S.selRole = null;
     S.selectedOperation = null;
     S.selectedWorkorder = null;
     S.selectedProduction = null;
@@ -998,6 +1007,21 @@ function setupEvents() {
   });
 
   $("#operationChips")?.addEventListener("click", (e) => {
+    const roleChip = e.target.closest(".role-chip");
+    if (roleChip?.dataset.role && S.selWorker) {
+      const role = (S.selWorker.jobRoles || []).find((item) => String(item.code) === String(roleChip.dataset.role));
+      S.selRole = role || null;
+      S.selOperation = "";
+      S.selectedOperation = null;
+      S.selectedWorkorder = null;
+      S.selectedProduction = null;
+      S.bomItems = [];
+      S.bomConfirmed = false;
+      renderOperations();
+      renderOrders();
+      updateSubmit();
+      return;
+    }
     const chip = e.target.closest(".op-chip");
     if (!chip || !chip.dataset.op) return;
     const opCode = chip.dataset.op;
@@ -1005,7 +1029,7 @@ function setupEvents() {
     S.selOperation = opCode;
 
     // 查找对应工序的完整信息
-    const opInfo = S.operations.find((o) => o.code === opCode);
+    const opInfo = (S.selRole?.operations || []).find((o) => o.code === opCode) || S.operations.find((o) => o.code === opCode);
     S.selectedOperation = opInfo || { code: opCode, name: OP[opCode] || opCode };
 
     // 切换工序：若已选工单与新工序不匹配，自动清掉
@@ -1144,6 +1168,8 @@ async function submitReport() {
   const idempotencyKey = generateUUID();
 
   const opInfo = S.selectedOperation || { code: S.selOperation, name: OP[S.selOperation] || S.selOperation };
+  const selectedRole = S.selRole || ((worker.jobRoles || []).find((role) =>
+    (role.operations || []).some((op) => String(op.code) === String(S.selOperation))) || null);
 
   // 构建物料数据
   let materials = [];
@@ -1172,6 +1198,10 @@ async function submitReport() {
     workorderId: S.selectedWorkorder ? String(S.selectedWorkorder.workorderId || "") : "",
     operation: S.selOperation,
     operationLabel: opInfo.name || OP[S.selOperation] || S.selOperation,
+    jobRoleCode: selectedRole?.code || "",
+    jobRoleName: selectedRole?.name || "",
+    processCode: opInfo.code || S.selOperation,
+    processName: opInfo.name || OP[S.selOperation] || S.selOperation,
     qty: S.qty,
     qualified: S.qty,
     hours: 0,
