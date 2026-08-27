@@ -1,5 +1,5 @@
 {% extends "admin/base_site.html" %}
-{% load static %}
+{% load i18n static %}
 
 {% block bodyclass %}{{ block.super }} app-employees model-employeeprocessauthorization change-list{% endblock %}
 
@@ -7,7 +7,6 @@
   {{ block.super }}
   <link rel="stylesheet" type="text/css" href="{% static 'admin/css/changelists.css' %}"/>
   <style type="text/css">
-    /* The process-management view keeps its five existing columns but uses the full content width. */
     body.model-employeeprocessauthorization #content,
     body.model-employeeprocessauthorization #content-main {
       width: 100% !important;
@@ -15,31 +14,34 @@
       box-sizing: border-box;
     }
     body.model-employeeprocessauthorization #content-main {
-      padding: 0;
+      padding: 20px;
     }
-    /* Module action toolbar sits in the content flow instead of the stock,
-       absolutely-positioned object-tools bar, so the two actions look part of
-       the module. */
+    /* Module toolbar: the two actions sit in the content flow as real buttons
+       (white background, blue text), matching the rest of the module list. */
     body.model-employeeprocessauthorization .process-toolbar {
       display: flex;
       align-items: center;
-      justify-content: flex-end;
       gap: 8px;
-      margin: 16px 20px 0;
+      margin-bottom: 14px;
     }
-    body.model-employeeprocessauthorization .process-toolbar a {
+    body.model-employeeprocessauthorization .process-toolbar a.el-button {
+      color: #409eff;
+      background-color: #ffffff;
+      border-color: #dcdfe6;
       text-decoration: none;
     }
-    body.model-employeeprocessauthorization #content-main > #changelist {
-      width: auto !important;
-      margin: 16px 20px 20px !important;
-      padding: 10px !important;
-      box-sizing: border-box;
+    body.model-employeeprocessauthorization .process-toolbar .process-count {
+      margin-left: auto;
+      color: #909399;
+      font-size: 13px;
+    }
+    body.model-employeeprocessauthorization #changelist {
+      margin: 0;
+      padding: 0;
     }
     body.model-employeeprocessauthorization #result_list {
       width: 100% !important;
       max-width: none !important;
-      table-layout: auto;
     }
   </style>
 {% endblock %}
@@ -47,38 +49,42 @@
 {% block content %}
   <div id="content-main">
     <div class="process-toolbar">
-      <a href="{% url 'admin:employees_employeeprocessauthorization_process_add' %}" class="el-button el-button--primary el-button--small">
+      <a href="{% url 'admin:employees_employeeprocessauthorization_process_add' %}" class="el-button el-button--default el-button--small">
         <i class="el-icon-plus"></i>&nbsp;新增工艺
       </a>
       <a href="{% url 'admin:employees_employeeprocessauthorization_changelist' %}" class="el-button el-button--default el-button--small">
         返回员工工艺授权
       </a>
+      <span class="process-count">共 {{ processes|length }} 个工艺</span>
     </div>
+
     <div class="module" id="changelist">
-      <table id="result_list">
-        <thead>
-          <tr>
-            <th>岗位</th>
-            <th>具体工艺名称</th>
-            <th>是否启用</th>
-            <th>更新时间</th>
-            <th>操作</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for process in processes %}
-            <tr class="{% cycle 'row1' 'row2' %}">
-              <td>{{ process.position.name }}</td>
-              <td>{{ process.name }}</td>
-              <td>{% if process.is_active %}是{% else %}否{% endif %}</td>
-              <td>{{ process.updated_at|date:"Y年n月j日 H:i" }}</td>
-              <td><a href="{% url 'admin:employees_employeeprocessauthorization_process_change' process.pk %}">编辑</a></td>
+      <div class="results">
+        <table id="result_list">
+          <thead>
+            <tr>
+              <th scope="col"><div class="text">岗位</div></th>
+              <th scope="col"><div class="text">具体工艺名称</div></th>
+              <th scope="col"><div class="text">是否启用</div></th>
+              <th scope="col"><div class="text">更新时间</div></th>
+              <th scope="col"><div class="text">操作</div></th>
             </tr>
-          {% empty %}
-            <tr><td colspan="5">暂无具体工艺。</td></tr>
-          {% endfor %}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {% for process in processes %}
+              <tr class="{% cycle 'row1' 'row2' %}">
+                <td>{{ process.position.name }}</td>
+                <td>{{ process.name }}</td>
+                <td>{% if process.is_active %}是{% else %}否{% endif %}</td>
+                <td>{{ process.updated_at|date:"Y年n月j日 H:i" }}</td>
+                <td><a href="{% url 'admin:employees_employeeprocessauthorization_process_change' process.pk %}">编辑</a></td>
+              </tr>
+            {% empty %}
+              <tr class="row1"><td colspan="5">暂无具体工艺。</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
     </div>
   </div>
 {% endblock %}
