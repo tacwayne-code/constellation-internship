@@ -43,6 +43,15 @@
       width: 100% !important;
       max-width: none !important;
     }
+    /* Match the employee-authorization list header typography. This custom
+       table uses text divs rather than Django Admin's sortable header links. */
+    body.model-employeeprocessauthorization #result_list thead th .text {
+      padding: 8px 10px;
+      color: #409eff;
+      font-size: 14px;
+      font-weight: 400;
+      line-height: 20px;
+    }
   </style>
 {% endblock %}
 
