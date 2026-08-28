@@ -56,6 +56,9 @@ REPORT_ADMIN_API_URL = os.getenv("REPORT_ADMIN_API_URL", "").strip().rstrip("/")
 REPORT_ADMIN_API_KEY = os.getenv("REPORT_ADMIN_API_KEY", "").strip()
 PANEL_SESSION_COOKIE = "sop_panel_session"
 PANEL_SESSION_SECRET = os.getenv("SOP_PANEL_SESSION_SECRET", "").strip() or REPORT_ADMIN_API_KEY
+# Browsers commonly cap an individual cookie near 4096 bytes. Keep the
+# self-contained token below that boundary and fall back to a short signed
+# reference when an employee has a larger authorization set.
 PANEL_SESSION_COOKIE_MAX_BYTES = 3800
 try:
     PANEL_SESSION_TTL_SECONDS = max(300, int(os.getenv("SOP_PANEL_SESSION_TTL_SECONDS", "43200")))
@@ -294,13 +297,44 @@ def _panel_session_token(worker):
     ).hexdigest()
     token = f"{encoded}.{signature}"
     if len(token.encode("ascii")) > PANEL_SESSION_COOKIE_MAX_BYTES:
-        raise RuntimeError("该账号的岗位和工序授权过多，无法建立登录会话，请联系管理员精简重复授权")
+        # Do not raise the cookie limit: browsers reject oversized cookies.
+        # Store the same normalized authorization snapshot locally and give
+        # the browser a signed opaque reference instead.
+        session_id = db_create_panel_session(payload)
+        reference = f"v2.{session_id}"
+        reference_signature = hmac.new(
+            PANEL_SESSION_SECRET.encode("utf-8"), reference.encode("ascii"), hashlib.sha256
+        ).hexdigest()
+        token = f"{reference}.{reference_signature}"
     return token
 
 
 def _panel_session_worker(token):
     if not PANEL_SESSION_SECRET or not token or "." not in token:
         return None
+    if token.startswith("v2."):
+        try:
+            reference, signature = token.rsplit(".", 1)
+            _, session_id = reference.split(".", 1)
+            uuid.UUID(session_id)
+        except (ValueError, TypeError):
+            return None
+        expected = hmac.new(
+            PANEL_SESSION_SECRET.encode("utf-8"), reference.encode("ascii"), hashlib.sha256
+        ).hexdigest()
+        if not hmac.compare_digest(signature, expected):
+            return None
+        payload = db_get_panel_session_payload(session_id)
+        if not isinstance(payload, dict) or int(payload.get("expiresAt", 0)) < int(time.time()):
+            return None
+        return _panel_worker_from_identity({
+            "sourceWorkerId": payload.get("workerId", ""),
+            "name": payload.get("name", ""),
+            "departmentName": payload.get("team", ""),
+            "operationCodes": payload.get("operationCodes", []),
+            "operationBindings": payload.get("operationBindings", []),
+            "jobRoles": payload.get("jobRoles", []),
+        })
     encoded, signature = token.rsplit(".", 1)
     expected = hmac.new(
         PANEL_SESSION_SECRET.encode("utf-8"), encoded.encode("ascii"), hashlib.sha256
@@ -680,12 +714,60 @@ def _init_db():
             );
             CREATE INDEX IF NOT EXISTS idx_sop_logs_wo ON sop_view_logs(workorder_id);
 
+            CREATE TABLE IF NOT EXISTS panel_sessions (
+                session_id TEXT PRIMARY KEY,
+                payload TEXT NOT NULL,
+                expires_at INTEGER NOT NULL,
+                created_at TEXT DEFAULT (datetime('now','localtime'))
+            );
+            CREATE INDEX IF NOT EXISTS idx_panel_sessions_expires ON panel_sessions(expires_at);
+
         """)
         conn.commit()
         conn.close()
     logger.info("SQLite 数据库初始化完成")
     # 执行迁移
     _migrate_db()
+
+
+def db_create_panel_session(payload):
+    """Persist an oversized panel session payload and return its opaque id."""
+    session_id = str(uuid.uuid4())
+    expires_at = int(payload["expiresAt"])
+    encoded_payload = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
+    with DB_LOCK:
+        conn = sqlite3.connect(str(DB_FILE))
+        try:
+            # Bound storage growth while retaining all still-valid sessions.
+            conn.execute("DELETE FROM panel_sessions WHERE expires_at < ?", (int(time.time()),))
+            conn.execute(
+                "INSERT INTO panel_sessions (session_id, payload, expires_at) VALUES (?, ?, ?)",
+                (session_id, encoded_payload, expires_at),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+    return session_id
+
+
+def db_get_panel_session_payload(session_id):
+    """Return a non-expired oversized panel session payload, if present."""
+    with DB_LOCK:
+        conn = sqlite3.connect(str(DB_FILE))
+        try:
+            row = conn.execute(
+                "SELECT payload FROM panel_sessions WHERE session_id = ? AND expires_at >= ?",
+                (session_id, int(time.time())),
+            ).fetchone()
+        finally:
+            conn.close()
+    if not row:
+        return None
+    try:
+        return json.loads(row[0])
+    except (TypeError, json.JSONDecodeError):
+        logger.warning("面板会话数据无效: %s", session_id)
+        return None
 
 
 def _seed_workers():

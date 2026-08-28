@@ -76,6 +76,40 @@ class PanelAuthTests(unittest.TestCase):
             tampered = encoded + "." + ("0" * len(signature))
             self.assertIsNone(server._panel_session_worker(tampered))
 
+    def test_large_authorization_uses_short_signed_server_session(self):
+        large_worker = {
+            **self.worker,
+            "jobRoles": [{
+                "code": "assembly", "name": "组装", "enabled": True,
+                "operations": [{
+                    "code": f"custom-process-{index}", "name": f"自定义工序 {index}",
+                    "processCode": f"custom-process-{index}", "enabled": True,
+                    "woMatch": {
+                        "operationId": index,
+                        "routingOperationIds": list(range(index, index + 30)),
+                    },
+                } for index in range(100)],
+            }],
+            "operationCodes": [f"custom-process-{index}" for index in range(100)],
+        }
+        stored_payload = {}
+
+        def store(payload):
+            stored_payload.update(payload)
+            return "12345678-1234-1234-1234-123456789abc"
+
+        with patch.object(server, "PANEL_SESSION_SECRET", "test-session-secret"), \
+             patch.object(server, "PANEL_SESSION_COOKIE_MAX_BYTES", 128), \
+             patch.object(server, "db_create_panel_session", side_effect=store), \
+             patch.object(server, "db_get_panel_session_payload", side_effect=lambda _: stored_payload):
+            token = server._panel_session_token(large_worker)
+            self.assertTrue(token.startswith("v2.12345678-1234-1234-1234-123456789abc."))
+            self.assertLess(len(token.encode("ascii")), server.PANEL_SESSION_COOKIE_MAX_BYTES)
+            self.assertEqual(
+                server._panel_session_worker(token)["operationCodes"],
+                large_worker["operationCodes"],
+            )
+
     def test_identity_filters_unknown_operations(self):
         identity = {
             "sourceWorkerId": "ADMIN_EMP_8",
