@@ -1114,31 +1114,17 @@ def _load_report_admin_workers():
         raise ValueError("后台员工接口返回格式无效")
     workers = []
     for row in rows:
-        worker_id = str(row.get("sourceWorkerId", "")).strip()
-        name = str(row.get("name", "")).strip()
-        operation_codes = row.get("operationCodes", [])
-        if not worker_id or not name or not isinstance(operation_codes, list):
+        # Employee-list refreshes must use the same legacy process-code
+        # normalization as login. Otherwise a raw WorkProcess.code such as
+        # legacy-process-* no longer matches its SOP authorization code.
+        worker = _panel_worker_from_identity(row)
+        if worker is None:
             continue
-        operation_bindings = row.get("operationBindings", [])
-        job_roles = row.get("jobRoles", row.get("roles", row.get("operationGroups", [])))
-        valid_binding_codes = {
-            str(binding.get("code", "")) for binding in operation_bindings
-            if isinstance(binding, dict)
-        }
         workers.append({
-            "id": worker_id,
-            "name": name,
-            "team": str(row.get("departmentName", row.get("team", ""))).strip(),
-            "source": _effective_worker_source(worker_id, "report_admin"),
-            "odooEmployeeId": 0,
+            **worker,
+            "source": _effective_worker_source(worker["id"], "report_admin"),
             "jobTitle": str(row.get("jobTitle", "")).strip(),
             "jobOperationNames": _split_job_operations(row.get("jobTitle", "")),
-            "operationCodes": [
-                str(code) for code in operation_codes
-                if str(code) in VALID_OPERATIONS or str(code) in valid_binding_codes
-            ],
-            "operationBindings": operation_bindings if isinstance(operation_bindings, list) else [],
-            "jobRoles": job_roles if isinstance(job_roles, list) else [],
         })
     return workers
 

@@ -1,6 +1,7 @@
 import base64
 import hashlib
 import hmac
+import io
 import json
 import time
 import unittest
@@ -120,6 +121,44 @@ class PanelAuthTests(unittest.TestCase):
         self.assertEqual(
             server._panel_worker_from_identity(identity)["operationCodes"],
             ["worker_assembly"],
+        )
+
+    def test_employee_refresh_normalizes_legacy_role_process_codes(self):
+        operation_code = "worker_assembly_custom_0123456789abcdef"
+        response = {
+            "data": [{
+                "sourceWorkerId": "ADMIN_EMP_8",
+                "name": "周小明",
+                "departmentName": "生产车间",
+                "jobTitle": "定位结构组装",
+                "operationCodes": [operation_code],
+                "operationBindings": [{
+                    "code": operation_code,
+                    "name": "定位结构组装",
+                    "workorderNames": ["定位结构组装"],
+                    "requiresBom": True,
+                }],
+                "jobRoles": [{
+                    "code": "legacy-position", "name": "结构组装", "enabled": True,
+                    "operations": [{
+                        "code": "legacy-process-locating",
+                        "name": "定位结构组装",
+                        "enabled": True,
+                        "woMatch": {"legacyOperationCode": operation_code},
+                    }],
+                }],
+            }],
+        }
+        with patch.object(server, "REPORT_ADMIN_API_URL", "http://report-admin.test"), \
+             patch.object(server, "REPORT_ADMIN_API_KEY", "test-key"), \
+             patch.object(server, "urlopen", return_value=io.BytesIO(json.dumps(response).encode("utf-8"))):
+            worker = server._load_report_admin_workers()[0]
+
+        self.assertEqual(worker["operationCodes"], [operation_code])
+        self.assertEqual(worker["jobRoles"][0]["operations"][0]["code"], operation_code)
+        self.assertEqual(
+            server.get_operations_for_worker(worker)[-1]["code"],
+            operation_code,
         )
 
     def test_role_processes_override_legacy_job_title_codes(self):
