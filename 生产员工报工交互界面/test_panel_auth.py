@@ -1,3 +1,8 @@
+import base64
+import hashlib
+import hmac
+import json
+import time
 import unittest
 from unittest.mock import patch
 
@@ -20,6 +25,50 @@ class PanelAuthTests(unittest.TestCase):
             token = server._panel_session_token(self.worker)
             self.assertEqual(server._panel_session_worker(token), self.worker)
 
+    def test_role_session_round_trip_omits_duplicate_compatibility_bindings(self):
+        worker = {
+            **self.worker,
+            "operationCodes": ["worker_assembly_custom_locating"],
+            "operationBindings": [{
+                "code": "worker_assembly_custom_locating",
+                "name": "定位结构组装",
+                "workorderNames": ["定位结构组装"],
+                "requiresBom": True,
+            }],
+            "jobRoles": [{
+                "code": "assembly", "name": "组装", "enabled": True,
+                "operations": [{
+                    "code": "worker_assembly_custom_locating",
+                    "name": "定位结构组装",
+                    "processCode": "legacy-process-locating",
+                    "processName": "定位结构组装",
+                    "enabled": True,
+                    "requiresBom": True,
+                    "workorderNames": ["定位结构组装"],
+                }],
+            }],
+        }
+        with patch.object(server, "PANEL_SESSION_SECRET", "test-session-secret"):
+            token = server._panel_session_token(worker)
+            round_trip = server._panel_session_worker(token)
+        self.assertIsNotNone(round_trip)
+        self.assertEqual(round_trip["jobRoles"][0]["operations"][0]["processCode"], "legacy-process-locating")
+        self.assertNotIn("operationBindings", round_trip)
+
+    def test_precompression_session_token_remains_compatible(self):
+        payload = {
+            "workerId": self.worker["id"], "name": self.worker["name"],
+            "team": self.worker["team"], "operationCodes": self.worker["operationCodes"],
+            "operationBindings": [], "jobRoles": [],
+            "expiresAt": int(time.time()) + 300,
+        }
+        encoded = base64.urlsafe_b64encode(
+            json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+        ).decode("ascii").rstrip("=")
+        with patch.object(server, "PANEL_SESSION_SECRET", "test-session-secret"):
+            signature = hmac.new(b"test-session-secret", encoded.encode("ascii"), hashlib.sha256).hexdigest()
+            self.assertEqual(server._panel_session_worker(f"{encoded}.{signature}"), self.worker)
+
     def test_tampered_session_token_is_rejected(self):
         with patch.object(server, "PANEL_SESSION_SECRET", "test-session-secret"):
             token = server._panel_session_token(self.worker)
@@ -37,6 +86,43 @@ class PanelAuthTests(unittest.TestCase):
         self.assertEqual(
             server._panel_worker_from_identity(identity)["operationCodes"],
             ["worker_assembly"],
+        )
+
+    def test_role_processes_override_legacy_job_title_codes(self):
+        identity = {
+            "sourceWorkerId": "ADMIN_EMP_8",
+            "name": "何金坤",
+            "departmentName": "生产车间",
+            # These legacy job-title codes must not filter the distinct
+            # WorkProcess codes granted under the two positions below.
+            "operationCodes": ["worker_packing", "worker_electrical"],
+            "jobRoles": [
+                {
+                    "code": "packing", "name": "打包", "enabled": True,
+                    "operations": [{
+                        "code": "packing-process-a", "name": "编带打包", "enabled": True,
+                        "woMatch": {"operationId": 101},
+                    }],
+                },
+                {
+                    "code": "electrical", "name": "电控", "enabled": True,
+                    "operations": [{
+                        "code": "electrical-process-a", "name": "电控接线", "enabled": True,
+                        "woMatch": {"operationId": 102},
+                    }],
+                },
+            ],
+        }
+
+        worker = server._panel_worker_from_identity(identity)
+        self.assertEqual(worker["operationCodes"], ["packing-process-a", "electrical-process-a"])
+        self.assertEqual(
+            [op["code"] for op in worker["jobRoles"][0]["operations"]],
+            ["packing-process-a"],
+        )
+        self.assertEqual(
+            server.panel_worker_matching_operation_codes(worker, {"operationId": 101}),
+            ["packing-process-a"],
         )
 
     def test_custom_assembly_binding_survives_session_and_exposes_bom_metadata(self):

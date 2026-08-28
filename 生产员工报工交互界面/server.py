@@ -13,6 +13,7 @@ import threading
 import time
 import uuid
 import xmlrpc.client
+import zlib
 from datetime import datetime, timedelta, timezone
 from http import HTTPStatus
 from http.cookies import CookieError, SimpleCookie
@@ -55,6 +56,7 @@ REPORT_ADMIN_API_URL = os.getenv("REPORT_ADMIN_API_URL", "").strip().rstrip("/")
 REPORT_ADMIN_API_KEY = os.getenv("REPORT_ADMIN_API_KEY", "").strip()
 PANEL_SESSION_COOKIE = "sop_panel_session"
 PANEL_SESSION_SECRET = os.getenv("SOP_PANEL_SESSION_SECRET", "").strip() or REPORT_ADMIN_API_KEY
+PANEL_SESSION_COOKIE_MAX_BYTES = 3800
 try:
     PANEL_SESSION_TTL_SECONDS = max(300, int(os.getenv("SOP_PANEL_SESSION_TTL_SECONDS", "43200")))
 except ValueError:
@@ -125,15 +127,14 @@ def _panel_worker_from_identity(identity):
                 for raw_op in raw_ops:
                     if not isinstance(raw_op, dict):
                         continue
-                    process_code = str(raw_op.get(
-                        "processCode", raw_op.get("code", raw_op.get("operationCode", ""))
-                    )).strip()
+                    raw_code = str(raw_op.get("code", raw_op.get("operationCode", ""))).strip()
+                    process_code = str(raw_op.get("processCode", raw_code)).strip()
                     rules = raw_op.get("woMatch") if isinstance(raw_op.get("woMatch"), dict) else {}
                     # WorkProcess.code is a management-side process identifier.
                     # Legacy migration records carry their Odoo/SOP operation
                     # code separately, so use it for authorization and retain
                     # the process code only as the report/audit snapshot.
-                    op_code = str(rules.get("legacyOperationCode", "")).strip() or process_code
+                    op_code = str(rules.get("legacyOperationCode", "")).strip() or raw_code or process_code
                     op_name = str(raw_op.get("name", raw_op.get("operationName", op_code))).strip()
                     if not op_code or not op_name or raw_op.get("enabled", True) is False:
                         continue
@@ -150,7 +151,11 @@ def _panel_worker_from_identity(identity):
                     })
             if ops:
                 roles.append({"code": role_code, "name": role_name, "enabled": True, "operations": ops})
-    if not raw_codes and roles:
+    # When the management service provides the new position -> process grants,
+    # they are the complete worker authorization.  The legacy job-title codes
+    # in ``operationCodes`` describe a different namespace and can otherwise
+    # filter every granted process out of the second-level selector.
+    if roles:
         raw_codes = [op["code"] for role in roles for op in role.get("operations", [])]
     bindings = []
     include_bindings = isinstance(raw_bindings, list) and bool(raw_bindings)
@@ -269,22 +274,28 @@ def authenticate_panel_account(username, password):
 def _panel_session_token(worker):
     if not PANEL_SESSION_SECRET:
         raise RuntimeError("未配置 SOP_PANEL_SESSION_SECRET 或 REPORT_ADMIN_API_KEY")
+    job_roles = worker.get("jobRoles", [])
     payload = {
         "workerId": worker["id"],
         "name": worker["name"],
         "team": worker.get("team", ""),
         "operationCodes": worker.get("operationCodes", []),
-        "operationBindings": worker.get("operationBindings", []),
-        "jobRoles": worker.get("jobRoles", []),
+        # Enriched role operations already include binding metadata. Omitting
+        # the duplicate compatibility list keeps large authorizations within
+        # the browser's per-cookie size limit.
+        "operationBindings": [] if job_roles else worker.get("operationBindings", []),
+        "jobRoles": job_roles,
         "expiresAt": int(time.time()) + PANEL_SESSION_TTL_SECONDS,
     }
-    encoded = base64.urlsafe_b64encode(
-        json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
-    ).decode("ascii").rstrip("=")
+    raw_payload = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+    encoded = base64.urlsafe_b64encode(zlib.compress(raw_payload, level=9)).decode("ascii").rstrip("=")
     signature = hmac.new(
         PANEL_SESSION_SECRET.encode("utf-8"), encoded.encode("ascii"), hashlib.sha256
     ).hexdigest()
-    return f"{encoded}.{signature}"
+    token = f"{encoded}.{signature}"
+    if len(token.encode("ascii")) > PANEL_SESSION_COOKIE_MAX_BYTES:
+        raise RuntimeError("该账号的岗位和工序授权过多，无法建立登录会话，请联系管理员精简重复授权")
+    return token
 
 
 def _panel_session_worker(token):
@@ -298,10 +309,16 @@ def _panel_session_worker(token):
         return None
     try:
         padded = encoded + "=" * (-len(encoded) % 4)
-        payload = json.loads(base64.urlsafe_b64decode(padded.encode("ascii")).decode("utf-8"))
+        raw_payload = base64.urlsafe_b64decode(padded.encode("ascii"))
+        try:
+            payload = json.loads(zlib.decompress(raw_payload).decode("utf-8"))
+        except zlib.error:
+            # Sessions issued before payload compression remain valid until
+            # their existing expiry time.
+            payload = json.loads(raw_payload.decode("utf-8"))
         if int(payload.get("expiresAt", 0)) < int(time.time()):
             return None
-    except (ValueError, TypeError, UnicodeDecodeError, json.JSONDecodeError, binascii.Error):
+    except (ValueError, TypeError, UnicodeDecodeError, json.JSONDecodeError, binascii.Error, zlib.error):
         return None
     return _panel_worker_from_identity({
         "sourceWorkerId": payload.get("workerId", ""),
@@ -3999,6 +4016,10 @@ class Handler(SimpleHTTPRequestHandler):
             self.write_json({"ok": False, "error": str(exc)}, status=HTTPStatus.BAD_REQUEST)
         except RuntimeError as exc:
             self.write_json({"ok": False, "error": str(exc)}, status=HTTPStatus.SERVICE_UNAVAILABLE)
+        except Exception:
+            logger.exception("SOP 面板登录处理异常")
+            self.write_json({"ok": False, "error": "登录服务暂时不可用，请稍后重试"},
+                            status=HTTPStatus.INTERNAL_SERVER_ERROR)
 
     def handle_panel_logout(self):
         self.write_json(
