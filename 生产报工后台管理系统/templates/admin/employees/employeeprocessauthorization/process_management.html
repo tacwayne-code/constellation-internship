@@ -75,6 +75,7 @@
               <th scope="col"><div class="text">岗位</div></th>
               <th scope="col"><div class="text">具体工艺名称</div></th>
               <th scope="col"><div class="text">是否启用</div></th>
+              <th scope="col"><div class="text">SOP 版本数</div></th>
               <th scope="col"><div class="text">更新时间</div></th>
               <th scope="col"><div class="text">操作</div></th>
             </tr>
@@ -85,11 +86,12 @@
                 <td>{{ process.position.name }}</td>
                 <td>{{ process.name }}</td>
                 <td>{% if process.is_active %}是{% else %}否{% endif %}</td>
+                <td>{{ process.sops.all|length }}</td>
                 <td>{{ process.updated_at|date:"Y年n月j日 H:i" }}</td>
                 <td><a href="{% url 'admin:employees_employeeprocessauthorization_process_change' process.pk %}">编辑</a></td>
               </tr>
             {% empty %}
-              <tr class="row1"><td colspan="5">暂无具体工艺。</td></tr>
+              <tr class="row1"><td colspan="6">暂无具体工艺。</td></tr>
             {% endfor %}
           </tbody>
         </table>

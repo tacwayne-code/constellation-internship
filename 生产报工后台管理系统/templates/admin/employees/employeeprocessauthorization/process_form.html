@@ -20,7 +20,7 @@
         <el-page-header title="返回" @back="goBack" content="{{ title }}"/>
       </div>
     {% endif %}
-    <form method="post" novalidate>
+    <form method="post" enctype="multipart/form-data" novalidate>
       {% csrf_token %}
       <fieldset class="module aligned">
         {% for field in form %}
@@ -42,6 +42,18 @@
           </div>
         {% endfor %}
       </fieldset>
+      {% if process %}
+        <fieldset class="module aligned">
+          <h2 class="fieldset-heading">工艺 SOP</h2>
+          {% for sop in process.sops.all %}
+            <div class="form-row"><label>{{ sop.title }}</label><div>{{ sop.version }}{% if sop.is_active %}（当前启用）{% endif %} · {{ sop.created_at|date:"Y-m-d H:i" }}</div></div>
+          {% empty %}<div class="form-row"><div class="help">暂无 SOP 版本。</div></div>{% endfor %}
+          <div class="form-row"><label>{{ sop_form.title.label }}</label>{{ sop_form.title }}{{ sop_form.title.errors }}</div>
+          <div class="form-row"><label>{{ sop_form.version.label }}</label>{{ sop_form.version }}{{ sop_form.version.errors }}</div>
+          <div class="form-row"><label>{{ sop_form.pdf_file.label }}</label>{{ sop_form.pdf_file }}{{ sop_form.pdf_file.errors }}</div>
+          <div class="submit-row"><button type="submit" name="_upload_sop" class="el-button el-button--primary el-button--small">上传并启用 SOP</button></div>
+        </fieldset>
+      {% endif %}
       <datalist id="process-name-options">
         {% for name in process_name_options %}<option value="{{ name }}"></option>{% endfor %}
       </datalist>

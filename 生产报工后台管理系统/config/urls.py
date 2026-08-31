@@ -2,7 +2,12 @@ from django.contrib import admin
 from django.shortcuts import redirect
 from django.urls import path
 
-from employees.views import internal_employee_list, internal_employee_panel_auth
+from employees.views import (
+    internal_employee_list,
+    internal_employee_panel_auth,
+    internal_process_sop_download,
+    internal_process_sop_list,
+)
 from reports import views
 
 urlpatterns = [
@@ -14,4 +19,6 @@ urlpatterns = [
     path("internal/api/v1/work-reports/sync-status/", views.receive_sync_status, name="receive-sync-status"),
     path("internal/api/v1/employees/", internal_employee_list, name="internal-employee-list"),
     path("internal/api/v1/employee-panel-auth/", internal_employee_panel_auth, name="internal-employee-panel-auth"),
+    path("internal/api/v1/process-sops/", internal_process_sop_list, name="internal-process-sop-list"),
+    path("internal/api/v1/process-sops/<int:sop_id>/download/", internal_process_sop_download, name="internal-process-sop-download"),
 ]

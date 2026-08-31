@@ -5,3 +5,4 @@ my-dev.cnf
 __pycache__/
 *.py[cod]
 staticfiles/
+media/

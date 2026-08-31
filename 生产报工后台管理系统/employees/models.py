@@ -62,6 +62,27 @@ class WorkProcess(models.Model):
         return f"{self.position.name} / {self.name}"
 
 
+class ProcessSOP(models.Model):
+    """Versioned PDF work instructions attached to one concrete process."""
+    process = models.ForeignKey(WorkProcess, verbose_name="具体工艺", on_delete=models.PROTECT, related_name="sops")
+    title = models.CharField("SOP 标题", max_length=255)
+    version = models.CharField("版本号", max_length=64)
+    pdf_file = models.FileField("PDF 文件", upload_to="process_sops/%Y/%m/")
+    is_active = models.BooleanField("是否启用", default=True)
+    uploaded_by = models.ForeignKey(settings.AUTH_USER_MODEL, verbose_name="上传人", null=True, blank=True, on_delete=models.SET_NULL)
+    created_at = models.DateTimeField("上传时间", auto_now_add=True)
+    updated_at = models.DateTimeField("更新时间", auto_now=True)
+
+    class Meta:
+        verbose_name = "工艺 SOP"
+        verbose_name_plural = "工艺 SOP"
+        ordering = ("process__name", "-created_at", "-id")
+        indexes = [models.Index(fields=("process", "is_active"), name="process_sop_active_idx")]
+
+    def __str__(self):
+        return f"{self.process.name} / {self.title} / {self.version}"
+
+
 class EmployeeProcessAuthorization(models.Model):
     """Audited employee -> position -> process grant."""
     employee = models.ForeignKey("Employee", verbose_name="员工", on_delete=models.PROTECT, related_name="process_authorizations")

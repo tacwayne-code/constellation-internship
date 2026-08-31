@@ -9,13 +9,14 @@ from django.urls import path, reverse
 from django.utils.html import format_html
 from uuid import uuid4
 
-from .forms import EmployeeCreateForm, EmployeeReportPanelAccountForm, WorkProcessManagementForm
+from .forms import EmployeeCreateForm, EmployeeReportPanelAccountForm, ProcessSOPUploadForm, WorkProcessManagementForm
 from .models import (
     Department,
     Employee,
     EmployeeReportPanelAccount,
     EmployeeProcessAuthorization,
     JobPosition,
+    ProcessSOP,
     WorkProcess,
 )
 from .sop_sync import enqueue_sop_employee_sync, operation_codes_for_job_title
@@ -83,6 +84,22 @@ class WorkProcessAdmin(AdministratorOnlyMixin, admin.ModelAdmin):
         transaction.on_commit(lambda: [enqueue_sop_employee_sync(employee_id) for employee_id in employee_ids])
 
 
+@admin.register(ProcessSOP)
+class ProcessSOPAdmin(admin.ModelAdmin):
+    list_display = ("title", "process", "version", "is_active", "created_at")
+    list_filter = ("is_active", "process__position")
+    search_fields = ("title", "version", "process__name", "process__code")
+    list_select_related = ("process", "uploaded_by")
+    readonly_fields = ("created_at", "updated_at", "uploaded_by")
+
+    def save_model(self, request, obj, form, change):
+        if not change:
+            obj.uploaded_by = request.user
+        if obj.is_active:
+            ProcessSOP.objects.filter(process=obj.process, title=obj.title, is_active=True).exclude(pk=obj.pk).update(is_active=False)
+        super().save_model(request, obj, form, change)
+
+
 @admin.register(EmployeeProcessAuthorization)
 class EmployeeProcessAuthorizationAdmin(AdministratorOnlyMixin, admin.ModelAdmin):
     change_list_template = "admin/employees/employeeprocessauthorization/change_list.html"
@@ -122,7 +139,7 @@ class EmployeeProcessAuthorizationAdmin(AdministratorOnlyMixin, admin.ModelAdmin
             **self.admin_site.each_context(request),
             "opts": self.model._meta,
             "title": "员工工艺授权 - 工艺管理",
-            "processes": WorkProcess.objects.select_related("position").order_by("position__name", "name"),
+            "processes": WorkProcess.objects.select_related("position").prefetch_related("sops").order_by("position__name", "name"),
             "process_name_options": list(
                 WorkProcess.objects.filter(is_active=True).values_list("name", flat=True).distinct().order_by("name")
             ),
@@ -164,6 +181,17 @@ class EmployeeProcessAuthorizationAdmin(AdministratorOnlyMixin, admin.ModelAdmin
         self._require_superuser(request)
         process = get_object_or_404(WorkProcess, pk=process_id)
         form = WorkProcessManagementForm(request.POST or None, instance=process)
+        sop_form = ProcessSOPUploadForm(request.POST or None, request.FILES or None)
+        if request.method == "POST" and request.POST.get("_upload_sop"):
+            if sop_form.is_valid():
+                sop = sop_form.save(commit=False)
+                sop.process = process
+                sop.uploaded_by = request.user
+                ProcessSOP.objects.filter(process=process, title=sop.title, is_active=True).update(is_active=False)
+                sop.save()
+                AuditLog.objects.create(actor=request.user, action="process_sop.upload", target_type="ProcessSOP", target_id=str(sop.pk), metadata={"process": process.code, "title": sop.title, "version": sop.version})
+                self.message_user(request, "SOP 已上传并启用。", messages.SUCCESS)
+                return redirect("admin:employees_employeeprocessauthorization_process_change", process_id=process.pk)
         if request.method == "POST" and form.is_valid():
             process = form.save()
             AuditLog.objects.create(
@@ -180,7 +208,7 @@ class EmployeeProcessAuthorizationAdmin(AdministratorOnlyMixin, admin.ModelAdmin
         return TemplateResponse(
             request,
             "admin/employees/employeeprocessauthorization/process_form.html",
-            self._process_management_context(request, title="员工工艺授权 - 编辑工艺", form=form, process=process),
+            self._process_management_context(request, title="员工工艺授权 - 编辑工艺", form=form, process=process, sop_form=sop_form),
         )
 
     def get_form(self, request, obj=None, **kwargs):

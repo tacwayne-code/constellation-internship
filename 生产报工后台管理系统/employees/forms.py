@@ -1,7 +1,7 @@
 from django import forms
 from django.db import transaction
 
-from .models import Department, Employee, EmployeeReportPanelAccount, JobPosition, WorkProcess
+from .models import Department, Employee, EmployeeReportPanelAccount, JobPosition, ProcessSOP, WorkProcess
 from .sop_sync import operation_codes_for_job_title
 
 
@@ -208,3 +208,19 @@ class WorkProcessManagementForm(forms.ModelForm):
         if commit:
             instance.save()
         return instance
+
+
+class ProcessSOPUploadForm(forms.ModelForm):
+    class Meta:
+        model = ProcessSOP
+        fields = ("title", "version", "pdf_file")
+        labels = {"title": "SOP 标题", "version": "版本号", "pdf_file": "PDF 文件"}
+        widgets = {"title": forms.TextInput(), "version": forms.TextInput()}
+
+    def clean_pdf_file(self):
+        uploaded = self.cleaned_data["pdf_file"]
+        if not uploaded.name.lower().endswith(".pdf"):
+            raise forms.ValidationError("只能上传 PDF 文件。")
+        if uploaded.content_type and uploaded.content_type != "application/pdf":
+            raise forms.ValidationError("文件类型必须是 PDF。")
+        return uploaded
