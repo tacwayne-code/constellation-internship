@@ -531,7 +531,8 @@ function openOperationSelector(role) {
   if (!overlay || !title || !chips) return;
   const allowed = new Set(S.selWorker?.operationCodes || []);
   const ops = (role?.operations || []).filter((op) => op && op.enabled !== false && allowed.has(op.code));
-  title.textContent = role?.name || "选择工序";
+  // 二级界面只展示岗位对应的具体工艺，不显示岗位名称。
+  title.textContent = "选择工序";
   chips.innerHTML = ops.length ? ops.map((op) => operationChipHtml(op)).join("") : '<div class="overview-empty">该岗位暂未绑定工序</div>';
   overlay.classList.add("show");
   overlay.setAttribute("aria-hidden", "false");
@@ -1217,6 +1218,7 @@ async function submitReport() {
       }));
   }
 
+  const processName = opInfo.processName || opInfo.name || OP[S.selOperation] || S.selOperation;
   const report = {
     workerName: worker.name,
     workerId: worker.id,
@@ -1228,11 +1230,11 @@ async function submitReport() {
     productionId: S.selectedWorkorder ? String(S.selectedWorkorder.productionId || "") : "",
     workorderId: S.selectedWorkorder ? String(S.selectedWorkorder.workorderId || "") : "",
     operation: S.selOperation,
-    operationLabel: opInfo.name || OP[S.selOperation] || S.selOperation,
+    operationLabel: processName,
     jobRoleCode: selectedRole?.code || "",
     jobRoleName: selectedRole?.name || "",
     processCode: opInfo.processCode || opInfo.code || S.selOperation,
-    processName: opInfo.processName || opInfo.name || OP[S.selOperation] || S.selOperation,
+    processName: processName,
     qty: S.qty,
     qualified: S.qty,
     hours: 0,
