@@ -1453,7 +1453,10 @@ function openSopModal(workorderId, processCode = "") {
   renderSopTabs();
   $("#sopOverlay").classList.add("show");
 
-  const code = processCode || S.selectedOperation?.code || S.selOperation || "";
+  // SOP belongs to the management-side concrete process. Older panel
+  // identities may expose a legacy operation code in `.code`, so prefer the
+  // explicit processCode field and only fall back for legacy records.
+  const code = processCode || S.selectedOperation?.processCode || S.selectedOperation?.process_code || S.selectedOperation?.code || S.selOperation || "";
   apiGet("/api/sop/list?workorderId=" + encodeURIComponent(workorderId) + "&processCode=" + encodeURIComponent(code))
     .then(resp => {
       SOP.attachments = resp.data || [];
@@ -1770,7 +1773,7 @@ function setupSopEvents() {
     if (!btn) return;
     e.stopPropagation();
     const woid = btn.dataset.woid;
-    if (woid) openSopModal(parseInt(woid), S.selectedOperation?.code || S.selOperation || "");
+    if (woid) openSopModal(parseInt(woid));
   });
 
   // 附件标签切换
@@ -1807,7 +1810,7 @@ function setupSopEvents() {
     const wo = S.selectedWorkorder;
     if (wo && wo.workorderId) {
       closeBomModal();
-      openSopModal(wo.workorderId, S.selectedOperation?.code || S.selOperation || "");
+      openSopModal(wo.workorderId);
     }
   });
 
