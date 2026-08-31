@@ -196,6 +196,9 @@ def _report_values(data, production_details=None):
     product_name = _normalize_product_name(_value(data, "orderProduct", "order_product", ""))
     if not product_name:
         product_name = detail.get("product_name", "")
+    process_name = str(_value(data, "processName", "process_name", "")).strip()
+    if not process_name:
+        process_name = str(required["operationLabel"])
     return required, {
         "production_id": production_id,
         "production_name": production_name,
@@ -204,7 +207,7 @@ def _report_values(data, production_details=None):
         "worker_name": str(required["workerName"]),
         "worker_team": str(_value(data, "workerTeam", "worker_team", "")),
         "operation_code": str(required["operation"]),
-        "operation_name": str(required["operationLabel"]),
+        "operation_name": process_name,
         "job_role_code": str(_value(data, "jobRoleCode", "job_role_code", "")),
         "job_role_name": str(_value(data, "jobRoleName", "job_role_name", "")),
         "process_code": str(_value(data, "processCode", "process_code", required["operation"])),

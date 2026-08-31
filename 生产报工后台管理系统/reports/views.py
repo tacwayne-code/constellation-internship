@@ -218,12 +218,15 @@ def receive_work_report(request):
 
     production_name, product_name = _production_values(data, required["productionId"])
 
+    process_name = str(_value(data, "processName", "process_name", "")).strip()
+    if not process_name:
+        process_name = str(required["operationLabel"])
     defaults = {
         "production_id": str(required["productionId"]), "production_name": production_name,
         "workorder_id": str(required["workorderId"]),
         "worker_id": str(required["workerId"]), "worker_name": str(required["workerName"]),
         "worker_team": str(_value(data, "workerTeam", "worker_team", "")), "operation_code": str(required["operation"]),
-        "operation_name": str(required["operationLabel"]), "order_id": str(_value(data, "orderId", "order_id", "")),
+        "operation_name": process_name, "order_id": str(_value(data, "orderId", "order_id", "")),
         "job_role_code": str(_value(data, "jobRoleCode", "job_role_code", "")),
         "job_role_name": str(_value(data, "jobRoleName", "job_role_name", "")),
         "process_code": str(_value(data, "processCode", "process_code", required["operation"])),

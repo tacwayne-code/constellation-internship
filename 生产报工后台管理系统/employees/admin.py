@@ -92,6 +92,11 @@ class ProcessSOPAdmin(AdministratorOnlyMixin, admin.ModelAdmin):
     list_select_related = ("process", "uploaded_by")
     readonly_fields = ("created_at", "updated_at", "uploaded_by")
 
+    def get_model_perms(self, request):
+        # SOPs are maintained inside the concrete-process editor. Keep the
+        # model registered for ORM/API use without exposing a duplicate menu.
+        return {}
+
     def save_model(self, request, obj, form, change):
         if not change:
             obj.uploaded_by = request.user
