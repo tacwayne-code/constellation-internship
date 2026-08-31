@@ -19,7 +19,7 @@ from http import HTTPStatus
 from http.cookies import CookieError, SimpleCookie
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import urlparse, urlencode
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
@@ -2756,24 +2756,8 @@ def get_workorders_data():
         # 第三步：检查工单对应的 routing.workcenter 是否有 PDF
         # 优先显示有 PDF 的，没有 PDF 的也保留（运维可能还未上传）
         # 兼容 Odoo：部分实例可能没有 mrp.routing.workcenter 模型，包裹 try/except
-        ops_with_pdf = set()
-        try:
-            op_ids = {rel_id(wo.get("operation_id")) for wo in wo_rows if rel_id(wo.get("operation_id"))}
-            if op_ids:
-                op_data = client.read("mrp.routing.workcenter", list(op_ids),
-                                      ["id", "worksheet", "worksheet_type"])
-                for op in op_data:
-                    if op.get("worksheet") or op.get("worksheet_type") == "pdf":
-                        ops_with_pdf.add(op["id"])
-        except Exception as routing_err:
-            # 用户 Odoo 中可能没有 routing.workcenter 模型，继续执行，不阻断工单展示
-            logger.debug(f"routing.workcenter 读取跳过（兼容模式）: {routing_err}")
-        # 分类：有 PDF 的优先在前，没有的排在后面
-        wo_with_pdf = [wo for wo in wo_rows if rel_id(wo.get("operation_id")) in ops_with_pdf]
-        wo_without_pdf = [wo for wo in wo_rows if rel_id(wo.get("operation_id")) not in ops_with_pdf]
-        wo_rows = wo_with_pdf + wo_without_pdf  # 有PDF的优先
-        if wo_without_pdf:
-            logger.info(f"工单含PDF: {len(wo_with_pdf)}条, 暂缺PDF: {len(wo_without_pdf)}条（仍显示）")
+        # SOP is managed by the administration service; Odoo is not queried for
+        # worksheet metadata while building the work-order list.
 
         # 获取生产单信息
         mo_ids = set()
@@ -2902,59 +2886,30 @@ def _invalidate_runtime_caches():
 # ESOP — 电子作业指导书模块
 # ============================================================
 
-def get_sop_for_workorder(workorder_id: int) -> list:
-    """
-    查询工单的 SOP 装配指导书
-    用户 Odoo 18 用 mrp.workorder.worksheet（binary）字段存储 SOP PDF。
-    返回附件列表 [{id, name, fileType, version, sopUrl}]，二进制走 download 接口按需取。
-    """
-    client = get_odoo()
-    fields = ["id", "name", "worksheet", "picture", "write_date"]
-    recs = client.read("mrp.workorder", [workorder_id], fields)
-    if not recs:
+def get_sop_for_process(process_code: str, workorder_id: str = "") -> list:
+    """Read active SOP versions from the Django management service."""
+    if not _report_admin_configured():
         return []
-    w = recs[0]
+    url = REPORT_ADMIN_API_URL + "/internal/api/v1/process-sops/?" + urlencode({"processCode": process_code})
+    request = Request(url, headers={"Accept": "application/json", "X-Internal-API-Key": REPORT_ADMIN_API_KEY})
+    with urlopen(request, timeout=8) as response:
+        payload = json.load(response)
+    if not isinstance(payload, dict) or payload.get("ok") is not True:
+        raise RuntimeError("后台 SOP 接口返回无效响应")
     result = []
-    # worksheet 字段存 PDF/装配图（base64）
-    if w.get("worksheet"):
-        result.append({
-            "id": w["id"] * 1000,            # 虚拟 id 区分类型
-            "name": (w.get("name") or "作业指导书") + "-SOP",
-            "fileType": "application/pdf",
-            "version": w.get("write_date", ""),
-            "sopUrl": f"/api/sop/download?workorderId={workorder_id}&type=worksheet",
-            "workorderId": workorder_id,
-            "kind": "worksheet",
-        })
-    # picture 字段是图片（base64）
-    if w.get("picture"):
-        result.append({
-            "id": w["id"] * 1000 + 1,
-            "name": (w.get("name") or "作业指导书") + "-图示",
-            "fileType": "image/png",
-            "version": w.get("write_date", ""),
-            "sopUrl": f"/api/sop/download?workorderId={workorder_id}&type=picture",
-            "workorderId": workorder_id,
-            "kind": "picture",
-        })
+    for row in payload.get("data", []):
+        if isinstance(row, dict):
+            row = dict(row)
+            row["sopUrl"] = "/api/sop/download?" + urlencode({"sopId": row.get("id", ""), "workorderId": workorder_id, "processCode": process_code})
+            result.append(row)
     return result
-
-
-def get_sop_download(workorder_id: int, kind: str) -> tuple | None:
-    """从 mrp.workorder 读取 worksheet/picture 字段的二进制数据"""
-    client = get_odoo()
-    field_name = "worksheet" if kind == "worksheet" else "picture"
-    default_mime = "application/pdf" if kind == "worksheet" else "image/png"
-    try:
-        recs = client.read("mrp.workorder", [workorder_id], [field_name, "name"])
-        if recs:
-            data = recs[0].get(field_name)
-            if data:
-                filename = (recs[0].get("name") or "SOP") + ("-SOP.pdf" if kind == "worksheet" else "-图示.png")
-                return (default_mime, data, filename)
-    except Exception as e:
-        logger.warning(f"SOP download error: {e}")
-    return None
+def get_sop_download_from_admin(sop_id: int):
+    if not _report_admin_configured():
+        return None
+    url = REPORT_ADMIN_API_URL + f"/internal/api/v1/process-sops/{int(sop_id)}/download/"
+    request = Request(url, headers={"Accept": "application/pdf", "X-Internal-API-Key": REPORT_ADMIN_API_KEY})
+    with urlopen(request, timeout=15) as response:
+        return response.headers.get_content_type(), response.read(), response.headers.get_filename() or f"SOP-{sop_id}.pdf"
 
 
 def log_sop_view(attachment_id, worker_id, worker_name, workorder_id):
@@ -3914,6 +3869,7 @@ class Handler(SimpleHTTPRequestHandler):
         # ---- ESOP 模块 API ----
         elif path == "/api/sop/list":
             wo_id_str = params.get("workorderId", params.get("workorder_id", ""))
+            process_code = str(params.get("processCode", params.get("process_code", ""))).strip()
             if not wo_id_str:
                 self.write_json({"ok": False, "error": "缺少 workorderId 参数"},
                                 status=HTTPStatus.BAD_REQUEST)
@@ -3923,34 +3879,39 @@ class Handler(SimpleHTTPRequestHandler):
                                 status=HTTPStatus.FORBIDDEN)
                 return
             try:
-                wo_id = int(wo_id_str)
-                sop_list = get_sop_for_workorder(wo_id)
-                self.write_json({"ok": True, "data": sop_list, "meta": {"mode": get_odoo_mode(), "count": len(sop_list)}})
+                int(wo_id_str)
+                sop_list = get_sop_for_process(process_code, wo_id_str) if process_code else []
+                self.write_json({"ok": True, "data": sop_list, "meta": {"source": "report_admin", "count": len(sop_list)}})
             except Exception as e:
                 self.write_json({"ok": False, "error": f"SOP查询失败: {e}"},
                                 status=HTTPStatus.INTERNAL_SERVER_ERROR)
 
         elif path == "/api/sop/download":
             wo_id_str = params.get("workorderId", "")
+            sop_id_str = params.get("sopId", "")
+            process_code = str(params.get("processCode", "")).strip()
             kind = params.get("type", "worksheet")
-            if not wo_id_str:
-                self.send_error(HTTPStatus.BAD_REQUEST, "缺少 workorderId")
+            if not wo_id_str and not sop_id_str:
+                self.send_error(HTTPStatus.BAD_REQUEST, "缺少 sopId")
                 return
-            if not panel_worker_can_access_workorder(panel_worker, wo_id_str):
+            if wo_id_str and not panel_worker_can_access_workorder(panel_worker, wo_id_str):
                 self.send_error(HTTPStatus.FORBIDDEN, "该工单不属于当前员工允许的工序")
                 return
+            if process_code and not operation_for_worker(panel_worker, process_code):
+                self.send_error(HTTPStatus.FORBIDDEN, "当前员工无权查看该工艺 SOP")
+                return
             try:
-                wo_id = int(wo_id_str)
-                file_data = get_sop_download(wo_id, kind)
-                if file_data is None:
-                    self.send_error(HTTPStatus.NOT_FOUND, "该工单无 SOP 附件")
+                if not sop_id_str:
+                    self.send_error(HTTPStatus.NOT_FOUND, "该 SOP 已迁移至后台管理系统")
                     return
-                mime, b64data, filename = file_data
-                import base64
-                raw = base64.b64decode(b64data) if b64data else b""
+                file_data = get_sop_download_from_admin(int(sop_id_str))
+                if file_data is None:
+                    self.send_error(HTTPStatus.NOT_FOUND, "该 SOP 不存在")
+                    return
+                mime, raw, filename = file_data
                 # 中文文件名用 RFC 5987 编码
                 from urllib.parse import quote
-                ascii_name = "SOP.pdf" if kind == "worksheet" else "SOP.png"
+                ascii_name = "SOP.pdf"
                 encoded_name = quote(filename)
                 self.send_response(HTTPStatus.OK)
                 self.send_header("Content-Type", mime)

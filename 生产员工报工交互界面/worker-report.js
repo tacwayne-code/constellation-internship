@@ -1442,7 +1442,7 @@ const SOP = {
   error: "",
 };
 
-function openSopModal(workorderId) {
+function openSopModal(workorderId, processCode = "") {
   SOP.workorderId = workorderId;
   SOP.attachments = []; SOP.currentIdx = 0;
   SOP.currentPage = 1; SOP.zoom = 1.0; SOP.pdfDoc = null;
@@ -1453,7 +1453,8 @@ function openSopModal(workorderId) {
   renderSopTabs();
   $("#sopOverlay").classList.add("show");
 
-  apiGet("/api/sop/list?workorderId=" + encodeURIComponent(workorderId))
+  const code = processCode || S.selectedOperation?.code || S.selOperation || "";
+  apiGet("/api/sop/list?workorderId=" + encodeURIComponent(workorderId) + "&processCode=" + encodeURIComponent(code))
     .then(resp => {
       SOP.attachments = resp.data || [];
       if (!SOP.attachments.length) { updateSopState("empty"); return; }
@@ -1769,7 +1770,7 @@ function setupSopEvents() {
     if (!btn) return;
     e.stopPropagation();
     const woid = btn.dataset.woid;
-    if (woid) openSopModal(parseInt(woid));
+    if (woid) openSopModal(parseInt(woid), S.selectedOperation?.code || S.selOperation || "");
   });
 
   // 附件标签切换
@@ -1806,7 +1807,7 @@ function setupSopEvents() {
     const wo = S.selectedWorkorder;
     if (wo && wo.workorderId) {
       closeBomModal();
-      openSopModal(wo.workorderId);
+      openSopModal(wo.workorderId, S.selectedOperation?.code || S.selOperation || "");
     }
   });
 
