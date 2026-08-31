@@ -3897,7 +3897,14 @@ class Handler(SimpleHTTPRequestHandler):
             if wo_id_str and not panel_worker_can_access_workorder(panel_worker, wo_id_str):
                 self.send_error(HTTPStatus.FORBIDDEN, "该工单不属于当前员工允许的工序")
                 return
-            if process_code and not operation_for_worker(panel_worker, process_code):
+            allowed_sop_operation = operation_for_worker(panel_worker, process_code) or next(
+                (
+                    op for op in get_operations_for_worker(panel_worker)
+                    if str(op.get("processCode", "")) == process_code
+                ),
+                None,
+            )
+            if process_code and not allowed_sop_operation:
                 self.send_error(HTTPStatus.FORBIDDEN, "当前员工无权查看该工艺 SOP")
                 return
             try:
