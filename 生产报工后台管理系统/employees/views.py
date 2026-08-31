@@ -1,6 +1,7 @@
 import json
 
 from django.http import FileResponse, JsonResponse
+from django.db.models import Q
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET, require_POST
 
@@ -53,7 +54,12 @@ def internal_process_sop_list(request):
     process_code = str(request.GET.get("processCode", "")).strip()
     if not process_code:
         return JsonResponse({"ok": False, "error": "缺少 processCode", "data": []}, status=400)
-    rows = ProcessSOP.objects.filter(process__code=process_code, is_active=True).select_related("process").order_by("-created_at", "-id")
+    # Accept both the management-side WorkProcess code and the legacy
+    # operation code carried in older panel authorizations.
+    rows = ProcessSOP.objects.filter(
+        Q(process__code=process_code) | Q(process__wo_match_rules__legacyOperationCode=process_code),
+        is_active=True,
+    ).select_related("process").order_by("-created_at", "-id")
     data = [{
         "id": row.pk,
         "name": row.title,

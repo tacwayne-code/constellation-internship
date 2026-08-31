@@ -85,7 +85,7 @@ class WorkProcessAdmin(AdministratorOnlyMixin, admin.ModelAdmin):
 
 
 @admin.register(ProcessSOP)
-class ProcessSOPAdmin(admin.ModelAdmin):
+class ProcessSOPAdmin(AdministratorOnlyMixin, admin.ModelAdmin):
     list_display = ("title", "process", "version", "is_active", "created_at")
     list_filter = ("is_active", "process__position")
     search_fields = ("title", "version", "process__name", "process__code")
@@ -192,7 +192,7 @@ class EmployeeProcessAuthorizationAdmin(AdministratorOnlyMixin, admin.ModelAdmin
                 AuditLog.objects.create(actor=request.user, action="process_sop.upload", target_type="ProcessSOP", target_id=str(sop.pk), metadata={"process": process.code, "title": sop.title, "version": sop.version})
                 self.message_user(request, "SOP 已上传并启用。", messages.SUCCESS)
                 return redirect("admin:employees_employeeprocessauthorization_process_change", process_id=process.pk)
-        if request.method == "POST" and form.is_valid():
+        elif request.method == "POST" and form.is_valid():
             process = form.save()
             AuditLog.objects.create(
                 actor=request.user,
