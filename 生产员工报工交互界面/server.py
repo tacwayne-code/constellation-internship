@@ -1392,10 +1392,36 @@ def panel_worker_matching_operation_codes(worker, workorder):
     ]
 
 
-def panel_accessible_workorders(worker):
+def panel_accessible_workorders(worker, operation_code=None, role_code=None):
+    """Return WOs allowed for a worker, optionally narrowed to one role/op."""
+    operation_code = str(operation_code or "").strip()
+    role_code = str(role_code or "").strip()
+    if operation_code:
+        role, operation = role_for_worker_operation(worker, operation_code)
+        if not operation:
+            operation = operation_for_worker(worker, operation_code)
+        if (not operation or operation.get("enabled", True) is False
+                or (role and role.get("enabled", True) is False)
+                or (role_code and (not role or str(role.get("code", "")) != role_code))):
+            return []
+        allowed_codes = {operation_code}
+    elif role_code:
+        allowed_codes = {
+            str(op.get("code", ""))
+            for role in worker.get("jobRoles", []) if isinstance(role, dict)
+            if str(role.get("code", "")) == role_code and role.get("enabled", True) is not False
+            for op in role.get("operations", []) if isinstance(op, dict) and op.get("enabled", True) is not False
+        }
+        if not allowed_codes:
+            return []
+    else:
+        allowed_codes = None
     return [
         workorder for workorder in get_workorders_data()
         if panel_worker_allows_workorder(worker, workorder)
+        and (allowed_codes is None or bool(
+            set(panel_worker_matching_operation_codes(worker, workorder)) & allowed_codes
+        ))
     ]
 
 
@@ -3703,7 +3729,16 @@ class Handler(SimpleHTTPRequestHandler):
                              "meta": {"mode": get_odoo_mode(), "count": len(ops)}})
         elif path == "/api/workorders":
             try:
-                wos = get_workorders_data() if internal else panel_accessible_workorders(panel_worker)
+                operation_code = params.get("operationCode", params.get("operation_code", ""))
+                role_code = params.get("roleCode", params.get("role_code", ""))
+                if internal:
+                    wos = get_workorders_data()
+                elif not operation_code and not role_code:
+                    # A worker session must choose a concrete authorized
+                    # operation before any work orders are exposed.
+                    wos = []
+                else:
+                    wos = panel_accessible_workorders(panel_worker, operation_code, role_code)
                 if not internal:
                     # The server owns employee-operation-to-WO authorization.
                     # The client uses this result rather than duplicating matching rules.

@@ -289,7 +289,10 @@ function defaultWorkers() {
 async function refreshWorkordersAndProgress() {
   try {
     // 工单（Odoo 已更新 qty_produced + 后端缓存已清）
-    const woRes = await apiGet("/api/workorders");
+    const query = new URLSearchParams();
+    if (S.selOperation) query.set("operationCode", S.selOperation);
+    if (S.selRole?.code) query.set("roleCode", S.selRole.code);
+    const woRes = await apiGet("/api/workorders" + (query.toString() ? "?" + query.toString() : ""));
     if (woRes && woRes.data) {
       S.workorders = woRes.data;
       renderOrders();
@@ -561,6 +564,26 @@ function selectOperation(opCode, opInfo) {
   closeOperationSelector();
   if (operationRequiresBom()) openBomModal();
   renderOrders();
+  updateSubmit();
+  refreshWorkordersForSelection();
+}
+
+// Once a concrete operation is selected, load only the WOs authorized by the
+// current worker + role + operation binding. This keeps the dashboard and
+// selectable cards consistent with the management-service authorization.
+async function refreshWorkordersForSelection() {
+  if (!S.selWorker || !S.selOperation) return;
+  const query = new URLSearchParams({ operationCode: S.selOperation });
+  if (S.selRole?.code) query.set("roleCode", S.selRole.code);
+  try {
+    const response = await apiGet("/api/workorders?" + query.toString());
+    S.workorders = Array.isArray(response.data) ? response.data : [];
+  } catch (e) {
+    S.workorders = [];
+  }
+  renderOrders();
+  renderKpis();
+  renderMOProgress();
   updateSubmit();
 }
 
@@ -1061,6 +1084,7 @@ function setupEvents() {
       S.selectedOperation = null;
       S.selectedWorkorder = null;
       S.selectedProduction = null;
+      S.workorders = [];
       S.bomItems = [];
       S.bomConfirmed = false;
       renderOperations();
