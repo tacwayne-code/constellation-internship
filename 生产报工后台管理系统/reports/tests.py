@@ -350,6 +350,26 @@ class EmployeeAdministrationTests(TestCase):
         self.assertEqual(EmployeeProcessAuthorization.objects.count(), 0)
         sync_employee.assert_called_once_with(employee.pk)
 
+    @patch("employees.admin.enqueue_sop_employee_sync")
+    def test_selected_positions_delete_related_processes_and_authorizations(self, sync_employee):
+        department = Department.objects.create(name="生产车间")
+        employee = Employee.objects.create(name="张三", department=department, job_title="组装")
+        position = JobPosition.objects.create(code="assembly", name="组装")
+        process = WorkProcess.objects.create(position=position, code="assembly-a", name="结构组装")
+        EmployeeProcessAuthorization.objects.create(employee=employee, position=position, process=process)
+
+        with self.captureOnCommitCallbacks(execute=True):
+            response = self.client.post(
+                reverse("admin:employees_jobposition_delete_selected"),
+                {"position_ids": [position.pk]},
+            )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertFalse(JobPosition.objects.filter(pk=position.pk).exists())
+        self.assertFalse(WorkProcess.objects.filter(pk=process.pk).exists())
+        self.assertEqual(EmployeeProcessAuthorization.objects.count(), 0)
+        sync_employee.assert_called_once_with(employee.pk)
+
     def test_assembly_department_normalizes_legacy_and_generic_codes_to_host_routes(self):
         department = Department.objects.create(name="组装部")
         employee = Employee.objects.create(

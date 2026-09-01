@@ -40,11 +40,58 @@ class AdministratorOnlyMixin:
 
 @admin.register(JobPosition)
 class JobPositionAdmin(AdministratorOnlyMixin, admin.ModelAdmin):
-    list_display = ("name", "is_active", "process_count", "updated_at")
+    change_list_template = "admin/employees/jobposition/change_list.html"
+    list_display = ("action_checkbox", "name", "is_active", "process_count", "updated_at")
     list_filter = ("is_active",)
     search_fields = ("code", "name")
     readonly_fields = ("created_at", "updated_at")
     fields = ("name", "is_active", "created_at", "updated_at")
+
+    def get_urls(self):
+        urls = super().get_urls()
+        custom_urls = [
+            path(
+                "delete-selected/",
+                self.admin_site.admin_view(self.delete_selected_view),
+                name="employees_jobposition_delete_selected",
+            ),
+        ]
+        return custom_urls + urls
+
+    def delete_selected_view(self, request):
+        if not request.user.is_superuser:
+            raise PermissionDenied
+        if request.method != "POST":
+            return redirect("admin:employees_jobposition_changelist")
+        position_ids = request.POST.getlist("position_ids")
+        positions = JobPosition.objects.filter(pk__in=position_ids)
+        if not positions.exists():
+            self.message_user(request, "请先选择需要删除的岗位。", messages.WARNING)
+            return redirect("admin:employees_jobposition_changelist")
+
+        with transaction.atomic():
+            processes = WorkProcess.objects.filter(position__in=positions)
+            employee_ids = list(
+                EmployeeProcessAuthorization.objects.filter(process__in=processes)
+                .values_list("employee_id", flat=True).distinct()
+            )
+            position_details = list(positions.values("id", "code", "name"))
+            EmployeeProcessAuthorization.objects.filter(process__in=processes).delete()
+            ProcessSOP.objects.filter(process__in=processes).delete()
+            processes.delete()
+            positions.delete()
+            AuditLog.objects.create(
+                actor=request.user,
+                action="job_position.delete",
+                target_type="JobPosition",
+                target_id=",".join(str(item["id"]) for item in position_details),
+                metadata={"positions": position_details},
+            )
+            transaction.on_commit(
+                lambda: [enqueue_sop_employee_sync(employee_id) for employee_id in set(employee_ids)]
+            )
+        self.message_user(request, f"已删除 {len(position_details)} 个岗位及其相关工艺。", messages.SUCCESS)
+        return redirect("admin:employees_jobposition_changelist")
 
     @admin.display(description="具体工艺数量", ordering="process_total")
     def process_count(self, obj):
