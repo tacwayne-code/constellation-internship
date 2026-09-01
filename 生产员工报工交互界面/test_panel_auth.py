@@ -70,6 +70,18 @@ class PanelAuthTests(unittest.TestCase):
             signature = hmac.new(b"test-session-secret", encoded.encode("ascii"), hashlib.sha256).hexdigest()
             self.assertEqual(server._panel_session_worker(f"{encoded}.{signature}"), self.worker)
 
+    def test_explicit_empty_managed_roles_revoke_legacy_operation_codes(self):
+        identity = {
+            "sourceWorkerId": self.worker["id"],
+            "name": self.worker["name"],
+            "departmentName": self.worker["team"],
+            "operationCodes": self.worker["operationCodes"],
+            "jobRoles": [],
+            "managedRoles": True,
+        }
+
+        self.assertIsNone(server._panel_worker_from_identity(identity))
+
     def test_tampered_session_token_is_rejected(self):
         with patch.object(server, "PANEL_SESSION_SECRET", "test-session-secret"):
             token = server._panel_session_token(self.worker)
@@ -197,6 +209,27 @@ class PanelAuthTests(unittest.TestCase):
             server.panel_worker_matching_operation_codes(worker, {"operationId": 101}),
             ["packing-process-a"],
         )
+
+    def test_existing_managed_role_session_uses_exact_process_name_by_default(self):
+        worker = server._panel_worker_from_identity({
+            "sourceWorkerId": "ADMIN_EMP_8",
+            "name": "周小明",
+            "departmentName": "生产车间",
+            "operationCodes": ["locating-assembly"],
+            "jobRoles": [{
+                "code": "assembly", "name": "组装", "enabled": True,
+                "operations": [{
+                    "code": "locating-assembly", "name": "定位结构组装", "enabled": True,
+                }],
+            }],
+        })
+        operation = worker["jobRoles"][0]["operations"][0]
+        self.assertEqual(operation["workorderNames"], ["定位结构组装"])
+        self.assertTrue(operation["strictWorkorderMatch"])
+        self.assertFalse(server.operation_matches_workorder(operation, {
+            "workorderName": "旋转结构组装",
+            "bomComponentNames": ["定位结构", "旋转结构"],
+        }))
 
     def test_custom_assembly_binding_survives_session_and_exposes_bom_metadata(self):
         identity = {
@@ -443,6 +476,49 @@ class WorkorderProgressTests(unittest.TestCase):
 
 
 class WorkorderBomTests(unittest.TestCase):
+    def test_managed_process_default_name_excludes_sibling_workorders(self):
+        operation = {
+            "code": "locating-assembly",
+            "name": "定位结构组装",
+            "workorderNames": ["定位结构组装"],
+            "strictWorkorderMatch": True,
+            "requiresBom": True,
+        }
+        self.assertTrue(server.operation_matches_workorder(operation, {
+            "workorderName": "定位结构组装",
+            "bomComponentNames": ["定位结构"],
+        }))
+        self.assertFalse(server.operation_matches_workorder(operation, {
+            "workorderName": "旋转结构组装",
+            "bomComponentNames": ["定位结构", "旋转结构"],
+        }))
+
+    def test_managed_role_operation_filters_the_workorder_list_exactly(self):
+        worker = {
+            "id": "ADMIN_EMP_8",
+            "operationCodes": ["locating-assembly"],
+            "jobRoles": [{
+                "code": "assembly", "name": "组装", "enabled": True,
+                "operations": [{
+                    "code": "locating-assembly", "name": "定位结构组装",
+                    "enabled": True,
+                    "workorderNames": ["定位结构组装"],
+                    "strictWorkorderMatch": True,
+                    "woMatch": {},
+                }],
+            }],
+        }
+        workorders = [
+            {"workorderId": 1, "workorderName": "定位结构组装"},
+            {"workorderId": 2, "workorderName": "旋转结构组装",
+             "bomComponentNames": ["定位结构", "旋转结构"]},
+        ]
+        with patch.object(server, "get_workorders_data", return_value=workorders):
+            allowed = server.panel_accessible_workorders(
+                worker, operation_code="locating-assembly", role_code="assembly",
+            )
+        self.assertEqual([item["workorderId"] for item in allowed], [1])
+
     def test_workorder_name_matching_normalizes_spacing_and_width(self):
         operation = {
             "code": "worker_assembly_custom_rack",

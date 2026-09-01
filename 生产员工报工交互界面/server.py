@@ -112,6 +112,10 @@ def _panel_worker_from_identity(identity):
     team = str(identity.get("departmentName", identity.get("team", ""))).strip()
     raw_codes = identity.get("operationCodes", [])
     raw_bindings = identity.get("operationBindings", [])
+    has_managed_roles = identity.get("managedRoles") is True or (
+        identity.get("managedRoles") is not False
+        and any(key in identity for key in ("jobRoles", "roles", "operationGroups"))
+    )
     raw_roles = identity.get("jobRoles", identity.get("roles", identity.get("operationGroups", [])))
     if not worker_id or not name or not isinstance(raw_codes, list):
         return None
@@ -141,15 +145,24 @@ def _panel_worker_from_identity(identity):
                     op_name = str(raw_op.get("name", raw_op.get("operationName", op_code))).strip()
                     if not op_code or not op_name or raw_op.get("enabled", True) is False:
                         continue
+                    workorder_names = list(raw_op.get("workorderNames") or [])
+                    # Existing signed sessions can predate strictWorkorderMatch.
+                    # Any hierarchy supplied by the management service still
+                    # represents a concrete position/process authorization, so
+                    # normalize it to the same exact default without requiring
+                    # the employee to receive a newly issued session first.
+                    if has_managed_roles and not workorder_names:
+                        workorder_names = [op_name]
                     ops.append({
                         "code": op_code, "name": op_name,
                         "processCode": process_code,
                         "processName": op_name,
                         "enabled": True,
-                        "workorderNames": list(raw_op.get("workorderNames") or []),
+                        "workorderNames": workorder_names,
                         "productClass": raw_op.get("productClass"),
                         "hostType": raw_op.get("hostType"),
                         "requiresBom": bool(raw_op.get("requiresBom")),
+                        "strictWorkorderMatch": has_managed_roles or bool(raw_op.get("strictWorkorderMatch")),
                         "woMatch": rules,
                     })
             if ops:
@@ -158,7 +171,7 @@ def _panel_worker_from_identity(identity):
     # they are the complete worker authorization.  The legacy job-title codes
     # in ``operationCodes`` describe a different namespace and can otherwise
     # filter every granted process out of the second-level selector.
-    if roles:
+    if has_managed_roles:
         raw_codes = [op["code"] for role in roles for op in role.get("operations", [])]
     bindings = []
     include_bindings = isinstance(raw_bindings, list) and bool(raw_bindings)
@@ -206,6 +219,7 @@ def _panel_worker_from_identity(identity):
                     "productClass": operation.get("productClass"),
                     "hostType": operation.get("hostType"),
                     "requiresBom": bool(operation.get("requiresBom")),
+                    "strictWorkorderMatch": bool(operation.get("strictWorkorderMatch")),
                     "woMatch": operation.get("woMatch") if isinstance(operation.get("woMatch"), dict) else {},
                 }
     operation_codes = [
@@ -240,7 +254,7 @@ def _panel_worker_from_identity(identity):
     }
     # Preserve the legacy identity shape when older management responses do
     # not include job roles; newer responses still expose the full hierarchy.
-    if roles or isinstance(raw_roles, list) and raw_roles:
+    if has_managed_roles:
         normalized["jobRoles"] = roles
     return normalized
 
@@ -277,6 +291,7 @@ def authenticate_panel_account(username, password):
 def _panel_session_token(worker):
     if not PANEL_SESSION_SECRET:
         raise RuntimeError("未配置 SOP_PANEL_SESSION_SECRET 或 REPORT_ADMIN_API_KEY")
+    has_managed_roles = "jobRoles" in worker
     job_roles = worker.get("jobRoles", [])
     payload = {
         "workerId": worker["id"],
@@ -288,6 +303,7 @@ def _panel_session_token(worker):
         # the browser's per-cookie size limit.
         "operationBindings": [] if job_roles else worker.get("operationBindings", []),
         "jobRoles": job_roles,
+        "managedRoles": has_managed_roles,
         "expiresAt": int(time.time()) + PANEL_SESSION_TTL_SECONDS,
     }
     raw_payload = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
@@ -333,7 +349,8 @@ def _panel_session_worker(token):
             "departmentName": payload.get("team", ""),
             "operationCodes": payload.get("operationCodes", []),
             "operationBindings": payload.get("operationBindings", []),
-            "jobRoles": payload.get("jobRoles", []),
+            "jobRoles": payload.get("jobRoles", []) if payload.get("managedRoles") is True else None,
+            "managedRoles": payload.get("managedRoles") is True,
         })
     encoded, signature = token.rsplit(".", 1)
     expected = hmac.new(
@@ -360,7 +377,8 @@ def _panel_session_worker(token):
         "departmentName": payload.get("team", ""),
         "operationCodes": payload.get("operationCodes", []),
         "operationBindings": payload.get("operationBindings", []),
-        "jobRoles": payload.get("jobRoles", []),
+        "jobRoles": payload.get("jobRoles", []) if payload.get("managedRoles") is True else None,
+        "managedRoles": payload.get("managedRoles") is True,
     })
 
 
@@ -1259,7 +1277,7 @@ def get_operations_for_worker(worker):
         if code in static:
             merged = dict(static[code])
             merged.update({
-                key: binding[key] for key in ("name", "processCode", "processName", "hostType", "productClass", "workorderNames", "requiresBom", "roleCode", "roleName", "woMatch")
+                key: binding[key] for key in ("name", "processCode", "processName", "hostType", "productClass", "workorderNames", "requiresBom", "strictWorkorderMatch", "roleCode", "roleName", "woMatch")
                 if key in binding and binding[key] not in (None, "", [])
             })
             static[code] = merged
@@ -1276,6 +1294,7 @@ def get_operations_for_worker(worker):
             "productClass": binding.get("productClass"),
             "workorderNames": list(binding.get("workorderNames") or []),
             "requiresBom": bool(binding.get("requiresBom")),
+            "strictWorkorderMatch": bool(binding.get("strictWorkorderMatch")),
             "roleCode": binding.get("roleCode", ""),
             "roleName": binding.get("roleName", ""),
             "woMatch": binding.get("woMatch") if isinstance(binding.get("woMatch"), dict) else {},
@@ -1558,6 +1577,11 @@ def operation_matches_workorder(operation, workorder):
     normalized_workorder_name = _match_text(workorder_name)
     normalized_names = {_match_text(name) for name in names if _match_text(name)}
     if names and normalized_workorder_name not in normalized_names:
+        # Position/process grants supplied by the management service are
+        # explicit authorization boundaries.  Their configured/default exact
+        # WO name must not be widened through the shared-MO BOM fallback.
+        if operation.get("strictWorkorderMatch"):
+            return False
         # Component assembly work orders are named by the routing operation,
         # while the employee binding is named by the material.  Odoo data can
         # use slightly different material wording (for example 杯/环), so
