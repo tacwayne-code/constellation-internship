@@ -171,6 +171,12 @@ def _authorized_process_payload(employee):
             "code": row.process.code,
             "name": row.process.name,
             "enabled": bool(row.process.is_active),
+            # A position/process grant is an authorization boundary.  In the
+            # absence of an explicit Odoo rule, its process name is the
+            # default exact work-order match; SOP must not widen it through a
+            # shared BOM fallback.
+            "workorderNames": [row.process.name],
+            "strictWorkorderMatch": True,
             "woMatch": rules,
         })
     return roles
@@ -210,14 +216,16 @@ def employee_payload(employee):
         "operationCodes": operation_codes,
         "source": "report_admin",
     }
+    # Position/process grants are the authoritative panel permission model.
+    # Send an explicit empty list after the final grant is removed so the SOP
+    # service cannot fall back to legacy job-title operation codes.
     roles = _authorized_process_payload(employee)
-    if roles:
-        payload["jobRoles"] = roles
-        payload["positions"] = roles
-        payload["processes"] = [
-            {**operation, "positionCode": role["code"], "positionName": role["name"]}
-            for role in roles for operation in role["operations"]
-        ]
+    payload["jobRoles"] = roles
+    payload["positions"] = roles
+    payload["processes"] = [
+        {**operation, "positionCode": role["code"], "positionName": role["name"]}
+        for role in roles for operation in role["operations"]
+    ]
     static_codes = {code for codes in OPERATION_CODES_BY_NAME.values() for code in codes}
     custom_bindings = [binding for binding in bindings if binding["code"] not in static_codes]
     if is_host_department:

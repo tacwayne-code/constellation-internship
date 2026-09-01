@@ -75,13 +75,13 @@ class WorkProcessManagementForm(forms.ModelForm):
     """Process maintenance form embedded under employee process authorization."""
 
     # Localized, admin-friendly inputs for the WO matching rules. Each field is
-    # optional and maps onto the JSON keys the SOP service understands; leaving
-    # them all blank keeps the default BOM-component matching fallback.
+    # optional and maps onto the JSON keys the SOP service understands. When
+    # all are blank, the concrete process name remains the exact WO match.
     wo_match_workorder_names = forms.CharField(
         label="匹配工单名称",
         required=False,
         widget=forms.Textarea(attrs={"rows": 3}),
-        help_text="每行一个工单名称。留空表示不按工单名称过滤。",
+        help_text="每行一个工单名称。留空时按具体工艺名称精确匹配。",
     )
     wo_match_product_classes = forms.CharField(
         label="匹配产品类别",

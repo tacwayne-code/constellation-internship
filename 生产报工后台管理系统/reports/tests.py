@@ -213,6 +213,9 @@ class EmployeeAdministrationTests(TestCase):
             "departmentName": "生产车间",
             "jobTitle": "组装，打包",
             "operationCodes": ["worker_assembly", "worker_packing"],
+            "jobRoles": [],
+            "positions": [],
+            "processes": [],
             "source": "report_admin",
         })
 
@@ -275,9 +278,20 @@ class EmployeeAdministrationTests(TestCase):
             "code": "assembly", "name": "组装", "enabled": True,
             "operations": [{
                 "code": "locating-assembly", "name": "定位结构组装", "enabled": True,
+                "workorderNames": ["定位结构组装"], "strictWorkorderMatch": True,
                 "woMatch": {"routingOperationIds": [101], "workcenterIds": [5]},
             }],
         }])
+
+    def test_payload_explicitly_clears_managed_roles_when_no_grants_exist(self):
+        department = Department.objects.create(name="生产车间")
+        employee = Employee.objects.create(name="张三", department=department, job_title="组装")
+
+        payload = employee_payload(employee)
+
+        self.assertEqual(payload["jobRoles"], [])
+        self.assertEqual(payload["positions"], [])
+        self.assertEqual(payload["processes"], [])
 
     def test_process_authorization_rejects_process_from_another_position(self):
         department = Department.objects.create(name="生产车间")
@@ -328,7 +342,7 @@ class EmployeeAdministrationTests(TestCase):
 
         self.assertEqual(response.status_code, 302)
         self.assertFalse(EmployeeProcessAuthorization.objects.filter(pk=grant.pk).exists())
-        self.assertFalse(WorkProcess.objects.filter(pk=process.pk).exists())
+        self.assertTrue(WorkProcess.objects.filter(pk=process.pk).exists())
         sync_employee.assert_called_once_with(employee.pk)
 
     @patch("employees.admin.enqueue_sop_employee_sync")
