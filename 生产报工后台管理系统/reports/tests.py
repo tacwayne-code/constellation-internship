@@ -289,6 +289,66 @@ class EmployeeAdministrationTests(TestCase):
         with self.assertRaises(Exception):
             grant.full_clean()
 
+    @patch("employees.admin.enqueue_sop_employee_sync")
+    def test_authorization_status_change_updates_its_process_and_all_grants(self, sync_employee):
+        department = Department.objects.create(name="生产车间")
+        first = Employee.objects.create(name="张三", department=department, job_title="组装")
+        second = Employee.objects.create(name="李四", department=department, job_title="组装")
+        position = JobPosition.objects.create(code="assembly", name="组装")
+        process = WorkProcess.objects.create(position=position, code="assembly-a", name="结构组装")
+        grant = EmployeeProcessAuthorization.objects.create(employee=first, position=position, process=process)
+        other_grant = EmployeeProcessAuthorization.objects.create(employee=second, position=position, process=process)
+
+        with self.captureOnCommitCallbacks(execute=True):
+            response = self.client.post(
+                reverse("admin:employees_employeeprocessauthorization_change", args=[grant.pk]),
+                {"employee": first.pk, "position": position.pk, "process": process.pk},
+            )
+
+        self.assertEqual(response.status_code, 302)
+        process.refresh_from_db()
+        other_grant.refresh_from_db()
+        self.assertFalse(process.is_active)
+        self.assertFalse(other_grant.is_active)
+        self.assertEqual({call.args[0] for call in sync_employee.call_args_list}, {first.pk, second.pk})
+
+    @patch("employees.admin.enqueue_sop_employee_sync")
+    def test_selected_authorizations_can_be_deleted(self, sync_employee):
+        department = Department.objects.create(name="生产车间")
+        employee = Employee.objects.create(name="张三", department=department, job_title="组装")
+        position = JobPosition.objects.create(code="assembly", name="组装")
+        process = WorkProcess.objects.create(position=position, code="assembly-a", name="结构组装")
+        grant = EmployeeProcessAuthorization.objects.create(employee=employee, position=position, process=process)
+
+        with self.captureOnCommitCallbacks(execute=True):
+            response = self.client.post(
+                reverse("admin:employees_employeeprocessauthorization_delete_selected"),
+                {"authorization_ids": [grant.pk]},
+            )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertFalse(EmployeeProcessAuthorization.objects.filter(pk=grant.pk).exists())
+        sync_employee.assert_called_once_with(employee.pk)
+
+    @patch("employees.admin.enqueue_sop_employee_sync")
+    def test_selected_processes_delete_related_authorizations(self, sync_employee):
+        department = Department.objects.create(name="生产车间")
+        employee = Employee.objects.create(name="张三", department=department, job_title="组装")
+        position = JobPosition.objects.create(code="assembly", name="组装")
+        process = WorkProcess.objects.create(position=position, code="assembly-a", name="结构组装")
+        EmployeeProcessAuthorization.objects.create(employee=employee, position=position, process=process)
+
+        with self.captureOnCommitCallbacks(execute=True):
+            response = self.client.post(
+                reverse("admin:employees_employeeprocessauthorization_process_delete"),
+                {"process_ids": [process.pk]},
+            )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertFalse(WorkProcess.objects.filter(pk=process.pk).exists())
+        self.assertEqual(EmployeeProcessAuthorization.objects.count(), 0)
+        sync_employee.assert_called_once_with(employee.pk)
+
     def test_assembly_department_normalizes_legacy_and_generic_codes_to_host_routes(self):
         department = Department.objects.create(name="组装部")
         employee = Employee.objects.create(

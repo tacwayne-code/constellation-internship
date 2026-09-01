@@ -19,6 +19,14 @@
       max-width: none !important;
       table-layout: auto;
     }
+    body.model-employeeprocessauthorization .process-status {
+      display: inline-block;
+      font-size: 18px;
+      font-weight: 700;
+      line-height: 20px;
+    }
+    body.model-employeeprocessauthorization .process-status--enabled { color: #67c23a; }
+    body.model-employeeprocessauthorization .process-status--disabled { color: #f56c6c; }
   </style>
 {% endblock %}
 
@@ -26,5 +34,40 @@
   <li>
     <a href="{% url 'admin:employees_employeeprocessauthorization_processes' %}" class="addlink">工艺管理</a>
   </li>
+  <li>
+    <a href="#" id="delete-selected-authorizations" class="deletelink">删除</a>
+  </li>
   {{ block.super }}
+{% endblock %}
+
+{% block footer %}
+  {{ block.super }}
+  <form id="authorization-delete-form" method="post" action="{% url 'admin:employees_employeeprocessauthorization_delete_selected' %}" style="display: none;">
+    {% csrf_token %}
+  </form>
+  <script>
+    (function () {
+      var button = document.getElementById('delete-selected-authorizations');
+      var form = document.getElementById('authorization-delete-form');
+      if (!button || !form) return;
+      button.addEventListener('click', function (event) {
+        event.preventDefault();
+        form.querySelectorAll('input[name="authorization_ids"]').forEach(function (input) { input.remove(); });
+        var selected = document.querySelectorAll('#result_list input.action-select:checked');
+        if (!selected.length) {
+          window.alert('请先勾选需要删除的员工工艺授权。');
+          return;
+        }
+        if (!window.confirm('确定删除选中的员工工艺授权吗？此操作不可撤销。')) return;
+        selected.forEach(function (checkbox) {
+          var input = document.createElement('input');
+          input.type = 'hidden';
+          input.name = 'authorization_ids';
+          input.value = checkbox.value;
+          form.appendChild(input);
+        });
+        form.submit();
+      });
+    }());
+  </script>
 {% endblock %}

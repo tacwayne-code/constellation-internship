@@ -7,6 +7,7 @@ from django.shortcuts import get_object_or_404, redirect
 from django.template.response import TemplateResponse
 from django.urls import path, reverse
 from django.utils.html import format_html
+from django.utils import timezone
 from uuid import uuid4
 
 from .forms import EmployeeCreateForm, EmployeeReportPanelAccountForm, ProcessSOPUploadForm, WorkProcessManagementForm
@@ -108,7 +109,7 @@ class ProcessSOPAdmin(AdministratorOnlyMixin, admin.ModelAdmin):
 @admin.register(EmployeeProcessAuthorization)
 class EmployeeProcessAuthorizationAdmin(AdministratorOnlyMixin, admin.ModelAdmin):
     change_list_template = "admin/employees/employeeprocessauthorization/change_list.html"
-    list_display = ("employee", "position", "process", "is_active", "updated_at")
+    list_display = ("employee", "position", "process", "status_indicator", "updated_at")
     list_filter = ("is_active", "position", "process")
     search_fields = ("employee__name", "employee__source_worker_id", "position__name", "process__name")
     list_select_related = ("employee", "position", "process")
@@ -132,6 +133,16 @@ class EmployeeProcessAuthorizationAdmin(AdministratorOnlyMixin, admin.ModelAdmin
                 self.admin_site.admin_view(self.process_change_view),
                 name="employees_employeeprocessauthorization_process_change",
             ),
+            path(
+                "processes/delete/",
+                self.admin_site.admin_view(self.process_delete_view),
+                name="employees_employeeprocessauthorization_process_delete",
+            ),
+            path(
+                "delete-selected/",
+                self.admin_site.admin_view(self.authorization_delete_view),
+                name="employees_employeeprocessauthorization_delete_selected",
+            ),
         ]
         return custom_urls + urls
 
@@ -152,6 +163,29 @@ class EmployeeProcessAuthorizationAdmin(AdministratorOnlyMixin, admin.ModelAdmin
         context.update(extra)
         return context
 
+    @admin.display(description="是否启用")
+    def status_indicator(self, obj):
+        """Use the same explicit status indicator as the process management page."""
+        if obj.is_active:
+            return format_html('<span class="process-status process-status--enabled" title="启用">✔</span>')
+        return format_html('<span class="process-status process-status--disabled" title="不启用">×</span>')
+
+    @staticmethod
+    def _enqueue_employee_syncs(employee_ids):
+        unique_ids = tuple(set(employee_ids))
+        transaction.on_commit(lambda: [enqueue_sop_employee_sync(employee_id) for employee_id in unique_ids])
+
+    def _sync_process_status_to_authorizations(self, process, actor):
+        """A process and every grant for it expose one shared enabled status."""
+        authorizations = EmployeeProcessAuthorization.objects.filter(process=process)
+        employee_ids = list(authorizations.values_list("employee_id", flat=True).distinct())
+        authorizations.update(
+            is_active=process.is_active,
+            updated_by=actor,
+            updated_at=timezone.now(),
+        )
+        self._enqueue_employee_syncs(employee_ids)
+
     def process_management_view(self, request):
         self._require_superuser(request)
         return TemplateResponse(
@@ -159,6 +193,64 @@ class EmployeeProcessAuthorizationAdmin(AdministratorOnlyMixin, admin.ModelAdmin
             "admin/employees/employeeprocessauthorization/process_management.html",
             self._process_management_context(request),
         )
+
+    def process_delete_view(self, request):
+        self._require_superuser(request)
+        if request.method != "POST":
+            return redirect("admin:employees_employeeprocessauthorization_processes")
+        process_ids = request.POST.getlist("process_ids")
+        processes = WorkProcess.objects.filter(pk__in=process_ids).prefetch_related("employee_authorizations", "sops")
+        if not processes.exists():
+            self.message_user(request, "请先选择需要删除的工艺。", messages.WARNING)
+            return redirect("admin:employees_employeeprocessauthorization_processes")
+
+        with transaction.atomic():
+            employee_ids = list(
+                EmployeeProcessAuthorization.objects.filter(process__in=processes)
+                .values_list("employee_id", flat=True).distinct()
+            )
+            deleted_count = processes.count()
+            process_details = list(processes.values("id", "code", "name"))
+            # These records are owned by a process. Removing them first makes
+            # the administrator's explicit deletion intent work with PROTECT FKs.
+            EmployeeProcessAuthorization.objects.filter(process__in=processes).delete()
+            ProcessSOP.objects.filter(process__in=processes).delete()
+            processes.delete()
+            AuditLog.objects.create(
+                actor=request.user,
+                action="work_process.delete",
+                target_type="WorkProcess",
+                target_id=",".join(str(item["id"]) for item in process_details),
+                metadata={"processes": process_details},
+            )
+            self._enqueue_employee_syncs(employee_ids)
+        self.message_user(request, f"已删除 {deleted_count} 个工艺及其相关授权。", messages.SUCCESS)
+        return redirect("admin:employees_employeeprocessauthorization_processes")
+
+    def authorization_delete_view(self, request):
+        self._require_superuser(request)
+        if request.method != "POST":
+            return redirect("admin:employees_employeeprocessauthorization_changelist")
+        authorization_ids = request.POST.getlist("authorization_ids")
+        authorizations = EmployeeProcessAuthorization.objects.filter(pk__in=authorization_ids)
+        if not authorizations.exists():
+            self.message_user(request, "请先选择需要删除的员工工艺授权。", messages.WARNING)
+            return redirect("admin:employees_employeeprocessauthorization_changelist")
+
+        with transaction.atomic():
+            details = list(authorizations.values("id", "employee_id", "process_id"))
+            employee_ids = [item["employee_id"] for item in details]
+            authorizations.delete()
+            AuditLog.objects.create(
+                actor=request.user,
+                action="employee_process_authorization.delete",
+                target_type="EmployeeProcessAuthorization",
+                target_id=",".join(str(item["id"]) for item in details),
+                metadata={"authorizations": details},
+            )
+            self._enqueue_employee_syncs(employee_ids)
+        self.message_user(request, f"已删除 {len(details)} 条员工工艺授权。", messages.SUCCESS)
+        return redirect("admin:employees_employeeprocessauthorization_changelist")
 
     def process_add_view(self, request):
         self._require_superuser(request)
@@ -206,8 +298,7 @@ class EmployeeProcessAuthorizationAdmin(AdministratorOnlyMixin, admin.ModelAdmin
                 target_id=str(process.pk),
                 metadata={"code": process.code, "name": process.name, "position": process.position.code, "is_active": process.is_active},
             )
-            employee_ids = list(process.employee_authorizations.values_list("employee_id", flat=True).distinct())
-            transaction.on_commit(lambda: [enqueue_sop_employee_sync(employee_id) for employee_id in employee_ids])
+            self._sync_process_status_to_authorizations(process, request.user)
             self.message_user(request, "具体工艺已更新。", messages.SUCCESS)
             return redirect("admin:employees_employeeprocessauthorization_processes")
         return TemplateResponse(
@@ -229,7 +320,11 @@ class EmployeeProcessAuthorizationAdmin(AdministratorOnlyMixin, admin.ModelAdmin
             obj.created_by = request.user
         obj.updated_by = request.user
         super().save_model(request, obj, form, change)
-        transaction.on_commit(lambda employee_id=obj.employee_id: enqueue_sop_employee_sync(employee_id))
+        process = WorkProcess.objects.get(pk=obj.process_id)
+        if process.is_active != obj.is_active:
+            process.is_active = obj.is_active
+            process.save(update_fields=("is_active", "updated_at"))
+        self._sync_process_status_to_authorizations(process, request.user)
         AuditLog.objects.create(actor=request.user, action="employee_process_authorization.update", target_type="EmployeeProcessAuthorization", target_id=str(obj.pk), metadata={"employee": obj.employee_id, "position": obj.position.code, "process": obj.process.code, "is_active": obj.is_active})
 
 

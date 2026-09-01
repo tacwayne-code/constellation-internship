@@ -52,6 +52,14 @@
       font-weight: 400;
       line-height: 20px;
     }
+    body.model-employeeprocessauthorization .process-status {
+      display: inline-block;
+      font-size: 18px;
+      font-weight: 700;
+      line-height: 20px;
+    }
+    body.model-employeeprocessauthorization .process-status--enabled { color: #67c23a; }
+    body.model-employeeprocessauthorization .process-status--disabled { color: #f56c6c; }
   </style>
 {% endblock %}
 
@@ -61,17 +69,23 @@
       <a href="{% url 'admin:employees_employeeprocessauthorization_process_add' %}" class="el-button el-button--default el-button--small">
         <i class="el-icon-plus"></i>&nbsp;新增工艺
       </a>
+      <button type="submit" form="process-delete-form" class="el-button el-button--default el-button--small" id="delete-selected-processes">
+        <i class="el-icon-delete"></i>&nbsp;删除
+      </button>
       <a href="{% url 'admin:employees_employeeprocessauthorization_changelist' %}" class="el-button el-button--default el-button--small">
         返回员工工艺授权
       </a>
       <span class="process-count">共 {{ processes|length }} 个工艺</span>
     </div>
 
+    <form id="process-delete-form" method="post" action="{% url 'admin:employees_employeeprocessauthorization_process_delete' %}">
+      {% csrf_token %}
     <div class="module" id="changelist">
       <div class="results">
         <table id="result_list">
           <thead>
             <tr>
+              <th scope="col" class="action-checkbox-column"><input type="checkbox" id="toggle-processes" aria-label="全选工艺"></th>
               <th scope="col"><div class="text">岗位</div></th>
               <th scope="col"><div class="text">具体工艺名称</div></th>
               <th scope="col"><div class="text">是否启用</div></th>
@@ -83,19 +97,44 @@
           <tbody>
             {% for process in processes %}
               <tr class="{% cycle 'row1' 'row2' %}">
+                <td class="action-checkbox"><input type="checkbox" name="process_ids" value="{{ process.pk }}" aria-label="选择 {{ process.name }}"></td>
                 <td>{{ process.position.name }}</td>
                 <td>{{ process.name }}</td>
-                <td>{% if process.is_active %}是{% else %}否{% endif %}</td>
+                <td>{% if process.is_active %}<span class="process-status process-status--enabled" title="启用">✔</span>{% else %}<span class="process-status process-status--disabled" title="不启用">×</span>{% endif %}</td>
                 <td>{{ process.sops.all|length }}</td>
                 <td>{{ process.updated_at|date:"Y年n月j日 H:i" }}</td>
                 <td><a href="{% url 'admin:employees_employeeprocessauthorization_process_change' process.pk %}">编辑</a></td>
               </tr>
             {% empty %}
-              <tr class="row1"><td colspan="6">暂无具体工艺。</td></tr>
+              <tr class="row1"><td colspan="7">暂无具体工艺。</td></tr>
             {% endfor %}
           </tbody>
         </table>
       </div>
     </div>
+    </form>
   </div>
+  <script>
+    (function () {
+      var form = document.getElementById('process-delete-form');
+      var toggle = document.getElementById('toggle-processes');
+      var button = document.getElementById('delete-selected-processes');
+      if (toggle) {
+        toggle.addEventListener('change', function () {
+          form.querySelectorAll('input[name="process_ids"]').forEach(function (checkbox) { checkbox.checked = toggle.checked; });
+        });
+      }
+      if (button) {
+        form.addEventListener('submit', function (event) {
+          var selected = form.querySelectorAll('input[name="process_ids"]:checked');
+          if (!selected.length) {
+            event.preventDefault();
+            window.alert('请先勾选需要删除的工艺。');
+          } else if (!window.confirm('确定删除选中的工艺及其相关授权和 SOP 吗？此操作不可撤销。')) {
+            event.preventDefault();
+          }
+        });
+      }
+    }());
+  </script>
 {% endblock %}
