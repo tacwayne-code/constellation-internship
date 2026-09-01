@@ -45,7 +45,9 @@
       button.addEventListener('click', function (event) {
         event.preventDefault();
         form.querySelectorAll('input[name="authorization_ids"]').forEach(function (input) { input.remove(); });
-        var selected = document.querySelectorAll('#result_list input.action-select:checked');
+        var selected = document.querySelectorAll(
+          '#result_list input.action-select:checked, #result_list input[name="_selected_action"]:checked'
+        );
         if (!selected.length) {
           window.alert('请先勾选需要删除的员工工艺授权。');
           return;

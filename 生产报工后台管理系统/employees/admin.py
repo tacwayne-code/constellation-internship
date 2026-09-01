@@ -238,13 +238,23 @@ class EmployeeProcessAuthorizationAdmin(AdministratorOnlyMixin, admin.ModelAdmin
         with transaction.atomic():
             details = list(authorizations.values("id", "employee_id", "process_id"))
             employee_ids = [item["employee_id"] for item in details]
+            process_ids = {item["process_id"] for item in details}
             authorizations.delete()
+            # Keep the process-management module in sync. A process that no
+            # longer has any employee grant is no longer a usable authorization
+            # entry, so remove the orphan process and its SOP versions too.
+            orphan_processes = WorkProcess.objects.filter(pk__in=process_ids).exclude(
+                employee_authorizations__isnull=False
+            )
+            orphan_process_details = list(orphan_processes.values("id", "code", "name"))
+            ProcessSOP.objects.filter(process__in=orphan_processes).delete()
+            orphan_processes.delete()
             AuditLog.objects.create(
                 actor=request.user,
                 action="employee_process_authorization.delete",
                 target_type="EmployeeProcessAuthorization",
                 target_id=",".join(str(item["id"]) for item in details),
-                metadata={"authorizations": details},
+                metadata={"authorizations": details, "deleted_orphan_processes": orphan_process_details},
             )
             self._enqueue_employee_syncs(employee_ids)
         self.message_user(request, f"已删除 {len(details)} 条员工工艺授权。", messages.SUCCESS)

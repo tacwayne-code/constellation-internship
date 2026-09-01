@@ -328,6 +328,7 @@ class EmployeeAdministrationTests(TestCase):
 
         self.assertEqual(response.status_code, 302)
         self.assertFalse(EmployeeProcessAuthorization.objects.filter(pk=grant.pk).exists())
+        self.assertFalse(WorkProcess.objects.filter(pk=process.pk).exists())
         sync_employee.assert_called_once_with(employee.pk)
 
     @patch("employees.admin.enqueue_sop_employee_sync")
