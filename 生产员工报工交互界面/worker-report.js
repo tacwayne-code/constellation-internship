@@ -156,8 +156,20 @@ function updateModeBadge() {
 }
 
 // ====== 数据加载 ======
+function workordersApiPath(operationCode = S.selOperation, roleCode = S.selRole?.code) {
+  const query = new URLSearchParams();
+  if (operationCode) query.set("operationCode", operationCode);
+  if (roleCode) query.set("roleCode", roleCode);
+  return "/api/workorders" + (query.toString() ? "?" + query.toString() : "");
+}
+
 async function loadAll() {
   const hadReports = S.reports.length > 0;
+  // Keep periodic/visibility refreshes scoped to the currently selected
+  // position and process. An unscoped worker request intentionally returns
+  // no WOs and must not overwrite the selected process list.
+  const requestedOperationCode = S.selOperation;
+  const requestedRoleCode = S.selRole?.code || "";
   // 并行调用所有 API（之前是串行，/api/dashboard 慢时整个加载很慢）
   const settled = await Promise.allSettled([
     fetch(API_BASE + "/api/dashboard", { cache: "no-store" }).then(r => r.json()).catch(() => null),
@@ -165,7 +177,7 @@ async function loadAll() {
     apiGet("/api/order-summary").catch(() => null),
     apiGet("/api/reports").catch(() => null),
     apiGet("/api/operations").catch(() => null),
-    apiGet("/api/workorders").catch(() => null),
+    apiGet(workordersApiPath(requestedOperationCode, requestedRoleCode)).catch(() => null),
     apiGet("/api/report-stats").catch(() => null),
   ]);
 
@@ -239,10 +251,14 @@ async function loadAll() {
     if (opsResp.meta && opsResp.meta.mode) S.runtimeMode = opsResp.meta.mode;
   }
 
-  if (woResp && woResp.data) {
-    S.workorders = woResp.data;
-  } else {
-    S.workorders = [];
+  // Do not let a stale periodic request replace the list after the operator
+  // has switched position or process while it was in flight.
+  if (S.selOperation === requestedOperationCode && (S.selRole?.code || "") === requestedRoleCode) {
+    if (woResp && woResp.data) {
+      S.workorders = woResp.data;
+    } else {
+      S.workorders = [];
+    }
   }
   S.reportStats = statsResp && statsResp.data ? statsResp.data : null;
 
