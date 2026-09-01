@@ -109,7 +109,7 @@ class ProcessSOPAdmin(AdministratorOnlyMixin, admin.ModelAdmin):
 @admin.register(EmployeeProcessAuthorization)
 class EmployeeProcessAuthorizationAdmin(AdministratorOnlyMixin, admin.ModelAdmin):
     change_list_template = "admin/employees/employeeprocessauthorization/change_list.html"
-    list_display = ("employee", "position", "process", "status_indicator", "updated_at")
+    list_display = ("action_checkbox", "employee", "position", "process", "status_indicator", "updated_at")
     list_filter = ("is_active", "position", "process")
     search_fields = ("employee__name", "employee__source_worker_id", "position__name", "process__name")
     list_select_related = ("employee", "position", "process")
@@ -163,12 +163,10 @@ class EmployeeProcessAuthorizationAdmin(AdministratorOnlyMixin, admin.ModelAdmin
         context.update(extra)
         return context
 
-    @admin.display(description="是否启用")
+    @admin.display(description="是否启用", boolean=True)
     def status_indicator(self, obj):
-        """Use the same explicit status indicator as the process management page."""
-        if obj.is_active:
-            return format_html('<span class="process-status process-status--enabled" title="启用">✔</span>')
-        return format_html('<span class="process-status process-status--disabled" title="不启用">×</span>')
+        """Render with Django's native green/red circular status icons."""
+        return obj.is_active
 
     @staticmethod
     def _enqueue_employee_syncs(employee_ids):
