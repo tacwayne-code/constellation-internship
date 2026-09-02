@@ -46,6 +46,43 @@ class JobPositionAdmin(AdministratorOnlyMixin, admin.ModelAdmin):
     search_fields = ("code", "name")
     readonly_fields = ("created_at", "updated_at")
     fields = ("name", "is_active", "created_at", "updated_at")
+    # A custom "delete selected" action is registered (and kept visible even
+    # though the model disables raw delete) so the changelist renders its
+    # selection checkboxes; the standalone toolbar button reuses the same logic.
+    actions = ("delete_selected_positions",)
+
+    def _cascade_delete_positions(self, request, positions):
+        """Delete the given positions together with their processes and grants."""
+        processes = WorkProcess.objects.filter(position__in=positions)
+        employee_ids = list(
+            EmployeeProcessAuthorization.objects.filter(process__in=processes)
+            .values_list("employee_id", flat=True).distinct()
+        )
+        position_details = list(positions.values("id", "code", "name"))
+        EmployeeProcessAuthorization.objects.filter(process__in=processes).delete()
+        ProcessSOP.objects.filter(process__in=processes).delete()
+        processes.delete()
+        positions.delete()
+        AuditLog.objects.create(
+            actor=request.user,
+            action="job_position.delete",
+            target_type="JobPosition",
+            target_id=",".join(str(item["id"]) for item in position_details),
+            metadata={"positions": position_details},
+        )
+        transaction.on_commit(
+            lambda: [enqueue_sop_employee_sync(employee_id) for employee_id in set(employee_ids)]
+        )
+        return len(position_details)
+
+    @admin.action(description="删除选中的岗位", permissions=["change"])
+    def delete_selected_positions(self, request, queryset):
+        if not request.user.is_superuser:
+            self.message_user(request, "当前账号没有岗位删除权限。", level="error")
+            return
+        with transaction.atomic():
+            count = self._cascade_delete_positions(request, queryset)
+        self.message_user(request, f"已删除 {count} 个岗位及其相关工艺。", messages.SUCCESS)
 
     def get_urls(self):
         urls = super().get_urls()
@@ -70,27 +107,8 @@ class JobPositionAdmin(AdministratorOnlyMixin, admin.ModelAdmin):
             return redirect("admin:employees_jobposition_changelist")
 
         with transaction.atomic():
-            processes = WorkProcess.objects.filter(position__in=positions)
-            employee_ids = list(
-                EmployeeProcessAuthorization.objects.filter(process__in=processes)
-                .values_list("employee_id", flat=True).distinct()
-            )
-            position_details = list(positions.values("id", "code", "name"))
-            EmployeeProcessAuthorization.objects.filter(process__in=processes).delete()
-            ProcessSOP.objects.filter(process__in=processes).delete()
-            processes.delete()
-            positions.delete()
-            AuditLog.objects.create(
-                actor=request.user,
-                action="job_position.delete",
-                target_type="JobPosition",
-                target_id=",".join(str(item["id"]) for item in position_details),
-                metadata={"positions": position_details},
-            )
-            transaction.on_commit(
-                lambda: [enqueue_sop_employee_sync(employee_id) for employee_id in set(employee_ids)]
-            )
-        self.message_user(request, f"已删除 {len(position_details)} 个岗位及其相关工艺。", messages.SUCCESS)
+            count = self._cascade_delete_positions(request, positions)
+        self.message_user(request, f"已删除 {count} 个岗位及其相关工艺。", messages.SUCCESS)
         return redirect("admin:employees_jobposition_changelist")
 
     @admin.display(description="具体工艺数量", ordering="process_total")

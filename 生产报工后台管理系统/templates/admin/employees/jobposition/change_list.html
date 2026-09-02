@@ -1,4 +1,5 @@
 {% extends "admin/change_list.html" %}
+{% load i18n static %}
 
 {% block extrastyle %}
   {{ block.super }}
@@ -13,14 +14,37 @@
       min-width: 0;
       box-sizing: border-box;
     }
+    /* The custom delete button renders in the content flow (not in object-tools,
+       which SimpleUI relocates into its top action bar). This keeps its click
+       handler attached so selecting rows and clicking "删除" actually submits. */
+    .jobposition-bulk-toolbar {
+      text-align: left;
+      margin: 0 0 12px;
+    }
+    .jobposition-bulk-toolbar a.deletelink {
+      display: inline-block;
+      padding: 7px 14px;
+      color: #f56c6c;
+      background-color: #ffffff;
+      border: 1px solid #dcdfe6;
+      border-radius: 4px;
+      text-decoration: none;
+      font-size: 14px;
+      line-height: 1;
+    }
+    .jobposition-bulk-toolbar a.deletelink:hover {
+      color: #ffffff;
+      background-color: #f56c6c;
+      border-color: #f56c6c;
+    }
   </style>
 {% endblock %}
 
-{% block object-tools-items %}
-  {{ block.super }}
-  <li>
+{% block result_list %}
+  <div class="jobposition-bulk-toolbar">
     <a href="#" id="delete-selected-positions" class="deletelink">删除</a>
-  </li>
+  </div>
+  {{ block.super }}
 {% endblock %}
 
 {% block footer %}
@@ -37,7 +61,7 @@
         event.preventDefault();
         form.querySelectorAll('input[name="position_ids"]').forEach(function (input) { input.remove(); });
         var selected = document.querySelectorAll(
-          '#result_list input.action-select:checked, #result_list input[name="_selected_action"]:checked'
+          '#result_list input[name="_selected_action"]:checked'
         );
         if (!selected.length) {
           window.alert('请先勾选需要删除的岗位。');
