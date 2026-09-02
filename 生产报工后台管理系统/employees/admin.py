@@ -41,7 +41,10 @@ class AdministratorOnlyMixin:
 @admin.register(JobPosition)
 class JobPositionAdmin(AdministratorOnlyMixin, admin.ModelAdmin):
     change_list_template = "admin/employees/jobposition/change_list.html"
-    list_display = ("action_checkbox", "name", "is_active", "process_count", "updated_at")
+    # The action checkbox column is auto-prepended by the changelist when a
+    # delete action is registered; listing "action_checkbox" here would render
+    # a second checkbox column, so it is intentionally omitted.
+    list_display = ("name", "is_active", "process_count", "updated_at")
     list_filter = ("is_active",)
     search_fields = ("code", "name")
     readonly_fields = ("created_at", "updated_at")
