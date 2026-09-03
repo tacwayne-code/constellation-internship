@@ -211,11 +211,12 @@ class WorkProcessManagementForm(forms.ModelForm):
 
 
 class ProcessSOPUploadForm(forms.ModelForm):
+    """PDF-only upload. SOP title/version are derived automatically on save."""
+
     class Meta:
         model = ProcessSOP
-        fields = ("title", "version", "pdf_file")
-        labels = {"title": "SOP 标题", "version": "版本号", "pdf_file": "PDF 文件"}
-        widgets = {"title": forms.TextInput(), "version": forms.TextInput()}
+        fields = ("pdf_file",)
+        labels = {"pdf_file": "PDF 文件"}
 
     def clean_pdf_file(self):
         uploaded = self.cleaned_data["pdf_file"]

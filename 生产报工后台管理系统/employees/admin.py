@@ -1,3 +1,5 @@
+import re
+
 from django.contrib import admin
 from django.contrib import messages
 from django.core.exceptions import PermissionDenied
@@ -22,6 +24,16 @@ from .models import (
 )
 from .sop_sync import enqueue_sop_employee_sync, operation_codes_for_job_title
 from reports.models import AuditLog
+
+
+def next_sop_version(process):
+    """Return the next version label (``v<n>``) for a process's SOP sequence."""
+    max_seq = 0
+    for version in ProcessSOP.objects.filter(process=process).values_list("version", flat=True):
+        match = re.match(r"^v(\d+)$", str(version or "").strip())
+        if match:
+            max_seq = max(max_seq, int(match.group(1)))
+    return f"v{max_seq + 1}"
 
 
 class AdministratorOnlyMixin:
@@ -350,6 +362,11 @@ class EmployeeProcessAuthorizationAdmin(AdministratorOnlyMixin, admin.ModelAdmin
                 sop = sop_form.save(commit=False)
                 sop.process = process
                 sop.uploaded_by = request.user
+                # Title/version inputs were removed from the upload form; derive
+                # them automatically so a PDF upload always produces a complete,
+                # versioned SOP row that the panel can still list by title/version.
+                sop.title = process.name or "未命名 SOP"
+                sop.version = next_sop_version(process)
                 ProcessSOP.objects.filter(process=process, title=sop.title, is_active=True).update(is_active=False)
                 sop.save()
                 AuditLog.objects.create(actor=request.user, action="process_sop.upload", target_type="ProcessSOP", target_id=str(sop.pk), metadata={"process": process.code, "title": sop.title, "version": sop.version})
