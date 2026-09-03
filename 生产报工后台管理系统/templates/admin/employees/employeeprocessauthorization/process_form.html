@@ -152,7 +152,7 @@
               },
               template: [
                 '<div>',
-                  '<el-select v-if="available && mode===\'dropdown\'" v-model="value" multiple filterable placeholder="请选择（可多选）" style="width:100%;">',
+                  '<el-select v-if="available && mode===\'dropdown\'" v-model="value" multiple collapse-tags placeholder="请选择（可多选）" style="width:100%;">',
                     '<el-option v-for="o in options" :key="o" :label="o" :value="o"></el-option>',
                   '</el-select>',
                   '<textarea v-else v-model="manualText" rows="5" class="form-control" style="width:100%;"></textarea>',
