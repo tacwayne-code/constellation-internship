@@ -24,6 +24,7 @@ from .models import (
 )
 from .sop_sync import enqueue_sop_employee_sync, operation_codes_for_job_title
 from reports.models import AuditLog
+from reports.sop_sync import fetch_workorder_options
 
 
 def next_sop_version(process):
@@ -243,6 +244,24 @@ class EmployeeProcessAuthorizationAdmin(AdministratorOnlyMixin, admin.ModelAdmin
         context.update(extra)
         return context
 
+    def _workorder_rule_context(self):
+        """Fetch Odoo work-order options for the matching-rule dropdowns.
+
+        Never blocks the form: when the work-order source is unavailable the
+        dropdowns fall back to manual entry (see the process_form template).
+        """
+        try:
+            options = fetch_workorder_options()
+        except Exception:
+            options = None
+        options = options if isinstance(options, dict) else {}
+        available = bool(options.get("workorderNames") or options.get("productClasses"))
+        return {
+            "workorder_names_options": options.get("workorderNames", []),
+            "product_classes_options": options.get("productClasses", []),
+            "workorder_options_available": available,
+        }
+
     @admin.display(description="是否启用", boolean=True)
     def status_indicator(self, obj):
         """Render with Django's native green/red circular status icons."""
@@ -349,7 +368,7 @@ class EmployeeProcessAuthorizationAdmin(AdministratorOnlyMixin, admin.ModelAdmin
         return TemplateResponse(
             request,
             "admin/employees/employeeprocessauthorization/process_form.html",
-            self._process_management_context(request, title="员工工艺授权 - 新增工艺", form=form, process=None),
+            self._process_management_context(request, title="员工工艺授权 - 新增工艺", form=form, process=None, **self._workorder_rule_context()),
         )
 
     def process_change_view(self, request, process_id):
@@ -387,7 +406,7 @@ class EmployeeProcessAuthorizationAdmin(AdministratorOnlyMixin, admin.ModelAdmin
         return TemplateResponse(
             request,
             "admin/employees/employeeprocessauthorization/process_form.html",
-            self._process_management_context(request, title="员工工艺授权 - 编辑工艺", form=form, process=process, sop_form=sop_form),
+            self._process_management_context(request, title="员工工艺授权 - 编辑工艺", form=form, process=process, sop_form=sop_form, **self._workorder_rule_context()),
         )
 
     def get_form(self, request, obj=None, **kwargs):

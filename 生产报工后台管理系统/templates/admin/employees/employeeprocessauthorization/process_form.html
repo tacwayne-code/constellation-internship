@@ -33,6 +33,36 @@
               <div class="checkbox-row">
                 {{ field }}{{ field.label_tag }}
               </div>
+            {% elif field.name == 'wo_match_workorder_names' or field.name == 'wo_match_product_classes' %}
+              {{ field.errors }}
+              {{ field.label_tag }}
+              {% if field.name == 'wo_match_workorder_names' %}
+                <div class="wo-rule-field" data-kind="workorderNames" data-name="{{ field.html_name }}" data-available="{% if workorder_names_options %}true{% else %}false{% endif %}">
+                  <input type="hidden" name="{{ field.html_name }}" value="{{ field.value|default:'' }}" class="wo-rule-value" />
+                  <select multiple size="6" class="form-control wo-rule-select" style="width:100%;">
+                    {% for opt in workorder_names_options %}<option value="{{ opt }}">{{ opt }}</option>{% endfor %}
+                  </select>
+                  <div class="wo-rule-toolbar" style="margin-top:6px;">
+                    <button type="button" class="wo-manual-toggle el-button el-button--default el-button--small">手动输入</button>
+                    <span class="wo-rule-status help" style="margin-left:8px;"></span>
+                  </div>
+                  <textarea class="wo-rule-manual" rows="5" style="display:none;width:100%;">{{ field.value|default:'' }}</textarea>
+                  {% if field.help_text %}<div class="help">{{ field.help_text|safe }}</div>{% endif %}
+                </div>
+              {% else %}
+                <div class="wo-rule-field" data-kind="productClasses" data-name="{{ field.html_name }}" data-available="{% if product_classes_options %}true{% else %}false{% endif %}">
+                  <input type="hidden" name="{{ field.html_name }}" value="{{ field.value|default:'' }}" class="wo-rule-value" />
+                  <select multiple size="4" class="form-control wo-rule-select" style="width:100%;">
+                    {% for opt in product_classes_options %}<option value="{{ opt }}">{{ opt }}</option>{% endfor %}
+                  </select>
+                  <div class="wo-rule-toolbar" style="margin-top:6px;">
+                    <button type="button" class="wo-manual-toggle el-button el-button--default el-button--small">手动输入</button>
+                    <span class="wo-rule-status help" style="margin-left:8px;"></span>
+                  </div>
+                  <textarea class="wo-rule-manual" rows="3" style="display:none;width:100%;">{{ field.value|default:'' }}</textarea>
+                  {% if field.help_text %}<div class="help">{{ field.help_text|safe }}</div>{% endif %}
+                </div>
+              {% endif %}
             {% else %}
               {{ field.errors }}
               {{ field.label_tag }}
@@ -76,5 +106,78 @@
         }
       });
     }
+    // Odoo-backed multi-select for the work-order matching rules. A hidden input
+    // holds the newline-joined value the form submits; the dropdown adds values
+    // to it, and a manual textarea fallback is shown when Odoo data is missing.
+    (function () {
+      function lineValues(text) {
+        return String(text || '').split('\n').map(function (s) { return s.trim(); }).filter(Boolean);
+      }
+      function markSelection(select, values) {
+        var set = {};
+        values.forEach(function (v) { set[v] = true; });
+        for (var i = 0; i < select.options.length; i++) {
+          var value = (select.options[i].value || '').trim();
+          select.options[i].selected = !!set[value];
+        }
+      }
+      function syncHiddenFromSelect(hidden, select) {
+        var values = [];
+        for (var i = 0; i < select.options.length; i++) {
+          if (select.options[i].selected) values.push(select.options[i].value.trim());
+        }
+        hidden.value = values.join('\n');
+      }
+      function init() {
+        var fields = document.querySelectorAll('.wo-rule-field');
+        for (var f = 0; f < fields.length; f++) {
+          (function (field) {
+            var hidden = field.querySelector('.wo-rule-value');
+            var select = field.querySelector('.wo-rule-select');
+            var manual = field.querySelector('.wo-rule-manual');
+            var toggle = field.querySelector('.wo-manual-toggle');
+            var status = field.querySelector('.wo-rule-status');
+            var available = field.getAttribute('data-available') === 'true';
+            function currentValues() { return lineValues(hidden.value); }
+
+            manual.addEventListener('input', function () { hidden.value = lineValues(manual.value).join('\n'); });
+            select.addEventListener('change', function () { syncHiddenFromSelect(hidden, select); });
+
+            if (available) {
+              markSelection(select, currentValues());
+              status.textContent = '已从 Odoo 加载 ' + select.options.length + ' 个选项（可多选）';
+            } else {
+              select.style.display = 'none';
+              toggle.style.display = 'none';
+              manual.style.display = 'block';
+              manual.value = currentValues().join('\n');
+              status.textContent = '当前未能从 Odoo 加载工单数据，请手动输入（每行一个）。';
+            }
+
+            toggle.addEventListener('click', function () {
+              if (manual.style.display !== 'none') {
+                if (!select.options.length) { return; }
+                manual.style.display = 'none';
+                select.style.display = '';
+                markSelection(select, currentValues());
+                toggle.textContent = '手动输入';
+                status.textContent = '已从 Odoo 加载 ' + select.options.length + ' 个选项（可多选）';
+              } else {
+                select.style.display = 'none';
+                manual.style.display = 'block';
+                manual.value = currentValues().join('\n');
+                toggle.textContent = '切换为下拉';
+                status.textContent = '';
+              }
+            });
+          })(fields[f]);
+        }
+      }
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', init);
+      } else {
+        init();
+      }
+    })();
   </script>
 {% endblock %}

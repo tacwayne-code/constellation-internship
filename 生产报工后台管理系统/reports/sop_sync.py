@@ -110,6 +110,49 @@ def get_cached_production_details():
     return _production_details_cache_snapshot()[0]
 
 
+_workorder_options_cache = {"data": None, "ts": 0.0}
+_workorder_options_cache_lock = threading.Lock()
+WORKORDER_OPTIONS_CACHE_TTL = 30
+
+
+def fetch_workorder_options():
+    """Return distinct Odoo work-order names and product classes.
+
+    Used to populate the administrator's work-order matching-rule dropdowns.
+    Returns ``None`` when the SOP work-order source is temporarily unavailable
+    so the process form can fall back to manual entry. Successful results are
+    cached briefly; failures are not, so the next page load retries.
+    """
+    with _workorder_options_cache_lock:
+        cached = _workorder_options_cache["data"]
+        if cached is not None and time.monotonic() - _workorder_options_cache["ts"] < WORKORDER_OPTIONS_CACHE_TTL:
+            return cached
+    try:
+        records = _fetch_sop_data(settings.SOP_WORKORDERS_API_URL, "workorders")
+    except SopSyncError:
+        return None
+    names, classes = [], []
+    seen_names, seen_classes = set(), set()
+    for item in records:
+        if not isinstance(item, dict):
+            continue
+        name = str(item.get("workorderName", "")).strip()
+        if name and name not in seen_names:
+            seen_names.add(name)
+            names.append(name)
+        cls = str(item.get("productClass", "")).strip()
+        if cls and cls not in seen_classes:
+            seen_classes.add(cls)
+            classes.append(cls)
+    names.sort()
+    classes.sort()
+    result = {"workorderNames": names, "productClasses": classes}
+    with _workorder_options_cache_lock:
+        _workorder_options_cache["data"] = result
+        _workorder_options_cache["ts"] = time.monotonic()
+    return result
+
+
 def fetch_production_details():
     cached_details, cached_at = _production_details_cache_snapshot()
     now = time.monotonic()
