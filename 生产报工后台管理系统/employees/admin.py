@@ -345,7 +345,7 @@ class EmployeeProcessAuthorizationAdmin(AdministratorOnlyMixin, admin.ModelAdmin
         process = get_object_or_404(WorkProcess, pk=process_id)
         form = WorkProcessManagementForm(request.POST or None, instance=process)
         sop_form = ProcessSOPUploadForm(request.POST or None, request.FILES or None)
-        if request.method == "POST" and request.POST.get("_upload_sop"):
+        if request.method == "POST" and "_upload_sop" in request.POST:
             if sop_form.is_valid():
                 sop = sop_form.save(commit=False)
                 sop.process = process
