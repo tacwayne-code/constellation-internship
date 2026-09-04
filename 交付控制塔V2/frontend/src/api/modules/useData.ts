@@ -12,13 +12,14 @@ async function get<T>(path: string): Promise<T> {
 
 // ---- 驾驶舱 ----
 
-export function usePortfolioSummary() {
+export function usePortfolioSummary(enabled = true) {
   return useQuery({
     queryKey: ['portfolio-summary'],
     queryFn: () => get<PortfolioSummary>('/portfolio/summary'),
     staleTime: 0,
     refetchOnMount: 'always',
     refetchOnWindowFocus: true,
+    enabled,
   })
 }
 

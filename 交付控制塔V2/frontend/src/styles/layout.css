@@ -182,6 +182,20 @@
   align-items: center;
   gap: 10px;
 }
+.topbar-fullscreen {
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: #fff;
+  color: var(--navy);
+  font: 600 12px/1 var(--font);
+}
+.topbar-fullscreen:hover { border-color: #bdc7d4; background: var(--canvas); }
+.topbar-fullscreen.active { border-color: var(--navy); background: var(--navy); color: #fff; }
 .sync-state {
   display: flex;
   align-items: center;

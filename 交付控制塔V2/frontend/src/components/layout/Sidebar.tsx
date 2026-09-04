@@ -1,13 +1,10 @@
 import { NAV_SECTIONS } from '../../config/nav'
 import { useNavigation } from '../../store/navigationStore'
 import { Icon } from '../common/Icon'
-import { usePortfolioSummary } from '../../api/modules/useData'
 
 /** 左侧导航栏 */
 export function Sidebar() {
   const { inPortfolio, moduleId, goPortfolio, openModule } = useNavigation()
-  const summary = usePortfolioSummary()
-  const projectCount = summary.data?.projects_total ?? '-'
 
   return (
     <aside className="sidebar">
@@ -15,7 +12,7 @@ export function Sidebar() {
         <div className="brand-mark">塔</div>
         <div>
           <div className="brand-name">交付控制塔</div>
-          <div className="brand-sub">{projectCount} 个项目</div>
+          <div className="brand-sub">统一工作台</div>
         </div>
       </div>
 
@@ -26,7 +23,7 @@ export function Sidebar() {
             onClick={goPortfolio}
           >
             <Icon name="grid" size={16} />
-            <span className="nav-label">项目组合</span>
+            <span className="nav-label">统一看板</span>
           </button>
         </div>
 

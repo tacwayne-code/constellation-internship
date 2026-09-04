@@ -6,6 +6,7 @@ import './styles/tokens.css'
 import './styles/layout.css'
 import './styles/portfolio.css'
 import './styles/modules.css'
+import './styles/dashboard.css'
 import App from './App.tsx'
 
 const queryClient = new QueryClient({
