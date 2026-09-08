@@ -3,5 +3,5 @@ module.exports = {
   authBaseUrl: 'https://api.inspiri.cn',
   crmWebUrl: 'https://crm.inspiri.cn/',
   serviceWebUrl: 'https://service.inspiri.cn/web/',
-  enableDemoSession: true
+  enableDemoSession: false
 };
