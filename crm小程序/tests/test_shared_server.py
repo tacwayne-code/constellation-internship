@@ -137,6 +137,14 @@ class SharedServerTest(unittest.TestCase):
             erp_adapter=self.erp_adapter,
             route_adapter=self.route_adapter,
         )
+        # 认证夹具只存在于临时测试目录；生产服务不再内置员工账号。
+        auth_manager = self.server.RequestHandlerClass.auth_manager
+        auth_manager.employees.upsert(
+            {"id": "USR-00018", "name": "测试销售", "phone": "13800000018", "role": "销售人员", "active": True}
+        )
+        auth_manager.employees.upsert(
+            {"id": "USR-00001", "name": "测试经理", "phone": "13800000001", "role": "销售经理", "active": True}
+        )
         self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
         self.thread.start()
         self.base_url = f"http://127.0.0.1:{self.server.server_address[1]}"
@@ -156,6 +164,7 @@ class SharedServerTest(unittest.TestCase):
             erp_adapter=self.erp_adapter,
             route_adapter=self.route_adapter,
             state=self.server.RequestHandlerClass.state,
+            auth_manager=self.server.RequestHandlerClass.auth_manager,
         )
         secondary_thread = threading.Thread(
             target=secondary.serve_forever,
@@ -368,7 +377,7 @@ class SharedServerTest(unittest.TestCase):
         )
         self.assertEqual(status, 200)
         self.assertEqual(payload["item"]["status"], "APPROVED")
-        self.assertEqual(payload["item"]["reviewerName"], "李娜")
+        self.assertEqual(payload["item"]["reviewerName"], "测试经理")
 
         status, payload = request(
             self.base_url,
@@ -437,7 +446,7 @@ class SharedServerTest(unittest.TestCase):
 
         status, payload = request(
             self.base_url,
-            "/api/employees/13900139000",
+            "/api/employees/13800000001",
             actor="USR-00001",
             method="DELETE",
         )

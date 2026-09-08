@@ -21,9 +21,7 @@ Page({
     greeting: greeting(),
     roles: [],
     hasCrm: false,
-    hasService: false,
-    pendingCount: 5,
-    isDemo: false
+    hasService: false
   },
 
   onShow() {
@@ -37,8 +35,7 @@ Page({
       user: current.employee || { name: '员工' },
       roles,
       hasCrm: (current.modules || []).includes('crm'),
-      hasService: (current.modules || []).includes('after_sales'),
-      isDemo: Boolean(current.isDemo)
+      hasService: (current.modules || []).includes('after_sales')
     });
   },
 
@@ -48,10 +45,6 @@ Page({
 
   openService() {
     this.openWeb('售后服务', config.serviceWebUrl, 'after_sales');
-  },
-
-  openPending() {
-    if (this.data.hasService) this.openService();
   },
 
   openWeb(title, url, module) {

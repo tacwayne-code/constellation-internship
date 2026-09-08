@@ -17,26 +17,7 @@ from pathlib import Path
 from typing import Any
 
 
-DEFAULT_EMPLOYEES = [
-    {
-        "id": "USR-00018",
-        "name": "王晨",
-        "phone": "13800138000",
-        "role": "销售人员",
-        "dataScope": "ALL",
-        "active": True,
-        "openid": "",
-    },
-    {
-        "id": "USR-00001",
-        "name": "李娜",
-        "phone": "13900139000",
-        "role": "销售经理",
-        "dataScope": "ALL",
-        "active": True,
-        "openid": "",
-    },
-]
+DEFAULT_EMPLOYEES: list[dict[str, Any]] = []
 
 
 class AuthError(Exception):

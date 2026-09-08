@@ -19,7 +19,7 @@ Page({
       this.setData({
         profile: {
           name: u.name || '',
-          login_username: u.username || 'SH001',
+          login_username: u.username || '',
           phone: u.phone || '',
           department: '',
           specialty: ''

@@ -2,14 +2,6 @@ const config = require('../config');
 
 const STORAGE_KEY = 'enterprise_session_v1';
 
-const demoSession = {
-  employee: { id: 'DEMO-001', name: '王小明' },
-  roles: ['sales_manager', 'paidan'],
-  modules: ['crm', 'after_sales'],
-  permissions: ['crm.team.read', 'workorder.create', 'workorder.assign', 'engineer.manage'],
-  isDemo: true
-};
-
 function requestLogin(code) {
   return new Promise((resolve, reject) => {
     wx.request({
@@ -29,15 +21,10 @@ function requestLogin(code) {
 async function restore() {
   const cached = wx.getStorageSync(STORAGE_KEY);
   if (cached?.employee) return cached;
-  if (config.enableDemoSession) {
-    wx.setStorageSync(STORAGE_KEY, demoSession);
-    return demoSession;
-  }
   return null;
 }
 
 async function login() {
-  if (config.enableDemoSession) return restore();
   const loginResult = await new Promise((resolve, reject) => wx.login({ success: resolve, fail: reject }));
   const result = await requestLogin(loginResult.code);
   wx.setStorageSync(STORAGE_KEY, result);

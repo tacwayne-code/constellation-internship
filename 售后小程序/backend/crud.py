@@ -4,6 +4,7 @@ from models import User, Engineer, WorkOrder, WorkRecord
 from datetime import datetime, timedelta
 from passlib.context import CryptContext
 import json
+import secrets
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
@@ -54,7 +55,8 @@ def create_engineer(db: Session, data):
     username = generate_engineer_username(db)
     user = User(
         username=username,
-        password_hash=pwd_context.hash("123456"),
+        # 企业成员从统一微信身份网关进入；这里仅保留不可猜测的本地凭据占位。
+        password_hash=pwd_context.hash(secrets.token_urlsafe(32)),
         role="engineer",
         name=data.name,
         phone=data.phone

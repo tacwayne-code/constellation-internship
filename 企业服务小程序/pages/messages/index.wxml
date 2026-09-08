@@ -8,4 +8,9 @@
       <view class="notice-time">{{item.time}}</view>
     </view>
   </view>
+  <view wx:if="{{!notices.length}}" class="message-empty">
+    <view class="message-empty-icon">✓</view>
+    <view class="message-empty-title">暂无新消息</view>
+    <view class="message-empty-copy">这里只显示服务端产生的真实业务提醒</view>
+  </view>
 </view>

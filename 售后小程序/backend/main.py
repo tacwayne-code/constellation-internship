@@ -372,79 +372,11 @@ if UPLOADS_ACCESS_MODE == "protected":
         return FileResponse(filepath)
 
 
-# ── 演示账号手机号映射：seed 数据使用真实手机号，确保「手机号登录」可用 ──
-# PD001 派单员手机号为 13800010002（与存量库一致）
-SEED_PHONES = {"PD001": "13800010002", "SH001": "13800000002", "SH002": "13800000003"}
-
-
-def seed_data(db: Session) -> None:
-    if db.query(User).first():
-        return
-
-    paidan = User(
-        username="PD001",
-        password_hash=get_password_hash("123456"),
-        role="paidan",
-        name="刘主管",
-        phone=SEED_PHONES["PD001"],
-    )
-    eng_user = User(
-        username="SH001",
-        password_hash=get_password_hash("123456"),
-        role="engineer",
-        name="张售后工程师",
-        phone=SEED_PHONES["SH001"],
-    )
-    eng_user2 = User(
-        username="SH002",
-        password_hash=get_password_hash("123456"),
-        role="engineer",
-        name="李工程师",
-        phone=SEED_PHONES["SH002"],
-    )
-
-    db.add_all([paidan, eng_user, eng_user2])
-    db.commit()
-
-    eng1 = Engineer(
-        user_id=eng_user.id,
-        name="张工程师",
-        phone=SEED_PHONES["SH001"],
-        department="华东维修一部",
-        specialty="液压/机械维修",
-    )
-    eng2 = Engineer(
-        user_id=eng_user2.id,
-        name="李工程师",
-        phone=SEED_PHONES["SH002"],
-        department="华东维修二部",
-        specialty="电气控制",
-    )
-    eng3 = Engineer(
-        name="王工程师",
-        phone="13566668888",
-        department="华南维修部",
-        specialty="机械装配",
-    )
-    db.add_all([eng1, eng2, eng3])
-    db.commit()
-
-
-def ensure_phone_login_data(db: Session) -> None:
-    """存量库修复：将早期脱敏手机号（如 138****0001）回填为真实手机号，保证手机号登录可用。
-    仅修正 seed 账号，管理员创建的其他账号不受影响。"""
-    for username, phone in SEED_PHONES.items():
-        user = db.query(User).filter(User.username == username).first()
-        if user and (not user.phone or "*" in user.phone):
-            user.phone = phone
-    db.commit()
-
-
 @app.on_event("startup")
 def on_startup() -> None:
-    db = next(get_db())
-    seed_data(db)
-    ensure_phone_login_data(db)
+    # 生产环境只建表，不创建任何账号、工程师或工单。
+    # 业务用户由统一微信身份网关在首次进入时按已审批角色创建。
+    logger.info("ASS started with production-empty-data policy")
 
 
 @app.get("/health")

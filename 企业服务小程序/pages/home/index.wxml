@@ -2,14 +2,7 @@
   <view class="greeting">
     <view class="greeting-name">{{user.name}}，{{greeting}}</view>
     <view class="greeting-sub">欢迎使用企业服务工作台</view>
-    <view wx:if="{{isDemo}}" class="demo-note">当前为演示身份，真实身份将由企业微信登录网关返回</view>
   </view>
-
-  <button wx:if="{{hasService}}" class="attention-row" bindtap="openPending">
-    <view class="attention-icon">!</view>
-    <view class="attention-copy"><text>您有 </text><text class="attention-count">{{pendingCount}}</text><text> 条待处理工单</text><view>请及时处理，避免超时</view></view>
-    <view class="arrow">›</view>
-  </button>
 
   <view class="module-list">
     <button wx:if="{{hasCrm}}" class="module-card crm-card" bindtap="openCrm">
@@ -20,7 +13,7 @@
 
     <button wx:if="{{hasService}}" class="module-card service-card" bindtap="openService">
       <view class="module-icon service-icon"><view class="headset-symbol">◔</view></view>
-      <view class="module-copy"><view class="module-title">售后服务</view><view class="module-desc">工单派发、工程师处理、服务进度跟踪，提升售后服务效率</view></view>
+      <view class="module-copy"><view class="module-title">ASS 售后服务</view><view class="module-desc">工单派发、工程师处理、服务进度跟踪；数量以 ASS 实时数据为准</view></view>
       <view class="module-arrow">›</view>
     </button>
   </view>

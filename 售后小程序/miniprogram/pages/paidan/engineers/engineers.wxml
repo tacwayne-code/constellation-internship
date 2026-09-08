@@ -53,7 +53,7 @@
         <button class="btn btn-success" bindtap="submitForm">{{editingId ? '保存修改' : '确认添加'}}</button>
       </view>
       <view wx:if="{{!editingId}}" style="font-size:22rpx;color:#86909c;text-align:center;margin-top:12rpx;">
-        添加后将自动生成登录账号，默认密码 123456
+        添加后建立工程师档案；登录权限由企业身份管理员授权
       </view>
     </view>
   </view>

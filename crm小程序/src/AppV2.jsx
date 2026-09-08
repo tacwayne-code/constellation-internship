@@ -17,7 +17,7 @@ import {
 } from "./domain/status.js";
 import { listOpportunityTransitions } from "./domain/stateMachines.js";
 import { Icon } from "./icons.jsx";
-import { money, shortMoney, todayText } from "./data.js";
+import { money, shortMoney, todayText } from "./formatters.js";
 import { listExpenseReports } from "./trip/tripApi.js";
 import { listEmployees, removeEmployee, reviewEmployee } from "./employees/employeeApi.js";
 
@@ -165,7 +165,7 @@ function ProductSearchPicker({ selected, onSelect, erpService }) {
           }}
         />
       </div>
-      {loading ? <p className="product-search-note">正在查询测试Odoo…</p> : null}
+      {loading ? <p className="product-search-note">正在查询 Odoo…</p> : null}
       {error ? <p className="product-search-error">{error}</p> : null}
       {!loading && deferredQuery.trim() && deferredQuery !== selectedLabel && !items.length && !error ? (
         <p className="product-search-note">没有匹配商品，请检查名称或编码</p>
@@ -240,7 +240,7 @@ function Home({ data, user, open, setTab }) {
     <div className="page home-page">
       <section className="home-heading">
         <div>
-          <h2>早上好，{user.name}</h2>
+          <h2>{new Date().getHours() < 12 ? "上午好" : new Date().getHours() < 18 ? "下午好" : "晚上好"}，{user.name}</h2>
           <p>{todayText()}</p>
         </div>
         <button className="checkin-button" onClick={() => open("visitForm")}>
@@ -315,7 +315,7 @@ function Home({ data, user, open, setTab }) {
       </div>
       <SectionTitle>最近客户</SectionTitle>
       <div className="customer-preview">
-        {data.customers.slice(0, 3).map((c, i) => (
+        {data.customers.length ? data.customers.slice(0, 3).map((c, i) => (
           <button key={c.id} onClick={() => open("customerDetail", c.id)}>
             <Avatar name={c.name} index={i} />
             <span>
@@ -327,10 +327,10 @@ function Home({ data, user, open, setTab }) {
             <Status text={c.status} />
             <Icon name="chevron" size={18} />
           </button>
-        ))}
-        <button className="view-all" onClick={() => setTab("customers")}>
+        )) : <div className="empty"><Icon name="users" /><p>暂无客户数据</p><small>新增客户后，最近客户会显示在这里</small></div>}
+        {data.customers.length ? <button className="view-all" onClick={() => setTab("customers")}>
           查看全部客户 <Icon name="chevron" size={16} />
-        </button>
+        </button> : null}
       </div>
     </div>
   );
@@ -837,12 +837,12 @@ function CustomerDetail({ customer, data, open, onDelete }) {
               onClick={() => setConfirmingDelete(true)}
             >
               <Icon name="trash" size={18} />
-              {hasRelatedRecords ? "删除测试客户及全部记录" : "删除客户"}
+              {hasRelatedRecords ? "删除客户及全部关联记录" : "删除客户"}
             </button>
             <p>
               {deletionBlockedReason ||
                 (hasRelatedRecords
-                  ? "将级联删除该客户在CRM中的全部测试记录，不影响未关联的其他客户。"
+                  ? "将级联删除该客户在 CRM 中的全部关联记录，不影响其他客户。"
                   : "该客户没有关联业务，可以直接删除。")}
             </p>
           </>
@@ -985,7 +985,7 @@ function VisitForm({ customers, customerId, onSave }) {
     const file = event.target.files?.[0];
     if (!file) return;
     if (file.size > 600 * 1024) {
-      setError("共享测试阶段单张现场照片不能超过600KB");
+      setError("单张现场照片不能超过 600KB");
       return;
     }
     const reader = new FileReader();
@@ -1184,7 +1184,7 @@ function BusinessForm({
           : sale && sourceOpportunity
           ? "已自动带入来源意向的商品、数量、价格和日期，请核对后保存"
           : sale
-            ? "实际销售需提交并确认客户购买信息后才能提交Odoo测试账套"
+            ? "实际销售需提交并确认客户购买信息后才能提交 Odoo"
             : "销售意向只用于需求预测，不占库存、不生成ERP订单"}
       </p>
       <div className="form-card">
@@ -1336,7 +1336,6 @@ function BusinessForm({
                   }
                 >
                   <option value="WH">总仓（WH）</option>
-                  <option value="MOCK-FAIL">模拟失败测试</option>
                 </select>
               </Field>
             </div>
@@ -1359,10 +1358,10 @@ function BusinessForm({
                   }
                 />
               </label>
-              <small>测试阶段仅保存附件名称，不上传正式文件</small>
+              <small>当前仅保存附件名称，文件上传将在对象存储接入后启用</small>
             </Field>
             <p className="inline-note">
-              已按Odoo预留总仓、税率、交付地址和商品编码；测试同步只创建报价草稿。
+              已按 Odoo 预留总仓、税率、交付地址和商品编码；同步只创建报价草稿。
             </p>
           </>
         ) : null}
@@ -1414,7 +1413,7 @@ function VisitDetail({ visit, open }) {
           ))}
         </div>
       ) : (
-        <p className="permission-note">该历史示例记录没有现场照片</p>
+        <p className="permission-note">该历史记录没有现场照片</p>
       )}
       <button
         className="primary wide"
@@ -1566,7 +1565,7 @@ function SaleDetail({ sale, submit, confirm, erp, retry, correct }) {
         ) : null}
         {sale.status === SaleStatus.CONFIRMED ? (
           <button className="primary wide" onClick={() => erp(sale.id)}>
-            提交Odoo测试账套
+            提交 Odoo
           </button>
         ) : null}
         {sale.status === SaleStatus.ERP_FAILED ? (
@@ -1587,7 +1586,7 @@ function SaleDetail({ sale, submit, confirm, erp, retry, correct }) {
       </div>
       <p className="permission-note">
         <Icon name="lock" size={16} />
-        测试阶段只创建Odoo报价草稿，不确认订单，不修改库存、采购和生产数据
+        当前只创建 Odoo 报价草稿，不自动确认订单，也不修改库存、采购和生产数据
       </p>
     </div>
   );
@@ -1695,12 +1694,12 @@ function Mine({ user, count, authMode, open, pendingEmployees }) {
         <h3>微信身份与共享权限</h3>
         <Info
           label="身份方式"
-          value={authMode === "WECHAT" ? "微信员工身份" : "员工测试身份"}
+          value={authMode === "WECHAT" ? "微信员工身份" : "非生产身份模式"}
         />
         <Info label="员工编号" value={user.id} />
         <Info label="当前版本" value="公司员工统一版" />
         <Info label="数据范围" value="全体员工共享" />
-        <Info label="保存位置" value="测试服务器统一保存" />
+        <Info label="保存位置" value="公司业务服务器" />
         <Info label="可追溯操作" value={`${count} 条`} />
         <p className="permission-note">
           <Icon name="lock" size={16} />
@@ -1715,13 +1714,13 @@ function Mine({ user, count, authMode, open, pendingEmployees }) {
         </button>
       ) : null}
       <div className="mine-card">
-        <h3>共享测试数据</h3>
+        <h3>共享业务数据</h3>
         <p className="permission-note">
           <Icon name="lock" size={16} />
-          所有员工使用相同业务版本；共享数据重置由测试服务器后台维护。
+          所有员工使用同一业务数据源；页面不生成示例客户或虚构指标。
         </p>
       </div>
-      <p className="version">CRM内部测试版 V0.5 · Odoo测试链路</p>
+      <p className="version">CRM 企业版 V1.0 · Odoo 数据接口</p>
     </div>
   );
 }

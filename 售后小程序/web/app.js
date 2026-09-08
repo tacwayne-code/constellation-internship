@@ -610,8 +610,8 @@ function renderLogin() {
       <div class="login-card">
         <div class="login-brand">
           <div class="login-logo">售</div>
-          <div class="login-title">售后服务平台</div>
-          <div class="login-subtitle">一站式售后与维保服务系统</div>
+          <div class="login-title">ASS 售后服务</div>
+          <div class="login-subtitle">请从企业服务工作台进入</div>
         </div>
         <form id="login-form">
           <div class="role-selector">
@@ -621,17 +621,17 @@ function renderLogin() {
           <input type="hidden" name="role" value="paidan">
           <div class="input-group">
             <label class="input-label">手机号 / 账号</label>
-            <div class="input-box"><input name="username" value="13800010002" placeholder="请输入手机号或工号"></div>
+            <div class="input-box"><input name="username" value="" autocomplete="username" placeholder="请输入手机号或工号"></div>
           </div>
           <div class="input-group">
             <label class="input-label">密码</label>
-            <div class="input-box"><input type="password" name="password" value="123456" placeholder="请输入密码"></div>
+            <div class="input-box"><input type="password" name="password" value="" autocomplete="current-password" placeholder="请输入密码"></div>
           </div>
           <button class="login-btn" type="submit">${state.loading ? "登录中..." : "登录系统"}</button>
           ${state.loginError ? `<div class="error-box">${esc(state.loginError)}</div>` : ""}
         </form>
       </div>
-      <div class="login-footer">演示账号：13800010002（派单）/ 13800000002（工程师），密码均为 123456</div>
+      <div class="login-footer">企业成员请返回微信小程序，从“ASS 售后服务”进入</div>
     </div>
   `;
 }
@@ -1211,8 +1211,8 @@ function bindEvents() {
       const form = document.getElementById("login-form");
       document.querySelectorAll("[data-role]").forEach((item) => item.classList.toggle("active", item === button));
       form.role.value = button.dataset.role;
-      form.username.value = button.dataset.role === "paidan" ? "13800010002" : "13800000002";
-      form.password.value = "123456";
+      form.username.value = "";
+      form.password.value = "";
     });
   });
 

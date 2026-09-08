@@ -1,6 +1,5 @@
 <view class="profile-page">
   <view class="profile-head"><view class="avatar">{{initial}}</view><view><view class="profile-name">{{user.name}}</view><view class="profile-id">{{user.id}}</view></view></view>
-  <view wx:if="{{isDemo}}" class="demo-banner">演示身份仅用于开发预览，发布前需接入企业微信登录网关。</view>
   <view class="profile-card"><view class="profile-label">当前角色</view><view wx:for="{{roles}}" wx:key="*this" class="role-line">{{item}}</view></view>
   <button class="logout-button" bindtap="logout">退出当前身份</button>
 </view>

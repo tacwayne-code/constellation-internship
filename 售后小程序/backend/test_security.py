@@ -13,9 +13,26 @@ os.environ["ODOO_USERNAME"] = ""
 os.environ["ODOO_PASSWORD"] = ""
 
 from fastapi.testclient import TestClient  # noqa: E402
-from main import LOGIN_MAX_FAILURES, app  # noqa: E402
+from main import LOGIN_MAX_FAILURES, app, get_password_hash  # noqa: E402
+from database import SessionLocal  # noqa: E402
+from models import Engineer, User  # noqa: E402
 
-# 使用上下文管理器以触发 startup 事件（种子数据初始化）
+
+def create_test_accounts():
+    """显式测试夹具；生产启动不创建这些账号。"""
+    db = SessionLocal()
+    paidan = User(username="PD001", password_hash=get_password_hash("123456"), role="paidan", name="测试派单员", phone="13800010002")
+    engineer_user = User(username="SH001", password_hash=get_password_hash("123456"), role="engineer", name="测试工程师", phone="13800000002")
+    db.add_all([paidan, engineer_user])
+    db.flush()
+    db.add(Engineer(user_id=engineer_user.id, name=engineer_user.name, phone=engineer_user.phone, department="测试部门", specialty="测试专业"))
+    db.commit()
+    db.close()
+
+
+create_test_accounts()
+
+# 使用上下文管理器以触发 startup 事件
 with TestClient(app) as client:
     # 1. health 暴露 uploads_mode
     h = client.get("/health")
