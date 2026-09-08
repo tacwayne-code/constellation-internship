@@ -1,4 +1,5 @@
 const config = require('../../config');
+const session = require('../../services/session');
 
 const ROLE_META = {
   sales: { name: '销售人员', abbr: '销', description: '客户、商机与拜访记录', tone: 'blue', key: 'sales' },
@@ -47,9 +48,21 @@ Page({
     this.openWeb('售后服务', config.serviceWebUrl, 'after_sales');
   },
 
-  openWeb(title, url, module) {
-    const ticket = getApp().globalData.session?.tickets?.[module];
-    const source = ticket ? `${url}${url.includes('?') ? '&' : '?'}login_ticket=${encodeURIComponent(ticket)}` : url;
-    wx.navigateTo({ url: `/pages/webview/index?title=${encodeURIComponent(title)}&src=${encodeURIComponent(source)}` });
+  async openWeb(title, url, module) {
+    wx.showLoading({ title: '正在确认身份', mask: true });
+    try {
+      // 网关票据只有短时有效期。每次进入业务模块都刷新票据，避免复用过期票据。
+      const current = await session.login();
+      if (!current?.employee) throw new Error(current?.message || '企业身份尚未授权');
+      getApp().setSession(current);
+      const ticket = current.tickets?.[module];
+      if (!ticket) throw new Error('当前身份没有该模块权限');
+      const source = `${url}${url.includes('?') ? '&' : '?'}login_ticket=${encodeURIComponent(ticket)}`;
+      wx.hideLoading();
+      wx.navigateTo({ url: `/pages/webview/index?title=${encodeURIComponent(title)}&src=${encodeURIComponent(source)}` });
+    } catch (error) {
+      wx.hideLoading();
+      wx.showToast({ title: error.message || '身份确认失败', icon: 'none', duration: 2500 });
+    }
   }
 });
