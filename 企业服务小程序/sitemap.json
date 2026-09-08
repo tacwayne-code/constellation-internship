@@ -1,0 +1,4 @@
+{
+  "desc": "企业服务工作台页面不允许微信站内索引",
+  "rules": [{ "action": "disallow", "page": "*" }]
+}

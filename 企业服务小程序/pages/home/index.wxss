@@ -1,0 +1,36 @@
+.home-page { padding: 44rpx 30rpx 40rpx; }
+.greeting { padding: 12rpx 6rpx 30rpx; }
+.greeting-name { color: #172B4D; font-size: 52rpx; font-weight: 700; letter-spacing: 1rpx; }
+.greeting-sub { margin-top: 16rpx; padding-left: 18rpx; border-left: 6rpx solid #F28C3A; color: #667085; font-size: 28rpx; line-height: 36rpx; }
+.demo-note { margin-top: 18rpx; color: #A56A22; font-size: 22rpx; }
+.attention-row { width: 100%; min-height: 142rpx; display: flex; align-items: center; padding: 26rpx 28rpx; border-radius: 20rpx; background: #fff; box-shadow: 0 10rpx 30rpx rgba(23, 43, 77, 0.07); text-align: left; }
+.attention-icon { width: 68rpx; height: 68rpx; flex: 0 0 auto; display: flex; align-items: center; justify-content: center; border-radius: 34rpx; background: #FFF3E8; color: #F28C3A; font-size: 42rpx; font-weight: 700; }
+.attention-copy { flex: 1; padding-left: 22rpx; color: #172B4D; font-size: 30rpx; font-weight: 600; }
+.attention-copy view { margin-top: 10rpx; color: #7A8494; font-size: 25rpx; font-weight: 400; }
+.attention-count { color: #F28C3A; font-size: 38rpx; }
+.arrow, .module-arrow { color: #8490A0; font-size: 54rpx; font-weight: 300; line-height: 1; }
+.module-list { margin-top: 30rpx; }
+.module-card { position: relative; width: 100%; min-height: 204rpx; display: flex; align-items: center; margin-bottom: 24rpx; padding: 30rpx 26rpx; overflow: hidden; border-radius: 20rpx; background: #fff; box-shadow: 0 10rpx 30rpx rgba(23, 43, 77, 0.07); text-align: left; }
+.module-card::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 8rpx; }
+.crm-card::before { background: #2878F0; }
+.service-card::before { background: #F28C3A; }
+.module-icon { width: 118rpx; height: 118rpx; flex: 0 0 auto; display: flex; align-items: center; justify-content: center; border-radius: 18rpx; }
+.crm-icon { background: #EAF3FF; }
+.service-icon { background: #FFF2E5; }
+.person-symbol { position: relative; width: 50rpx; height: 42rpx; margin-top: 30rpx; border-radius: 28rpx 28rpx 10rpx 10rpx; background: #3E90F6; }
+.person-symbol::before { content: ''; position: absolute; top: -44rpx; left: 11rpx; width: 28rpx; height: 28rpx; border-radius: 50%; background: #3E90F6; }
+.headset-symbol { color: #F28C3A; font-size: 72rpx; font-weight: 700; transform: rotate(-20deg); }
+.module-copy { flex: 1; min-width: 0; padding-left: 24rpx; }
+.module-title { color: #172B4D; font-size: 40rpx; font-weight: 700; }
+.module-desc { margin-top: 14rpx; color: #697586; font-size: 27rpx; line-height: 42rpx; }
+.module-arrow { color: #2878F0; }
+.service-card .module-arrow { color: #F28C3A; }
+.role-panel { margin-top: 34rpx; padding: 0 28rpx; overflow: hidden; border-radius: 20rpx; background: #fff; box-shadow: 0 10rpx 30rpx rgba(23, 43, 77, 0.06); }
+.role-title { padding: 28rpx 0; border-bottom: 1rpx solid #E9EDF2; color: #172B4D; font-size: 32rpx; font-weight: 700; }
+.role-row { min-height: 124rpx; display: flex; align-items: center; border-bottom: 1rpx solid #E9EDF2; }
+.role-row:last-child { border-bottom: 0; }
+.role-icon { width: 66rpx; height: 66rpx; flex: 0 0 auto; display: flex; align-items: center; justify-content: center; border-radius: 16rpx; color: #fff; font-size: 29rpx; font-weight: 700; }
+.role-icon.blue { background: #3E90F6; }.role-icon.orange { background: #F28C3A; }.role-icon.navy { background: #172B4D; }
+.role-copy { flex: 1; min-width: 0; padding-left: 20rpx; color: #172B4D; font-size: 29rpx; font-weight: 650; }
+.role-copy text { display: block; margin-top: 9rpx; overflow: hidden; color: #7A8494; font-size: 23rpx; font-weight: 400; text-overflow: ellipsis; white-space: nowrap; }
+.muted-arrow { color: #9BA5B3; }

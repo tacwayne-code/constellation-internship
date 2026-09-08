@@ -1,0 +1,6 @@
+.launch-page { min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; background: #172B4D; color: #fff; }
+.launch-mark { width: 108rpx; height: 108rpx; display: grid; place-items: center; border-radius: 28rpx; background: #F28C3A; font-size: 50rpx; font-weight: 700; }
+.launch-title { margin-top: 30rpx; font-size: 40rpx; font-weight: 700; letter-spacing: 2rpx; }
+.launch-copy { margin-top: 20rpx; color: #B9C8DD; font-size: 26rpx; }
+.launch-error { margin-top: 36rpx; text-align: center; color: #F7C5B8; font-size: 26rpx; }
+.launch-error button { width: 190rpx; height: 68rpx; margin-top: 30rpx; border: 1rpx solid #92A8C4; border-radius: 34rpx; color: #fff; font-size: 25rpx; }

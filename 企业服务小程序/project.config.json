@@ -1,0 +1,14 @@
+{
+  "description": "企业服务工作台：CRM 与售后工单统一入口",
+  "compileType": "miniprogram",
+  "appid": "wxe16e685757dedca4",
+  "projectname": "enterprise-service-workbench",
+  "miniprogramRoot": "./",
+  "setting": {
+    "urlCheck": true,
+    "es6": true,
+    "enhance": true,
+    "postcss": true,
+    "minified": true
+  }
+}

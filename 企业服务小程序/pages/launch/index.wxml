@@ -1,0 +1,9 @@
+<view class="launch-page">
+  <view class="launch-mark">企</view>
+  <view class="launch-title">企业服务工作台</view>
+  <view wx:if="{{loading}}" class="launch-copy">{{message}}</view>
+  <view wx:else class="launch-error">
+    <view>{{error}}</view>
+    <button bindtap="retry">重新核验</button>
+  </view>
+</view>

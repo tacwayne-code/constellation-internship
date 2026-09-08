@@ -1,0 +1,28 @@
+{
+  "pages": [
+    "pages/launch/index",
+    "pages/home/index",
+    "pages/webview/index",
+    "pages/messages/index",
+    "pages/profile/index"
+  ],
+  "window": {
+    "navigationBarTitleText": "企业服务工作台",
+    "navigationBarBackgroundColor": "#172B4D",
+    "navigationBarTextStyle": "white",
+    "backgroundColor": "#F5F7FA",
+    "backgroundTextStyle": "light"
+  },
+  "tabBar": {
+    "color": "#7A8494",
+    "selectedColor": "#2878F0",
+    "backgroundColor": "#FFFFFF",
+    "borderStyle": "white",
+    "list": [
+      { "pagePath": "pages/home/index", "text": "工作台" },
+      { "pagePath": "pages/messages/index", "text": "消息" },
+      { "pagePath": "pages/profile/index", "text": "我的" }
+    ]
+  },
+  "sitemapLocation": "sitemap.json"
+}
