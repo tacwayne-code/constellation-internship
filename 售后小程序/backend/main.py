@@ -1,4 +1,7 @@
 from datetime import datetime, timedelta, timezone
+import base64
+import hashlib
+import hmac
 import json
 import logging
 import os
@@ -109,6 +112,7 @@ LOGIN_MAX_FAILURES = int(os.getenv("LOGIN_MAX_FAILURES", "5"))
 LOGIN_LOCK_MINUTES = int(os.getenv("LOGIN_LOCK_MINUTES", "15"))
 COOKIE_SECURE = os.getenv("COOKIE_SECURE", "0").strip().lower() in ("1", "true", "yes")
 TOKEN_COOKIE_NAME = "aftersales_token"
+SSO_SHARED_SECRET = os.getenv("SSO_SHARED_SECRET", "").strip()
 
 Base.metadata.create_all(bind=engine)
 
@@ -255,6 +259,76 @@ def create_access_token(data: dict, expires_delta: timedelta | None = None) -> s
     expire = datetime.now(timezone.utc) + (expires_delta or timedelta(minutes=15))
     to_encode.update({"exp": expire})
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+
+
+def verify_sso_ticket(ticket: str) -> dict:
+    """验证统一身份网关短时票据，服务端从不信任前端传来的角色。"""
+    try:
+        version, encoded, signature = str(ticket or "").split(".")
+        expected = base64.urlsafe_b64encode(
+            hmac.new(SSO_SHARED_SECRET.encode(), encoded.encode(), hashlib.sha256).digest()
+        ).rstrip(b"=").decode()
+        if version != "v1" or not SSO_SHARED_SECRET or not hmac.compare_digest(signature, expected):
+            raise ValueError
+        raw = base64.urlsafe_b64decode(encoded + "=" * (-len(encoded) % 4))
+        payload = json.loads(raw.decode())
+        if payload.get("aud") != "service" or int(payload.get("exp") or 0) < int(time.time()):
+            raise ValueError
+        if payload.get("role") not in {"paidan", "engineer"} or not payload.get("sub") or not payload.get("name"):
+            raise ValueError
+        return payload
+    except Exception as exc:
+        raise HTTPException(status_code=401, detail="登录链接已失效，请返回小程序重试") from exc
+
+
+def sso_user(db: Session, payload: dict) -> User:
+    """为已授权的微信身份建立本地业务帐号；工程师同时具备工程师档案。"""
+    username = "WX" + hashlib.sha256(str(payload["sub"]).encode()).hexdigest()[:16].upper()
+    user = get_user_by_username(db, username)
+    if user and user.role != payload["role"]:
+        raise HTTPException(status_code=409, detail="管理员已调整角色，请重新进入小程序")
+    if not user:
+        user = User(
+            username=username,
+            password_hash=get_password_hash(secrets.token_urlsafe(32)),
+            role=payload["role"],
+            name=str(payload["name"])[:50],
+            phone="",
+        )
+        db.add(user)
+        db.flush()
+    else:
+        user.name = str(payload["name"])[:50]
+    if user.role == "engineer" and not user.engineer:
+        db.add(Engineer(user_id=user.id, name=user.name, phone="", department="待配置", specialty="待配置"))
+    db.commit()
+    db.refresh(user)
+    return user
+
+
+def login_response(user: User) -> JSONResponse:
+    access_token = create_access_token(
+        data={"sub": user.username},
+        expires_delta=timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES),
+    )
+    response = JSONResponse(
+        content={
+            "access_token": access_token,
+            "token_type": "bearer",
+            "role": user.role,
+            "user": UserOut.model_validate(user).model_dump(),
+        }
+    )
+    response.set_cookie(
+        key=TOKEN_COOKIE_NAME,
+        value=access_token,
+        max_age=ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+        httponly=True,
+        samesite="lax",
+        secure=COOKIE_SECURE,
+        path="/",
+    )
+    return response
 
 
 def get_current_user(
@@ -457,31 +531,13 @@ def login(req: LoginRequest, request: Request, db: Session = Depends(get_db)):
         raise HTTPException(status_code=400, detail=detail)
 
     login_limiter.reset(identifier, ip)
-    access_token = create_access_token(
-        data={"sub": user.username},
-        expires_delta=timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES),
-    )
+    return login_response(user)
 
-    # 同时下发 httpOnly Cookie：Web 端同源访问无需在 localStorage 保存 Token，
-    # 可有效降低 Token 被 XSS 窃取的风险
-    response = JSONResponse(
-        content={
-            "access_token": access_token,
-            "token_type": "bearer",
-            "role": user.role,
-            "user": UserOut.model_validate(user).model_dump(),
-        }
-    )
-    response.set_cookie(
-        key=TOKEN_COOKIE_NAME,
-        value=access_token,
-        max_age=ACCESS_TOKEN_EXPIRE_MINUTES * 60,
-        httponly=True,
-        samesite="lax",
-        secure=COOKIE_SECURE,
-        path="/",
-    )
-    return response
+
+@app.post("/auth/sso/handoff", response_model=LoginResponse)
+def sso_handoff(req: dict, db: Session = Depends(get_db)):
+    payload = verify_sso_ticket(str(req.get("ticket") or ""))
+    return login_response(sso_user(db, payload))
 
 
 @app.post("/auth/logout")

@@ -6,6 +6,9 @@ Page({
   async onLoad() {
     try {
       const current = await session.login();
+      if (!current || current.status === 'PENDING' || !current.employee) {
+        throw new Error(current?.message || '身份已登记，等待管理员授权');
+      }
       getApp().setSession(current);
       wx.switchTab({ url: '/pages/home/index' });
     } catch (error) {

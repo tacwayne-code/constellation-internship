@@ -43,18 +43,20 @@ Page({
   },
 
   openCrm() {
-    this.openWeb('销售 CRM', config.crmWebUrl);
+    this.openWeb('销售 CRM', config.crmWebUrl, 'crm');
   },
 
   openService() {
-    this.openWeb('售后服务', config.serviceWebUrl);
+    this.openWeb('售后服务', config.serviceWebUrl, 'after_sales');
   },
 
   openPending() {
     if (this.data.hasService) this.openService();
   },
 
-  openWeb(title, url) {
-    wx.navigateTo({ url: `/pages/webview/index?title=${encodeURIComponent(title)}&src=${encodeURIComponent(url)}` });
+  openWeb(title, url, module) {
+    const ticket = getApp().globalData.session?.tickets?.[module];
+    const source = ticket ? `${url}${url.includes('?') ? '&' : '?'}login_ticket=${encodeURIComponent(ticket)}` : url;
+    wx.navigateTo({ url: `/pages/webview/index?title=${encodeURIComponent(title)}&src=${encodeURIComponent(source)}` });
   }
 });

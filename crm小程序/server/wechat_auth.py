@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import os
 import secrets
 import threading
@@ -145,6 +146,28 @@ class EmployeeStore:
             if previous and previous != openid:
                 raise AuthError("该员工已绑定其他微信", 409, "EMPLOYEE_ALREADY_BOUND")
             employee["openid"] = openid
+            self._save(value)
+            return dict(employee)
+
+    def upsert_sso_employee(self, subject: str, name: str, role: str) -> dict[str, Any]:
+        """由已验签的网关票据同步员工；不把微信 openid 暴露为员工编号。"""
+        if role not in {"销售人员", "销售经理"}:
+            raise AuthError("身份没有 CRM 使用权限", 403, "CRM_ROLE_DENIED")
+        safe_name = str(name or "").strip()[:30]
+        if not safe_name:
+            raise AuthError("员工姓名不正确", 400, "EMPLOYEE_INVALID")
+        with self.lock:
+            value = self._load()
+            employee = next((row for row in value["employees"] if row.get("ssoSubject") == subject), None)
+            if not employee:
+                employee = {
+                    "id": f"WX-{hashlib.sha256(subject.encode()).hexdigest()[:12].upper()}",
+                    "phone": "",
+                    "openid": "",
+                    "ssoSubject": subject,
+                }
+                value["employees"].append(employee)
+            employee.update({"name": safe_name, "role": role, "dataScope": "ALL", "active": True, "status": "ACTIVE"})
             self._save(value)
             return dict(employee)
 
@@ -665,9 +688,12 @@ class AuthManager:
         with self.lock:
             self._purge()
             pending = self.tickets.pop(str(ticket or ""), None)
-        if not pending:
-            raise AuthError("登录链接已失效，请返回小程序重试", 401, "TICKET_INVALID")
-        employee = self.employees.find_id(pending["employeeId"])
+        if pending:
+            employee = self.employees.find_id(pending["employeeId"])
+        else:
+            from sso_ticket import verify_gateway_ticket
+            payload = verify_gateway_ticket(ticket, os.environ.get("SSO_SHARED_SECRET", ""), "crm")
+            employee = self.employees.upsert_sso_employee(payload["sub"], payload["name"], payload["role"])
         if not self._active(employee):
             raise AuthError("员工账号已停用", 403, "EMPLOYEE_DISABLED")
         session_id = self._token()

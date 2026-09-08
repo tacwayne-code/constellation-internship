@@ -1678,6 +1678,17 @@ async function bootstrap() {
   } catch (e) {
     /* 忽略：默认按 public 模式渲染 */
   }
+  const loginTicket = new URLSearchParams(window.location.search).get("login_ticket");
+  if (loginTicket) {
+    try {
+      const payload = await api("/auth/sso/handoff", { method: "POST", body: { ticket: loginTicket } });
+      saveSession(payload);
+    } finally {
+      const url = new URL(window.location.href);
+      url.searchParams.delete("login_ticket");
+      window.history.replaceState({}, "", `${url.pathname}${url.search}${url.hash}`);
+    }
+  }
   if (state.role) {
     try {
       await refreshAll();
