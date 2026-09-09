@@ -14,15 +14,15 @@ from typing import Any, Literal
 from fastapi import Depends, FastAPI, HTTPException, Query, Request, Response
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from .config import settings
 from .database import Base, engine, get_db
 from .migration import migrate_all
-from .models import AuditEvent, Customer, Identity, SyncRun, WorkOrder
-from .odoo import OdooError, odoo_client
+from .models import AuditEvent, Customer, Identity, IntegrationJob, SyncRun, WorkOrder
+from .odoo import OdooError, PROFILES, odoo_client
 from .security import COOKIE_NAME, authenticate_admin, create_admin_session, require_admin, sign_payload
 
 
@@ -49,6 +49,32 @@ class IdentityUpdate(BaseModel):
 
 class OdooImportBody(BaseModel):
     partnerIds: list[int] = Field(default_factory=list, max_length=200)
+
+
+class ContactBody(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+    phone: str = Field(default="", max_length=64)
+    email: str = Field(default="", max_length=240)
+    title: str = Field(default="", max_length=120)
+    isPrimary: bool = False
+
+
+class CustomerWriteBody(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    legacy_id: str = Field(default="", alias="legacyId", max_length=64)
+    name: str = Field(min_length=1, max_length=240)
+    phone: str = Field(default="", max_length=64)
+    mobile: str = Field(default="", max_length=64)
+    email: str = Field(default="", max_length=240)
+    address: str = Field(default="", max_length=1000)
+    owner_name: str = Field(default="", alias="ownerName", max_length=100)
+    contacts: list[ContactBody] = Field(default_factory=list, max_length=20)
+    idempotency_key: str = Field(default="", alias="idempotencyKey", max_length=160)
+
+
+class InternalCustomerUpsert(CustomerWriteBody):
+    odoo_partner_id: int | None = Field(default=None, alias="odooPartnerId", ge=1)
 
 
 @app.middleware("http")
@@ -96,6 +122,92 @@ def customer_view(row: dict[str, Any], db: Session) -> dict[str, Any]:
     }
 
 
+def local_customer_view(item: Customer) -> dict[str, Any]:
+    sync = (item.raw or {}).get("sync", {})
+    contacts = (item.raw or {}).get("contacts", [])
+    if not contacts and (item.phone or item.mobile):
+        contacts = [{"name": item.name, "phone": item.phone or item.mobile, "isPrimary": True}]
+    return {
+        "id": item.legacy_id or str(item.id),
+        "legacyId": item.legacy_id or "",
+        "name": item.name,
+        "phone": item.phone,
+        "mobile": item.mobile,
+        "email": item.email,
+        "address": item.address,
+        "ownerName": item.owner_name,
+        "owner": item.owner_name,
+        "contacts": contacts,
+        "erpCustomerId": str(item.odoo_partner_id or ""),
+        "erpCustomerCode": item.odoo_ref,
+        "erpSyncStatus": sync.get("status", "LOCAL_ONLY"),
+        "erpErrorCode": sync.get("errorCode", ""),
+        "active": item.active,
+        "source": item.source,
+        "createdAt": item.created_at.isoformat() if item.created_at else "",
+        "updatedAt": item.updated_at.isoformat() if item.updated_at else "",
+    }
+
+
+def require_internal(request: Request) -> str:
+    supplied = request.headers.get("X-Platform-Internal-Key", "")
+    if not settings.platform_internal_secret:
+        raise HTTPException(status_code=503, detail="内部业务桥尚未配置")
+    if not supplied or not secrets.compare_digest(supplied, settings.platform_internal_secret):
+        raise HTTPException(status_code=401, detail="内部业务桥认证失败")
+    return urllib.parse.unquote(request.headers.get("X-CRM-Actor-Name", "CRM"))[:100] or "CRM"
+
+
+def find_customer_duplicate(db: Session, body: CustomerWriteBody) -> Customer | None:
+    clauses = [Customer.name == body.name.strip()]
+    if body.phone:
+        clauses.append(Customer.phone == body.phone.strip())
+    if body.email:
+        clauses.append(Customer.email == body.email.strip())
+    if body.legacy_id:
+        clauses.append(Customer.legacy_id == body.legacy_id.strip())
+    return db.scalar(select(Customer).where(or_(*clauses)).limit(1))
+
+
+def apply_customer_body(item: Customer, body: CustomerWriteBody) -> None:
+    item.name = body.name.strip()
+    item.phone = body.phone.strip()
+    item.mobile = body.mobile.strip()
+    item.email = body.email.strip()
+    item.address = body.address.strip()
+    item.owner_name = body.owner_name.strip()
+    item.active = True
+    item.raw = {**(item.raw or {}), "contacts": [contact.model_dump() for contact in body.contacts]}
+
+
+def sync_customer(db: Session, item: Customer, actor: str, idempotency_key: str) -> IntegrationJob:
+    key = idempotency_key.strip() or f"customer:{item.legacy_id or item.id}:{item.updated_at.isoformat()}"
+    job = db.scalar(select(IntegrationJob).where(IntegrationJob.source == "ODOO", IntegrationJob.idempotency_key == key))
+    if job and job.status == "SUCCESS":
+        return job
+    if not job:
+        job = IntegrationJob(source="ODOO", operation="UPSERT_CUSTOMER", idempotency_key=key, target_type="customer", target_id=item.legacy_id or str(item.id))
+        db.add(job)
+    request_payload = {"name": item.name, "ref": item.legacy_id or item.odoo_ref, "phone": item.phone, "mobile": item.mobile, "email": item.email, "street": item.address, "is_company": True, "contacts": (item.raw or {}).get("contacts", [])}
+    job.request_payload = request_payload
+    job.status = "RUNNING"
+    job.attempts = int(job.attempts or 0) + 1
+    db.flush()
+    try:
+        result = odoo_client.upsert_customer(request_payload, item.odoo_partner_id)
+        item.odoo_partner_id = int(result["partnerId"])
+        item.odoo_ref = item.legacy_id or item.odoo_ref
+        item.source = "CRM_ODOO"
+        item.raw = {**(item.raw or {}), "sync": {"status": "SYNCED", "errorCode": ""}}
+        job.status, job.response_payload, job.error_code = "SUCCESS", {"partnerId": item.odoo_partner_id, "created": bool(result.get("created"))}, ""
+        audit(db, actor, "SYNC_CUSTOMER_TO_ODOO", "customer", item.legacy_id or str(item.id), {"jobId": job.id, "partnerId": item.odoo_partner_id})
+    except OdooError as error:
+        item.raw = {**(item.raw or {}), "sync": {"status": "FAILED", "errorCode": error.code}}
+        job.status, job.response_payload, job.error_code = "FAILED", {}, error.code
+        audit(db, actor, "SYNC_CUSTOMER_TO_ODOO", "customer", item.legacy_id or str(item.id), {"jobId": job.id, "errorCode": error.code})
+    return job
+
+
 @app.get("/health")
 def health(db: Session = Depends(get_db)):
     db.execute(select(func.count()).select_from(Identity)).scalar_one()
@@ -141,6 +253,57 @@ def overview(actor: str = Depends(require_admin), db: Session = Depends(get_db))
     }
 
 
+@app.get("/api/admin/customers")
+def admin_customers(query: str = "", actor: str = Depends(require_admin), db: Session = Depends(get_db)):
+    del actor
+    statement = select(Customer).where(Customer.active.is_(True)).order_by(Customer.updated_at.desc())
+    if query.strip():
+        term = f"%{query.strip()}%"
+        statement = statement.where(or_(Customer.name.ilike(term), Customer.phone.ilike(term), Customer.email.ilike(term), Customer.odoo_ref.ilike(term)))
+    return {"items": [local_customer_view(item) for item in db.scalars(statement.limit(200)).all()]}
+
+
+def create_or_update_customer(body: CustomerWriteBody, actor: str, db: Session, odoo_partner_id: int | None = None) -> tuple[Customer, IntegrationJob]:
+    item = find_customer_duplicate(db, body)
+    is_new = item is None
+    if not item:
+        legacy_id = body.legacy_id.strip() or f"CUS-{datetime.now(timezone.utc):%Y%m%d}-{secrets.token_hex(3).upper()}"
+        item = Customer(legacy_id=legacy_id, name=body.name.strip(), source="CRM")
+        db.add(item)
+    if odoo_partner_id and not item.odoo_partner_id:
+        item.odoo_partner_id = odoo_partner_id
+    apply_customer_body(item, body)
+    db.flush()
+    job = sync_customer(db, item, actor, body.idempotency_key)
+    audit(db, actor, "CREATE_CUSTOMER" if is_new else "UPDATE_CUSTOMER", "customer", item.legacy_id or str(item.id), {"syncJobId": job.id, "syncStatus": job.status})
+    db.commit()
+    db.refresh(item)
+    return item, job
+
+
+@app.post("/api/admin/customers", status_code=201)
+def admin_create_customer(body: CustomerWriteBody, actor: str = Depends(require_admin), db: Session = Depends(get_db)):
+    item, job = create_or_update_customer(body, actor, db)
+    return {"item": local_customer_view(item), "sync": {"status": job.status, "errorCode": job.error_code}}
+
+
+@app.post("/api/internal/crm/customers/upsert", status_code=201)
+def internal_upsert_customer(body: InternalCustomerUpsert, actor: str = Depends(require_internal), db: Session = Depends(get_db)):
+    item, job = create_or_update_customer(body, actor, db, body.odoo_partner_id)
+    return {"item": local_customer_view(item), "sync": {"status": job.status, "errorCode": job.error_code}}
+
+
+@app.post("/api/admin/customers/{customer_id}/sync")
+def retry_customer_sync(customer_id: int, actor: str = Depends(require_admin), db: Session = Depends(get_db)):
+    item = db.get(Customer, customer_id)
+    if not item:
+        raise HTTPException(status_code=404, detail="客户不存在")
+    job = sync_customer(db, item, actor, f"customer-retry:{item.id}:{secrets.token_hex(6)}")
+    db.commit()
+    db.refresh(item)
+    return {"item": local_customer_view(item), "sync": {"status": job.status, "errorCode": job.error_code}}
+
+
 @app.get("/api/admin/identities")
 def identities(status: str = "", query: str = "", actor: str = Depends(require_admin), db: Session = Depends(get_db)):
     del actor
@@ -179,6 +342,27 @@ def preview_odoo(limit: int = Query(20, ge=1, le=200), since: str = "", actor: s
     except OdooError as error:
         raise HTTPException(status_code=502, detail=str(error)) from error
     return {"items": [{key: value for key, value in row.items() if key != "raw"} for row in rows], "summary": {"discovered": len(rows), "new": sum(row["state"] == "NEW" for row in rows), "updated": sum(row["state"] == "UPDATE" for row in rows), "conflicts": 0}}
+
+
+@app.get("/api/admin/odoo/profiles/status")
+def odoo_profiles(actor: str = Depends(require_admin)):
+    del actor
+    try:
+        return {"version": odoo_client.version(), "writeEnabled": settings.odoo_write_enabled, "profiles": odoo_client.capabilities()}
+    except OdooError as error:
+        raise HTTPException(status_code=502, detail=str(error)) from error
+
+
+@app.get("/api/admin/odoo/data/{profile_key}")
+def preview_odoo_profile(profile_key: str, limit: int = Query(20, ge=1, le=100), since: str = "", actor: str = Depends(require_admin)):
+    del actor
+    if profile_key not in PROFILES:
+        raise HTTPException(status_code=404, detail="未知的 Odoo 业务数据类型")
+    try:
+        rows = odoo_client.read_profile(profile_key, limit=limit, since=since)
+    except OdooError as error:
+        raise HTTPException(status_code=502, detail=str(error)) from error
+    return {"profile": profile_key, "label": PROFILES[profile_key].label, "items": rows, "count": len(rows)}
 
 
 @app.post("/api/admin/odoo/customers/import")

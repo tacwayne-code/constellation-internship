@@ -1,5 +1,10 @@
 # 放入 crm.inspiri.cn 的 443 server 块，且必须位于 CRM 的 location / 之前。
 # /platform/api/* 转到统一平台 API；/platform/* 转到管理后台静态入口。
+# 内部 CRM 桥只允许容器网络访问，禁止通过公网路径转发。
+location ^~ /platform/api/internal/ {
+    return 404;
+}
+
 location /platform/api/ {
     proxy_pass http://127.0.0.1:8011/api/;
     proxy_set_header Host $host;
@@ -16,4 +21,3 @@ location /platform/ {
     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
     proxy_set_header X-Forwarded-Proto $scheme;
 }
-

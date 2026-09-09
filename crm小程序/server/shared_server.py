@@ -21,10 +21,12 @@ try:
     from .odoo_adapter import OdooAdapterError, create_erp_adapter_from_environment
     from .amap_route import RouteAdapterError, create_route_adapter_from_environment
     from .wechat_auth import AuthError, AuthManager, create_auth_manager_from_environment
+    from .platform_connector import create_platform_connector_from_environment
 except ImportError:  # pragma: no cover - direct script execution
     from odoo_adapter import OdooAdapterError, create_erp_adapter_from_environment
     from amap_route import RouteAdapterError, create_route_adapter_from_environment
     from wechat_auth import AuthError, AuthManager, create_auth_manager_from_environment
+    from platform_connector import create_platform_connector_from_environment
 
 MAX_BODY = 5 * 1024 * 1024
 RESOURCES = {
@@ -232,6 +234,7 @@ class SharedCrmHandler(BaseHTTPRequestHandler):
     state: SharedCrmState
     static_root: Path | None = None
     erp_adapter: Any
+    platform_connector: Any
     route_adapter: Any
     auth_manager: AuthManager
     allowed_origins: set[str] = set()
@@ -320,6 +323,7 @@ class SharedCrmHandler(BaseHTTPRequestHandler):
                         "storage": "SHARED_JSON",
                         "runtime": "PYTHON_STDLIB",
                         "erpMode": self.erp_adapter.mode,
+                        "customerMasterMode": self.platform_connector.mode,
                         "routeMode": self.route_adapter.mode,
                         "authMode": self.auth_manager.mode,
                         "revision": self.state.db.get("revision", 0),
@@ -863,6 +867,7 @@ class SharedCrmHandler(BaseHTTPRequestHandler):
                         if collection == "customers":
                             saved.setdefault("ownerId", actor["id"])
                             saved.setdefault("ownerName", actor["name"])
+                            saved = self.platform_connector.upsert_customer(saved, actor)
                         self.state.db[collection].insert(0, saved)
                     self.state.commit()
                     revision = self.state.db["revision"]
@@ -894,6 +899,7 @@ class SharedCrmHandler(BaseHTTPRequestHandler):
                     )
                     if collection == "customers":
                         self.state.assert_unique_customer(saved, item_id)
+                        saved = self.platform_connector.upsert_customer(saved, actor)
                     self.state.assert_relations(collection, saved)
                     self.state.db[collection][index] = saved
                     self.state.commit()
@@ -1014,6 +1020,7 @@ def create_server(
     static_root: Path | None = None,
     seed_file: Path | None = None,
     erp_adapter: Any | None = None,
+    platform_connector: Any | None = None,
     route_adapter: Any | None = None,
     auth_manager: AuthManager | None = None,
     auth_mode: str = "HEADER_TEST",
@@ -1028,6 +1035,7 @@ def create_server(
     ConfiguredHandler.state = shared_state
     ConfiguredHandler.static_root = root
     ConfiguredHandler.erp_adapter = erp_adapter or create_erp_adapter_from_environment()
+    ConfiguredHandler.platform_connector = platform_connector or create_platform_connector_from_environment()
     ConfiguredHandler.route_adapter = route_adapter or create_route_adapter_from_environment()
     ConfiguredHandler.auth_manager = auth_manager or AuthManager(
         data_file.with_name("employees.json"),

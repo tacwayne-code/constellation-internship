@@ -28,6 +28,8 @@ class Settings:
     odoo_username: str
     odoo_api_key: str
     odoo_timeout_seconds: int
+    odoo_write_enabled: bool
+    platform_internal_secret: str
 
     @classmethod
     def from_environment(cls) -> "Settings":
@@ -49,6 +51,8 @@ class Settings:
             odoo_username=os.getenv("ODOO_USERNAME", "").strip(),
             odoo_api_key=os.getenv("ODOO_API_KEY", os.getenv("ODOO_PASSWORD", "")).strip(),
             odoo_timeout_seconds=int(os.getenv("ODOO_TIMEOUT_SECONDS", "20")),
+            odoo_write_enabled=os.getenv("ODOO_WRITE_ENABLED", "0").lower() in {"1", "true", "yes"},
+            platform_internal_secret=os.getenv("PLATFORM_INTERNAL_SECRET", "").strip(),
         )
 
     @property

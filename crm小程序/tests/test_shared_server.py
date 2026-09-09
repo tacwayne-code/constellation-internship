@@ -96,6 +96,17 @@ class FakeRouteAdapter:
         }
 
 
+class FakePlatformConnector:
+    mode = "UNIFIED_PLATFORM_TEST"
+
+    def __init__(self):
+        self.calls = []
+
+    def upsert_customer(self, customer, actor):
+        self.calls.append((customer["id"], actor["id"]))
+        return {**customer, "erpCustomerId": "991", "erpCustomerCode": customer["id"], "erpSyncStatus": "SYNCED"}
+
+
 class SharedServerTest(unittest.TestCase):
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory(prefix="crm-python-api-")
@@ -221,6 +232,37 @@ class SharedServerTest(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertEqual(payload["item"]["updatedBy"], "USR-00001")
         self.assertTrue(self.data_file.exists())
+
+    def test_customer_create_uses_unified_platform_bridge(self):
+        connector = FakePlatformConnector()
+        bridged = create_server(
+            "127.0.0.1",
+            0,
+            self.data_file,
+            seed_file=self.seed_file,
+            erp_adapter=self.erp_adapter,
+            route_adapter=self.route_adapter,
+            platform_connector=connector,
+            state=self.server.RequestHandlerClass.state,
+            auth_manager=self.server.RequestHandlerClass.auth_manager,
+        )
+        thread = threading.Thread(target=bridged.serve_forever, daemon=True)
+        thread.start()
+        try:
+            status, payload = request(
+                f"http://127.0.0.1:{bridged.server_address[1]}",
+                "/api/customers",
+                method="POST",
+                body={"name": "【测试】统一平台桥客户", "contacts": [{"name": "联系人", "phone": "18800008888"}]},
+            )
+            self.assertEqual(status, 201)
+            self.assertEqual(payload["item"]["erpCustomerId"], "991")
+            self.assertEqual(payload["item"]["erpSyncStatus"], "SYNCED")
+            self.assertEqual(connector.calls[0][1], "USR-00018")
+        finally:
+            bridged.shutdown()
+            bridged.server_close()
+            thread.join(timeout=3)
 
     def test_orphan_record_and_reset_permission_are_blocked(self):
         status, payload = request(

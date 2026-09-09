@@ -3,7 +3,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 const NAV = [
   ["home", "home", "首页"],
   ["people", "people", "人员与角色"],
-  ["odoo", "database", "Odoo 客户同步"],
+  ["customers", "people", "客户资料"],
+  ["odoo", "database", "Odoo 数据中心"],
   ["health", "pulse", "集成状态"],
   ["audit", "document", "操作审计"],
 ];
@@ -112,10 +113,11 @@ function IdentityRow({ item, onSave, busy }) {
   </tr>;
 }
 
-function OdooPanel({ overview, preview, onPreview, onImport, selected, setSelected, busy }) {
+function OdooPanel({ overview, preview, onPreview, onImport, selected, setSelected, busy, profiles }) {
   const sync = preview?.summary || overview?.lastSync || {};
   return <aside className="odoo-panel">
-    <header><div><h2>Odoo 客户同步</h2><p>只读预览后再确认写入统一客户库</p></div><span className={`dot ${overview?.integrations?.find((x) => x.name === "Odoo API")?.status === "READY" ? "ok" : "idle"}`} /></header>
+    <header><div><h2>Odoo 数据中心</h2><p>统一服务 CRM、采购、仓库与生产看板</p></div><span className={`dot ${overview?.integrations?.find((x) => x.name === "Odoo API")?.status === "READY" ? "ok" : "idle"}`} /></header>
+    {profiles?.profiles?.length ? <div className="profile-grid">{profiles.profiles.map((profile) => <span key={profile.key} className={profile.available && profile.access?.read ? "ready" : "missing"}>{profile.label}<small>{profile.available && profile.access?.read ? "可读取" : "未安装"}</small></span>)}</div> : null}
     <div className="sync-numbers"><p>发现客户<strong>{sync.discovered ?? 0}</strong></p><p>新增<strong>{sync.new ?? sync.created ?? 0}</strong></p><p>更新<strong>{sync.updated ?? 0}</strong></p><p>冲突<strong className="danger">{sync.conflicts ?? 0}</strong></p></div>
     <button className="primary" onClick={onPreview} disabled={busy}>{busy ? "正在连接…" : "预览同步"}</button>
     {preview ? <div className="preview-list">
@@ -124,6 +126,32 @@ function OdooPanel({ overview, preview, onPreview, onImport, selected, setSelect
       <button className="secondary full" disabled={!selected.size || busy} onClick={onImport}>确认导入所选客户</button>
     </div> : <div className="sync-help"><Icon name="database"/><p>首次仅预览 20 条客户，不会直接修改 CRM 或 Odoo。</p></div>}
   </aside>;
+}
+
+function CustomerPanel({ items, onCreate, busy }) {
+  const [draft, setDraft] = useState({ name: "", phone: "", email: "", address: "", ownerName: "" });
+  const submit = async (event) => {
+    event.preventDefault();
+    const saved = await onCreate(draft);
+    if (saved) setDraft({ name: "", phone: "", email: "", address: "", ownerName: "" });
+  };
+  return <section className="customer-panel">
+    <header><div><h1>客户资料</h1><p>在这里新增的客户会进入统一客户库，并同步写入 Odoo</p></div></header>
+    <div className="customer-layout">
+      <form className="customer-form" onSubmit={submit}>
+        <h2>新增客户</h2>
+        <label>客户名称<input required value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value })} placeholder="企业或客户名称" /></label>
+        <label>联系电话<input value={draft.phone} onChange={(event) => setDraft({ ...draft, phone: event.target.value })} placeholder="手机或座机" /></label>
+        <label>邮箱<input type="email" value={draft.email} onChange={(event) => setDraft({ ...draft, email: event.target.value })} placeholder="选填" /></label>
+        <label>地址<textarea value={draft.address} onChange={(event) => setDraft({ ...draft, address: event.target.value })} placeholder="客户地址" /></label>
+        <label>负责人<input value={draft.ownerName} onChange={(event) => setDraft({ ...draft, ownerName: event.target.value })} placeholder="销售负责人" /></label>
+        <button className="primary" disabled={busy || !draft.name.trim()}>{busy ? "正在写入…" : "保存并同步到 Odoo"}</button>
+      </form>
+      <div className="customer-list"><div className="preview-head"><strong>统一客户库</strong><span>{items.length} 个客户</span></div>
+        {items.length ? items.map((item) => <article key={item.id}><span className="avatar">{item.name.slice(0, 1)}</span><p><strong>{item.name}</strong><small>{item.phone || item.email || "未填写联系方式"}</small></p><em className={`sync-${(item.erpSyncStatus || "LOCAL_ONLY").toLowerCase()}`}>{item.erpSyncStatus === "SYNCED" ? `Odoo #${item.erpCustomerId}` : item.erpSyncStatus === "FAILED" ? "同步失败" : "仅本地"}</em></article>) : <div className="empty-state"><Icon name="people" size={34}/><h3>还没有客户</h3><p>新增第一个真实客户后会显示在这里。</p></div>}
+      </div>
+    </div>
+  </section>;
 }
 
 function HealthPanel({ items = [], onRefresh }) {
@@ -146,11 +174,14 @@ function AppShell({ me, onLogout }) {
   const [preview, setPreview] = useState(null);
   const [selected, setSelected] = useState(new Set());
   const [syncBusy, setSyncBusy] = useState(false);
+  const [customers, setCustomers] = useState([]);
+  const [customerBusy, setCustomerBusy] = useState(false);
+  const [profiles, setProfiles] = useState(null);
   const [notice, setNotice] = useState("");
 
   const load = useCallback(async () => {
-    const [nextOverview, people, events] = await Promise.all([request("/api/admin/overview"), request("/api/admin/identities"), request("/api/admin/audit?limit=30")]);
-    setOverview(nextOverview); setIdentities(people.items); setAudit(events.items);
+    const [nextOverview, people, events, customerRows] = await Promise.all([request("/api/admin/overview"), request("/api/admin/identities"), request("/api/admin/audit?limit=30"), request("/api/admin/customers")]);
+    setOverview(nextOverview); setIdentities(people.items); setAudit(events.items); setCustomers(customerRows.items);
   }, []);
   useEffect(() => { load().catch((error) => setNotice(error.message)); }, [load]);
   const visible = useMemo(() => identities.filter((item) => (filter === "ALL" || item.status === filter) && `${item.displayName}${item.subjectMasked}`.toLowerCase().includes(query.trim().toLowerCase())), [identities, filter, query]);
@@ -174,6 +205,19 @@ function AppShell({ me, onLogout }) {
     catch (error) { setNotice(error.message); }
     finally { setSyncBusy(false); }
   };
+  const createCustomer = async (draft) => {
+    setCustomerBusy(true);
+    try {
+      const result = await request("/api/admin/customers", { method: "POST", body: JSON.stringify({ ...draft, idempotencyKey: `admin-${Date.now()}` }) });
+      setNotice(result.sync.status === "SUCCESS" ? `${draft.name}已写入统一客户库和 Odoo` : `${draft.name}已保存，但 Odoo 同步失败，可稍后重试`);
+      await load();
+      return true;
+    } catch (error) { setNotice(error.message); return false; }
+    finally { setCustomerBusy(false); }
+  };
+  useEffect(() => {
+    if (active === "odoo" && !profiles) request("/api/admin/odoo/profiles/status").then(setProfiles).catch((error) => setNotice(error.message));
+  }, [active, profiles]);
   const logout = async () => { await request("/api/admin/session", { method: "DELETE" }).catch(() => {}); onLogout(); };
   return <div className="app-shell">
     <aside className="sidebar"><div className="brand"><div className="brand-mark small"><span/><span/><span/><span/></div><strong>群星企业应用<br/>管理后台</strong></div><nav>{NAV.map(([id, icon, label]) => <button key={id} title={label} className={active === id ? "active" : ""} onClick={() => setActive(id)}><Icon name={icon}/><span>{label}</span></button>)}</nav><div className="side-bottom"><button title="系统设置"><Icon name="settings"/><span>系统设置</span></button><button title="安全退出" onClick={logout}><Icon name="logout"/><span>安全退出</span></button></div></aside>
@@ -181,8 +225,9 @@ function AppShell({ me, onLogout }) {
       <div className="content"><StatStrip overview={overview}/>
         <div className={`main-layout ${active !== "people" && active !== "home" ? "single" : ""}`}>
           {(active === "people" || active === "home") ? <section className="people-panel"><header><div><h1>人员与角色</h1><p>统一控制企业小程序入口与 CRM、ASS 业务权限</p></div><div className="search"><Icon name="search" size={17}/><input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="搜索姓名或身份"/></div></header><div className="tabs">{[["ALL", "全部人员"], ["PENDING", "待授权"], ["ACTIVE", "已授权"], ["DISABLED", "已禁用"]].map(([id, label]) => <button key={id} className={filter === id ? "active" : ""} onClick={() => setFilter(id)}>{label}{id !== "ALL" ? ` (${overview?.identities?.[id.toLowerCase()] || 0})` : ""}</button>)}</div><IdentityTable items={visible} onSave={saveIdentity} busySubject={busySubject}/></section> : null}
-          {(active === "people" || active === "home") ? <div className="right-rail"><OdooPanel overview={overview} preview={preview} onPreview={loadPreview} onImport={importSelected} selected={selected} setSelected={setSelected} busy={syncBusy}/><HealthPanel items={overview?.integrations} onRefresh={load}/></div> : null}
-          {active === "odoo" ? <OdooPanel overview={overview} preview={preview} onPreview={loadPreview} onImport={importSelected} selected={selected} setSelected={setSelected} busy={syncBusy}/> : null}
+          {(active === "people" || active === "home") ? <div className="right-rail"><OdooPanel overview={overview} preview={preview} onPreview={loadPreview} onImport={importSelected} selected={selected} setSelected={setSelected} busy={syncBusy} profiles={profiles}/><HealthPanel items={overview?.integrations} onRefresh={load}/></div> : null}
+          {active === "customers" ? <CustomerPanel items={customers} onCreate={createCustomer} busy={customerBusy}/> : null}
+          {active === "odoo" ? <OdooPanel overview={overview} preview={preview} onPreview={loadPreview} onImport={importSelected} selected={selected} setSelected={setSelected} busy={syncBusy} profiles={profiles}/> : null}
           {active === "health" ? <HealthPanel items={overview?.integrations} onRefresh={load}/> : null}
           {active === "audit" ? <AuditTable items={audit}/> : null}
         </div>

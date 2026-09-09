@@ -134,6 +134,31 @@ class SyncRun(Base):
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
+class IntegrationJob(Base):
+    """Durable record of an outbound write to Odoo.
+
+    The request contains business fields only. Credentials, cookies and raw Odoo
+    errors must never be stored here.
+    """
+
+    __tablename__ = "integration_jobs"
+    __table_args__ = (UniqueConstraint("source", "idempotency_key"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    source: Mapped[str] = mapped_column(String(32), index=True)
+    operation: Mapped[str] = mapped_column(String(80), index=True)
+    idempotency_key: Mapped[str] = mapped_column(String(160), index=True)
+    status: Mapped[str] = mapped_column(String(20), default="PENDING", index=True)
+    target_type: Mapped[str] = mapped_column(String(50), default="")
+    target_id: Mapped[str] = mapped_column(String(120), default="")
+    request_payload: Mapped[dict] = mapped_column(JSON, default=dict)
+    response_payload: Mapped[dict] = mapped_column(JSON, default=dict)
+    error_code: Mapped[str] = mapped_column(String(80), default="")
+    attempts: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, onupdate=utc_now)
+
+
 class AuditEvent(Base):
     __tablename__ = "audit_events"
 
@@ -145,4 +170,3 @@ class AuditEvent(Base):
     detail: Mapped[dict] = mapped_column(JSON, default=dict)
     result: Mapped[str] = mapped_column(String(20), default="SUCCESS")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, index=True)
-
