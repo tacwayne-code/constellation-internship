@@ -119,3 +119,21 @@ def test_internal_customer_list_requires_secret_and_uses_stable_odoo_id(tmp_path
     )
     assert response.status_code == 200
     assert response.json()["items"][0]["id"] == "ODOO-2467"
+
+
+def test_ass_search_phone_details_and_auth(tmp_path: Path):
+    client = build_client(tmp_path)
+    from app.database import SessionLocal
+    from app.models import Customer
+    with SessionLocal() as db:
+        db.add(Customer(name="售后测试企业", phone="13800123456", address="测试地址", odoo_partner_id=456, source="ODOO"))
+        db.add(Customer(name="停用企业", phone="13800123456", odoo_partner_id=457, active=False))
+        db.commit()
+    url = "/api/internal/ass/customers"
+    assert client.get(url).status_code == 401
+    headers = {"X-Platform-Internal-Key": "test-internal-secret"}
+    rows = client.get(url, params={"keyword": "123456"}, headers=headers).json()["items"]
+    assert len(rows) == 1 and rows[0]["id"] == 456
+    assert rows[0]["address"] == "测试地址"
+    assert client.get(url, params={"keyword": "%"}, headers=headers).json()["items"] == []
+    assert client.get(url, params={"partner_id": 456}, headers=headers).json()["items"] == rows

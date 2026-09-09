@@ -1390,6 +1390,7 @@ function bindEvents() {
     const dropdown = document.getElementById("odoo-dropdown");
     const hintBox = document.getElementById("odoo-hint");
     let odooSearchTimer = null;
+    let customerSearchVersion = 0;
 
     const hideDropdown = () => { if (dropdown) dropdown.style.display = "none"; };
     const showDropdown = () => { if (dropdown && dropdown.innerHTML) dropdown.style.display = "block"; };
@@ -1408,16 +1409,19 @@ function bindEvents() {
     };
 
     const searchOdoo = async () => {
+      const version = ++customerSearchVersion;
       const keyword = customerInput.value.trim();
       if (!keyword) { state.odooClients = []; hideDropdown(); updateHint(""); return; }
       updateHint("搜索中...");
       try {
         const res = await api(`/api/odoo/customers?keyword=${encodeURIComponent(keyword)}&limit=10`);
+        if (version !== customerSearchVersion || !customerInput.isConnected) return;
         const items = (res && res.items) || [];
         state.odooClients = items;
         renderDropdown();
-        updateHint(items.length ? `已从 Odoo 找到 ${items.length} 个客户，点击选择（也可手动输入）` : "Odoo 未找到匹配客户，可直接手动输入");
+        updateHint(items.length ? `找到 ${items.length} 个客户，点击带入资料` : "未找到匹配客户，可手动填写");
       } catch (err) {
+        if (version !== customerSearchVersion || !customerInput.isConnected) return;
         state.odooClients = [];
         hideDropdown();
         updateHint(err.message || "Odoo 服务不可用，请手动输入客户信息");
@@ -1439,6 +1443,8 @@ function bindEvents() {
     }
 
     const selectOdooCustomer = (name, partnerId, address, phone) => {
+      ++customerSearchVersion;
+      clearTimeout(odooSearchTimer);
       customerInput.value = name;
       state.odooPartnerId = String(partnerId);
       state.odooClients = [];
@@ -1446,7 +1452,7 @@ function bindEvents() {
       updateHint("");
       // 联系电话：客户带出（优先手机号，其次座机），可手动修改
       const phoneInput = createOrderForm.querySelector('input[name="customer_phone"]');
-      if (phoneInput && phone) phoneInput.value = phone;
+      if (phoneInput) phoneInput.value = phone || "";
       if (address) {
         // 客户地址已带出：直接显示，同时填充隐藏的地址输入框
         const addressInput = createOrderForm.querySelector('input[name="address"]');
@@ -1455,6 +1461,8 @@ function bindEvents() {
         if (autoText) autoText.textContent = address;
         setAddressMode("auto");
       } else {
+        const addressInput = createOrderForm.querySelector('input[name="address"]');
+        if (addressInput) addressInput.value = "";
         // 客户无地址：切回手动填写
         setAddressMode("manual");
       }
@@ -1462,6 +1470,9 @@ function bindEvents() {
 
     if (customerInput) {
       customerInput.addEventListener("input", () => {
+        ++customerSearchVersion;
+        state.odooClients = [];
+        hideDropdown();
         clearTimeout(odooSearchTimer);
         state.odooPartnerId = "";
         if (!customerInput.value.trim()) {

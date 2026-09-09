@@ -402,6 +402,26 @@ def _require_odoo():
         )
 
 
+def _platform_customers(**params):
+    base = os.getenv("PLATFORM_BASE_URL", "").strip().rstrip("/")
+    secret = os.getenv("PLATFORM_INTERNAL_SECRET", "")
+    if not secret:
+        raise HTTPException(status_code=503, detail="客户库连接尚未配置，可手动填写")
+    request = urllib.request.Request(
+        base + "/api/internal/ass/customers?" + urllib.parse.urlencode(params),
+        headers={"X-Platform-Internal-Key": secret},
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=8) as response:
+            payload = json.load(response)
+        items = payload["items"]
+        if not isinstance(items, list):
+            raise ValueError("invalid items")
+        return {"items": items, "total": len(items), "source": "platform"}
+    except (urllib.error.URLError, TimeoutError, ValueError, KeyError, TypeError):
+        raise HTTPException(status_code=502, detail="客户库暂时无法连接，请重试或手动填写") from None
+
+
 @app.get("/api/odoo/customers")
 def search_odoo_customers(
     keyword: str | None = Query(None, max_length=100, description="按客户名称/电话/税号模糊搜索"),
@@ -412,6 +432,8 @@ def search_odoo_customers(
     """从 Odoo 搜索客户数据（仅派单员可用）。"""
     if current_user.role != "paidan":
         raise HTTPException(status_code=403, detail="无权操作")
+    if os.getenv("PLATFORM_BASE_URL", "").strip():
+        return _platform_customers(keyword=keyword or "", limit=limit)
     _require_odoo()
     try:
         customers = odoo_client.search_customers(keyword=keyword or "", limit=limit)
@@ -430,6 +452,11 @@ def get_odoo_customer(
     """获取单个 Odoo 客户详情（仅派单员可用）。"""
     if current_user.role != "paidan":
         raise HTTPException(status_code=403, detail="无权操作")
+    if os.getenv("PLATFORM_BASE_URL", "").strip():
+        result = _platform_customers(partner_id=partner_id, limit=1)
+        if not result["items"]:
+            raise HTTPException(status_code=404, detail="客户不存在")
+        return {"item": result["items"][0], "source": "platform"}
     _require_odoo()
     try:
         customer = odoo_client.get_customer(partner_id)

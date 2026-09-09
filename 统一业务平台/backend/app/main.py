@@ -306,6 +306,19 @@ def internal_crm_customers(actor: str = Depends(require_internal), db: Session =
     return {"items": [local_customer_view(item) for item in db.scalars(statement).all()]}
 
 
+@app.get("/api/internal/ass/customers")
+def internal_ass_customers(keyword: str = Query("", max_length=100), limit: int = Query(20, ge=1, le=50), partner_id: int | None = None, actor: str = Depends(require_internal), db: Session = Depends(get_db)):
+    del actor
+    statement = select(Customer).where(Customer.active.is_(True), Customer.odoo_partner_id.is_not(None))
+    if partner_id is not None:
+        statement = statement.where(Customer.odoo_partner_id == partner_id)
+    if keyword.strip():
+        term = keyword.strip()
+        statement = statement.where(or_(*(field.contains(term, autoescape=True) for field in (Customer.name, Customer.phone, Customer.mobile, Customer.email, Customer.odoo_ref))))
+    rows = db.scalars(statement.order_by(Customer.name, Customer.id).limit(limit)).all()
+    return {"items": [{"id": row.odoo_partner_id, "name": row.name, "phone": row.phone, "mobile": row.mobile, "email": row.email, "address": row.address} for row in rows], "source": "platform"}
+
+
 @app.post("/api/admin/customers/{customer_id}/sync")
 def retry_customer_sync(customer_id: int, actor: str = Depends(require_admin), db: Session = Depends(get_db)):
     item = db.get(Customer, customer_id)
