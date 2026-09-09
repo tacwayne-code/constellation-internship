@@ -164,6 +164,36 @@ class NotificationsTest(unittest.TestCase):
             self.assertEqual(client.post(f'/notifications/{event.id}/retry').status_code, 409)
             app.dependency_overrides.clear()
 
+    def test_inbox_and_service_lifecycle(self):
+        from main import app, get_current_user
+        from fastapi.testclient import TestClient
+        order = self.create()
+        client = TestClient(app)
+        try:
+            app.dependency_overrides[get_current_user] = lambda: self.db.get(User, 3)
+            self.assertEqual(client.get('/workorders').status_code, 403)
+            self.assertEqual(client.get('/api/stats/overview').status_code, 403)
+            self.assertEqual(client.get('/engineers').status_code, 403)
+            self.assertEqual(client.get('/inbox').json()['total'], 0)
+            self.assertEqual(client.get(f'/workorders/{order.id}').status_code, 403)
+            self.assertEqual(client.post(f'/workorders/{order.id}/accept').status_code, 403)
+            record = dict(start_time='2026-09-09 10:00', end_time='2026-09-09 11:00', analysis='test')
+            self.assertEqual(client.post(f'/workorders/{order.id}/records', json=record).status_code, 403)
+            app.dependency_overrides[get_current_user] = lambda: self.db.get(User, 2)
+            result = client.get('/inbox').json()
+            self.assertEqual(result['total'], 1)
+            self.assertNotIn('customer_name', result['items'][0])
+            self.assertEqual(client.get('/inbox?offset=1').json()['items'], [])
+            self.assertEqual(client.post(f'/workorders/{order.id}/records', json=record).status_code, 409)
+            self.assertEqual(client.post(f'/workorders/{order.id}/accept').status_code, 200)
+            self.assertEqual(client.post(f'/workorders/{order.id}/accept').status_code, 400)
+            self.assertEqual(client.post(f'/workorders/{order.id}/records', json=record).status_code, 200)
+            self.assertEqual(client.post(f'/workorders/{order.id}/records', json=record).status_code, 409)
+            self.assertEqual(client.get('/inbox').json()['total'], 0)
+            self.assertEqual(len(client.get('/workorders/me/history').json()), 1)
+        finally:
+            app.dependency_overrides.clear()
+
 
 if __name__ == "__main__":
     unittest.main()

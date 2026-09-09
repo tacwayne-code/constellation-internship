@@ -67,7 +67,9 @@ with TestClient(app) as client:
     assert client.get("/workorders", headers={"Authorization": f"Bearer {token}"}).status_code == 200
 
     # 5. Cookie 自动鉴权（TestClient cookie jar）
-    assert client.get("/engineers").status_code == 200
+    # 当前 Cookie 属于工程师，不能读取全员名录；派单员 Bearer 仍可访问。
+    assert client.get("/engineers").status_code == 403
+    assert client.get("/engineers", headers={"Authorization": f"Bearer {token}"}).status_code == 200
 
     # 5.1 Odoo 客户接口：需登录态；未配置 Odoo 时返回 503
     client.cookies.clear()  # 清除 cookie → 未登录 → 401

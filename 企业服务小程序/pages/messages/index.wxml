@@ -1,16 +1,19 @@
 <view class="message-page">
-  <view class="page-title">消息</view>
-  <view class="page-subtitle">系统提醒与业务待办会在这里汇总</view>
+  <view class="page-title">售后待办</view>
+  <view class="page-subtitle">当前未完成工单；企业微信通知请在企业微信查看</view>
+  <view wx:if="{{loading}}" class="message-empty-copy">正在加载…</view>
+  <view wx:if="{{error}}" class="message-empty"><view>{{error}}</view><button bindtap="load">重新加载</button></view>
   <view class="notice-list">
-    <view wx:for="{{notices}}" wx:key="title" class="notice-row">
+    <view wx:for="{{notices}}" wx:key="id" class="notice-row" bindtap="openService">
       <view class="notice-dot"></view>
       <view class="notice-copy"><view>{{item.title}}</view><text>{{item.body}}</text></view>
-      <view class="notice-time">{{item.time}}</view>
+      <view class="notice-time">{{item.time}}<view>进入售后 ›</view></view>
     </view>
   </view>
-  <view wx:if="{{!notices.length}}" class="message-empty">
+  <button wx:if="{{notices.length < total && !loading && !error}}" data-more="{{true}}" bindtap="load">加载更多（{{notices.length}} / {{total}}）</button>
+  <view wx:if="{{!notices.length && !loading && !error}}" class="message-empty">
     <view class="message-empty-icon">✓</view>
-    <view class="message-empty-title">暂无新消息</view>
-    <view class="message-empty-copy">这里只显示服务端产生的真实业务提醒</view>
+    <view class="message-empty-title">{{noService ? '未开通售后模块' : '暂无售后待办'}}</view>
+    <view class="message-empty-copy">{{noService ? 'CRM 消息暂未接入，可从工作台进入 CRM' : '已完成工单可在售后历史中查看'}}</view>
   </view>
 </view>

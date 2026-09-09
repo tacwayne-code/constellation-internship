@@ -529,6 +529,8 @@ def edit_current_user(
 
 @app.get("/engineers")
 def list_engineers(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    if current_user.role != "paidan":
+        raise HTTPException(status_code=403, detail="仅派单员可查看工程师名录")
     engineers = get_engineers(db)
     return [
         {
@@ -711,6 +713,8 @@ def list_work_orders(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    if current_user.role != "paidan":
+        raise HTTPException(status_code=403, detail="请使用我的任务查看已指派工单")
     orders, total = get_work_orders(
         db,
         status=status,
@@ -757,6 +761,8 @@ def stats_overview(
     current_user: User = Depends(get_current_user),
 ):
     """统计看板：与工单列表同一筛选口径（status/keyword/date/engineer 过滤生效）。"""
+    if current_user.role != "paidan":
+        raise HTTPException(status_code=403, detail="仅派单员可查看全局统计")
 
     def apply_filters(query):
         if status:
@@ -982,6 +988,36 @@ def my_tasks(db: Session = Depends(get_db), current_user: User = Depends(get_cur
     return [enrich_order(order) for order in active]
 
 
+@app.get("/inbox")
+def inbox(db: Session = Depends(get_db), current_user: User = Depends(get_current_user),
+          offset: int = Query(0, ge=0), limit: int = Query(30, ge=1, le=100)):
+    """Live work queue, not a read/unread message history or WeCom delivery report."""
+    query = db.query(WorkOrder).filter(WorkOrder.status.in_(["pending", "assigned", "processing"]))
+    if current_user.role == "engineer":
+        if not current_user.engineer:
+            return {"items": [], "total": 0}
+        query = query.filter(WorkOrder.engineer_id == current_user.engineer.id)
+    elif current_user.role != "paidan":
+        raise HTTPException(status_code=403, detail="无售后权限")
+    total = query.count()
+    labels = {"pending": "待派单", "assigned": "待接单", "processing": "处理中"}
+    rows = query.order_by(WorkOrder.updated_at.desc(), WorkOrder.id.desc()).offset(offset).limit(limit).all()
+    return {"total": total, "items": [{"id": row.id, "title": row.order_no,
+        "body": labels[row.status], "status": row.status,
+        "updated_at": row.updated_at.isoformat() + "Z"} for row in rows]}
+
+
+def require_order_access(db, order_id, user):
+    order = get_work_order(db, order_id)
+    if not order:
+        raise HTTPException(status_code=404, detail="工单不存在")
+    if user.role != "paidan" and not (
+        user.role == "engineer" and user.engineer and order.engineer_id == user.engineer.id
+    ):
+        raise HTTPException(status_code=403, detail="无权访问此工单")
+    return order
+
+
 @app.get("/workorders/me/history")
 def my_history(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     if not current_user.engineer:
@@ -1012,9 +1048,7 @@ def get_order(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    order = get_work_order(db, order_id)
-    if not order:
-        raise HTTPException(status_code=404, detail="工单不存在")
+    order = require_order_access(db, order_id, current_user)
     return enrich_order(order)
 
 
@@ -1027,7 +1061,12 @@ def add_record(
 ):
     if not current_user.engineer:
         raise HTTPException(status_code=403, detail="无权操作")
-    record = create_work_record(db, order_id, data, current_user.engineer.id)
+    require_order_access(db, order_id, current_user)
+    try:
+        record = create_work_record(db, order_id, data, current_user.engineer.id)
+    except ValueError as exc:
+        db.rollback()
+        raise HTTPException(status_code=409, detail=str(exc)) from None
     return {
         "id": record.id,
         "work_order_id": record.work_order_id,
@@ -1048,8 +1087,9 @@ def accept_order(
 ):
     if not current_user.engineer:
         raise HTTPException(status_code=403, detail="无权操作")
+    require_order_access(db, order_id, current_user)
     try:
-        order = update_work_order_status(db, order_id, "processing")
+        order = update_work_order_status(db, order_id, "processing", current_user.engineer.id)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return enrich_order(order)

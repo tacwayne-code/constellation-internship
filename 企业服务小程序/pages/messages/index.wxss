@@ -3,3 +3,5 @@
 .message-empty-icon { width: 84rpx; height: 84rpx; margin: 0 auto; border-radius: 42rpx; background: #EAF3FF; color: #2878F0; font-size: 44rpx; line-height: 84rpx; }
 .message-empty-title { margin-top: 28rpx; color: #172B4D; font-size: 32rpx; font-weight: 700; }
 .message-empty-copy { margin-top: 12rpx; color: #7A8494; font-size: 24rpx; }
+.notice-copy { min-width: 0; overflow-wrap: anywhere; }
+.notice-time { max-width: 180rpx; line-height: 34rpx; }

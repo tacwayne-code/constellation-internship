@@ -240,6 +240,11 @@ def get_work_orders_by_engineer(db: Session, engineer_id: int, status: str = Non
 
 
 def create_work_record(db: Session, order_id: int, data, engineer_id: int):
+    changed = db.query(WorkOrder).filter(
+        WorkOrder.id == order_id, WorkOrder.engineer_id == engineer_id, WorkOrder.status == "processing"
+    ).update({"status": "done", "updated_at": datetime.utcnow()})
+    if not changed:
+        raise ValueError("工单已变更或尚未接单，请刷新后重试")
     record = WorkRecord(
         work_order_id=order_id,
         check_in_location=data.check_in_location,
@@ -250,16 +255,12 @@ def create_work_record(db: Session, order_id: int, data, engineer_id: int):
     )
     db.add(record)
 
-    order = db.query(WorkOrder).filter(WorkOrder.id == order_id).first()
-    if order:
-        order.status = "done"
-
     db.commit()
     db.refresh(record)
     return record
 
 
-def update_work_order_status(db: Session, order_id: int, new_status: str):
+def update_work_order_status(db: Session, order_id: int, new_status: str, engineer_id=None):
     order = db.query(WorkOrder).filter(WorkOrder.id == order_id).first()
     if not order:
         return None
@@ -269,7 +270,11 @@ def update_work_order_status(db: Session, order_id: int, new_status: str):
     }
     if new_status not in valid_transitions.get(order.status, []):
         raise ValueError(f"不能从 {order.status} 变更为 {new_status}")
-    order.status = new_status
+    query = db.query(WorkOrder).filter(WorkOrder.id == order_id, WorkOrder.status == order.status)
+    if engineer_id is not None:
+        query = query.filter(WorkOrder.engineer_id == engineer_id)
+    if not query.update({"status": new_status, "updated_at": datetime.utcnow()}):
+        raise ValueError("工单已变更，请刷新后重试")
     db.commit()
     db.refresh(order)
     return order

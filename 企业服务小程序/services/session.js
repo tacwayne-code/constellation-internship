@@ -8,6 +8,7 @@ function requestLogin(code) {
       url: `${config.authBaseUrl}/auth/wechat/login`,
       method: 'POST',
       data: { code },
+      timeout: 15000,
       header: { 'content-type': 'application/json' },
       success: (response) => {
         if (response.statusCode >= 200 && response.statusCode < 300) resolve(response.data);
