@@ -1,0 +1,45 @@
+services:
+  postgres:
+    image: postgres:16-bookworm
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: constellation
+      POSTGRES_USER: constellation
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+    secrets:
+      - postgres_password
+    volumes:
+      - platform_postgres:/var/lib/postgresql/data
+    mem_limit: 512m
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U constellation -d constellation"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  platform:
+    build: .
+    restart: unless-stopped
+    env_file: /opt/constellation/secrets/platform.env
+    ports:
+      - "127.0.0.1:8011:8011"
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop: ["ALL"]
+    security_opt: ["no-new-privileges:true"]
+    mem_limit: 384m
+    volumes:
+      - /opt/constellation/data/identity/identity.db:/data/legacy/identity.db:ro
+      - /opt/constellation/data/crm/shared-db.json:/data/legacy/shared-db.json:ro
+      - /opt/constellation/data/service/aftersales.db:/data/legacy/aftersales.db:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+secrets:
+  postgres_password:
+    file: /opt/constellation/secrets/postgres-password.txt
+
+volumes:
+  platform_postgres:

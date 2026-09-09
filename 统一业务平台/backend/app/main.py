@@ -1,0 +1,269 @@
+from __future__ import annotations
+
+import hashlib
+import json
+import os
+import secrets
+import time
+import urllib.parse
+import urllib.request
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any, Literal
+
+from fastapi import Depends, FastAPI, HTTPException, Query, Request, Response
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel, Field
+from sqlalchemy import func, or_, select
+from sqlalchemy.orm import Session
+
+from .config import settings
+from .database import Base, engine, get_db
+from .migration import migrate_all
+from .models import AuditEvent, Customer, Identity, SyncRun, WorkOrder
+from .odoo import OdooError, odoo_client
+from .security import COOKIE_NAME, authenticate_admin, create_admin_session, require_admin, sign_payload
+
+
+Base.metadata.create_all(bind=engine)
+app = FastAPI(title="群星企业统一业务平台", version="2.0.0")
+
+
+class LoginBody(BaseModel):
+    username: str
+    password: str
+
+
+class WechatLoginBody(BaseModel):
+    code: str = Field(min_length=1, max_length=256)
+
+
+class IdentityUpdate(BaseModel):
+    subject: str = Field(min_length=1, max_length=96)
+    displayName: str = Field(min_length=1, max_length=100)
+    crmRole: Literal["", "销售人员", "销售经理"] = ""
+    serviceRole: Literal["", "paidan", "engineer"] = ""
+    status: Literal["PENDING", "ACTIVE", "DISABLED"]
+
+
+class OdooImportBody(BaseModel):
+    partnerIds: list[int] = Field(default_factory=list, max_length=200)
+
+
+@app.middleware("http")
+async def security_headers(request: Request, call_next):
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Referrer-Policy"] = "no-referrer"
+    response.headers["Cache-Control"] = "no-store" if request.url.path.startswith("/api/") else "public, max-age=300"
+    return response
+
+
+def audit(db: Session, actor: str, action: str, target_type: str, target_id: str = "", detail: dict | None = None) -> None:
+    db.add(AuditEvent(actor=actor, action=action, target_type=target_type, target_id=target_id, detail=detail or {}))
+
+
+def identity_view(item: Identity) -> dict[str, Any]:
+    return {
+        "subject": item.subject,
+        "subjectMasked": f"{item.subject[:6]}…{item.subject[-4:]}" if len(item.subject) > 12 else "已登记",
+        "displayName": item.display_name,
+        "crmRole": item.crm_role,
+        "serviceRole": item.service_role,
+        "status": item.status,
+        "updatedAt": item.updated_at.isoformat() if item.updated_at else "",
+    }
+
+
+def customer_view(row: dict[str, Any], db: Session) -> dict[str, Any]:
+    partner_id = int(row["id"])
+    existing = db.scalar(select(Customer).where(Customer.odoo_partner_id == partner_id))
+    address = " ".join(str(row.get(key) or "").strip() for key in ("street", "street2", "city") if row.get(key))
+    owner = row.get("user_id") or []
+    return {
+        "partnerId": partner_id,
+        "ref": row.get("ref") or "",
+        "name": row.get("name") or "",
+        "phone": row.get("phone") or row.get("mobile") or "",
+        "email": row.get("email") or "",
+        "address": address,
+        "ownerName": owner[1] if isinstance(owner, list) and len(owner) > 1 else "",
+        "writeDate": row.get("write_date") or "",
+        "state": "UPDATE" if existing else "NEW",
+        "raw": row,
+    }
+
+
+@app.get("/health")
+def health(db: Session = Depends(get_db)):
+    db.execute(select(func.count()).select_from(Identity)).scalar_one()
+    return {"status": "ok", "version": "2.0.0", "database": "postgresql" if settings.database_url.startswith("postgres") else "sqlite", "adminReady": settings.admin_ready, "wechatReady": settings.wechat_ready, "odooReady": settings.odoo_ready}
+
+
+@app.post("/api/admin/session")
+def login(body: LoginBody, response: Response, db: Session = Depends(get_db)):
+    if not authenticate_admin(body.username, body.password):
+        raise HTTPException(status_code=401, detail="管理员账号或密码不正确")
+    response.set_cookie(COOKIE_NAME, create_admin_session(), httponly=True, secure=settings.cookie_secure, samesite="strict", max_age=8 * 3600, path="/")
+    audit(db, body.username, "ADMIN_LOGIN", "session")
+    db.commit()
+    return {"status": "ok", "name": body.username}
+
+
+@app.delete("/api/admin/session")
+def logout(response: Response, actor: str = Depends(require_admin)):
+    response.delete_cookie(COOKIE_NAME, path="/")
+    return {"status": "ok", "name": actor}
+
+
+@app.get("/api/admin/me")
+def me(actor: str = Depends(require_admin)):
+    return {"name": actor, "role": "系统管理员"}
+
+
+@app.get("/api/admin/overview")
+def overview(actor: str = Depends(require_admin), db: Session = Depends(get_db)):
+    del actor
+    statuses = dict(db.execute(select(Identity.status, func.count()).group_by(Identity.status)).all())
+    pending_orders = db.scalar(select(func.count()).select_from(WorkOrder).where(WorkOrder.status.in_(["pending", "assigned", "processing"]))) or 0
+    last_sync = db.scalar(select(SyncRun).order_by(SyncRun.started_at.desc()).limit(1))
+    return {
+        "identities": {"pending": statuses.get("PENDING", 0), "active": statuses.get("ACTIVE", 0), "disabled": statuses.get("DISABLED", 0), "total": sum(statuses.values())},
+        "business": {"customers": db.scalar(select(func.count()).select_from(Customer)) or 0, "pendingWorkOrders": pending_orders},
+        "integrations": [
+            {"name": "统一数据库", "status": "HEALTHY", "detail": "PostgreSQL" if settings.database_url.startswith("postgres") else "SQLite 迁移验证"},
+            {"name": "微信身份", "status": "HEALTHY" if settings.wechat_ready else "UNCONFIGURED", "detail": "已配置" if settings.wechat_ready else "等待配置"},
+            {"name": "Odoo API", "status": "READY" if settings.odoo_ready else "UNCONFIGURED", "detail": "可预览同步" if settings.odoo_ready else "等待只读账号"},
+        ],
+        "lastSync": {"status": last_sync.status, "created": last_sync.created, "updated": last_sync.updated, "conflicts": last_sync.conflicts, "at": last_sync.started_at.isoformat()} if last_sync else None,
+    }
+
+
+@app.get("/api/admin/identities")
+def identities(status: str = "", query: str = "", actor: str = Depends(require_admin), db: Session = Depends(get_db)):
+    del actor
+    statement = select(Identity).order_by(Identity.updated_at.desc())
+    if status:
+        statement = statement.where(Identity.status == status.upper())
+    if query:
+        term = f"%{query.strip()}%"
+        statement = statement.where(or_(Identity.display_name.ilike(term), Identity.subject.ilike(term)))
+    return {"items": [identity_view(item) for item in db.scalars(statement).all()]}
+
+
+@app.put("/api/admin/identities")
+def update_identity(body: IdentityUpdate, actor: str = Depends(require_admin), db: Session = Depends(get_db)):
+    item = db.get(Identity, body.subject)
+    if not item:
+        raise HTTPException(status_code=404, detail="身份不存在")
+    before = identity_view(item)
+    item.display_name, item.crm_role, item.service_role, item.status = body.displayName.strip(), body.crmRole, body.serviceRole, body.status
+    item.updated_at = datetime.now(timezone.utc)
+    audit(db, actor, "UPDATE_IDENTITY", "identity", hashlib.sha256(body.subject.encode()).hexdigest()[:12], {"before": before, "after": identity_view(item)})
+    db.commit()
+    return identity_view(item)
+
+
+@app.post("/api/admin/migrations/legacy")
+def run_migration(actor: str = Depends(require_admin), db: Session = Depends(get_db)):
+    return migrate_all(db, actor)
+
+
+@app.get("/api/admin/odoo/customers/preview")
+def preview_odoo(limit: int = Query(20, ge=1, le=200), since: str = "", actor: str = Depends(require_admin), db: Session = Depends(get_db)):
+    del actor
+    try:
+        rows = [customer_view(row, db) for row in odoo_client.customers(limit, since)]
+    except OdooError as error:
+        raise HTTPException(status_code=502, detail=str(error)) from error
+    return {"items": [{key: value for key, value in row.items() if key != "raw"} for row in rows], "summary": {"discovered": len(rows), "new": sum(row["state"] == "NEW" for row in rows), "updated": sum(row["state"] == "UPDATE" for row in rows), "conflicts": 0}}
+
+
+@app.post("/api/admin/odoo/customers/import")
+def import_odoo(body: OdooImportBody, actor: str = Depends(require_admin), db: Session = Depends(get_db)):
+    if not body.partnerIds:
+        raise HTTPException(status_code=400, detail="请先选择要导入的客户")
+    try:
+        source_rows = odoo_client.search_read("res.partner", [["id", "in", body.partnerIds], ["active", "=", True], ["customer_rank", ">", 0]], ["name", "ref", "phone", "mobile", "email", "street", "street2", "city", "user_id", "write_date"], limit=len(body.partnerIds))
+    except OdooError as error:
+        raise HTTPException(status_code=502, detail=str(error)) from error
+    run = SyncRun(source="ODOO_CUSTOMERS", status="RUNNING", preview=False, discovered=len(source_rows))
+    db.add(run)
+    db.flush()
+    for raw in source_rows:
+        mapped = customer_view(raw, db)
+        item = db.scalar(select(Customer).where(Customer.odoo_partner_id == mapped["partnerId"]))
+        is_new = item is None
+        if is_new:
+            item = Customer(odoo_partner_id=mapped["partnerId"], name=mapped["name"])
+            db.add(item)
+            run.created += 1
+        else:
+            run.updated += 1
+        item.odoo_ref, item.name, item.phone = mapped["ref"], mapped["name"], mapped["phone"]
+        item.mobile, item.email, item.address = raw.get("mobile") or "", mapped["email"], mapped["address"]
+        item.owner_name, item.source, item.odoo_write_date, item.raw = mapped["ownerName"], "ODOO", mapped["writeDate"], raw
+    run.status, run.finished_at = "SUCCESS", datetime.now(timezone.utc)
+    audit(db, actor, "IMPORT_ODOO_CUSTOMERS", "sync_run", str(run.id), {"partnerIds": body.partnerIds, "created": run.created, "updated": run.updated})
+    db.commit()
+    return {"status": run.status, "discovered": run.discovered, "created": run.created, "updated": run.updated, "conflicts": run.conflicts}
+
+
+@app.get("/api/admin/audit")
+def audit_events(limit: int = Query(50, ge=1, le=200), actor: str = Depends(require_admin), db: Session = Depends(get_db)):
+    del actor
+    items = db.scalars(select(AuditEvent).order_by(AuditEvent.created_at.desc()).limit(limit)).all()
+    return {"items": [{"id": item.id, "actor": item.actor, "action": item.action, "targetType": item.target_type, "targetId": item.target_id, "detail": item.detail, "result": item.result, "createdAt": item.created_at.isoformat()} for item in items]}
+
+
+def exchange_wechat_code(code: str) -> str:
+    if not settings.wechat_ready:
+        raise HTTPException(status_code=503, detail="微信身份服务尚未配置")
+    query = urllib.parse.urlencode({"appid": settings.wechat_app_id, "secret": settings.wechat_app_secret, "js_code": code, "grant_type": "authorization_code"})
+    try:
+        with urllib.request.urlopen(f"https://api.weixin.qq.com/sns/jscode2session?{query}", timeout=8) as response:
+            payload = json.loads(response.read().decode())
+    except Exception as error:
+        raise HTTPException(status_code=502, detail="微信身份服务暂时不可用") from error
+    if payload.get("errcode") or not payload.get("openid"):
+        raise HTTPException(status_code=401, detail="微信身份校验失败")
+    return str(payload["openid"])
+
+
+@app.post("/identity/auth/wechat/login")
+def wechat_login(body: WechatLoginBody, db: Session = Depends(get_db)):
+    subject = exchange_wechat_code(body.code)
+    identity = db.get(Identity, subject)
+    if not identity:
+        identity = Identity(subject=subject)
+        db.add(identity)
+        db.commit()
+        db.refresh(identity)
+    if identity.status != "ACTIVE":
+        return {"status": "PENDING", "message": "身份已登记，等待管理员授权"}
+    now = int(time.time())
+    base = {"sub": subject, "name": identity.display_name, "iat": now, "exp": now + 120, "jti": secrets.token_urlsafe(18)}
+    tickets, roles = {}, []
+    if identity.crm_role:
+        tickets["crm"] = sign_payload({**base, "aud": "crm", "role": identity.crm_role}, settings.sso_shared_secret)
+        roles.append("sales_manager" if identity.crm_role == "销售经理" else "sales")
+    if identity.service_role:
+        tickets["after_sales"] = sign_payload({**base, "aud": "service", "role": identity.service_role}, settings.sso_shared_secret)
+        roles.append(identity.service_role)
+    return {"status": "AUTHORIZED", "employee": {"id": hashlib.sha256(subject.encode()).hexdigest()[:16], "name": identity.display_name}, "roles": roles, "modules": list(tickets), "tickets": tickets}
+
+
+frontend_root = Path(os.getenv("FRONTEND_DIST", Path(__file__).resolve().parents[2] / "frontend-dist"))
+if frontend_root.exists():
+    assets = frontend_root / "assets"
+    if assets.exists():
+        app.mount("/assets", StaticFiles(directory=assets), name="assets")
+
+    @app.get("/{path:path}", include_in_schema=False)
+    def frontend(path: str):
+        requested = (frontend_root / path).resolve()
+        if path and frontend_root in requested.parents and requested.is_file():
+            return FileResponse(requested)
+        return FileResponse(frontend_root / "index.html")
