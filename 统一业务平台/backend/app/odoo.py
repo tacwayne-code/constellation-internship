@@ -28,7 +28,7 @@ class OdooProfile:
 
 
 PROFILES: dict[str, OdooProfile] = {
-    "customers": OdooProfile("customers", "客户与联系人", "res.partner", ("name", "ref", "phone", "mobile", "email", "street", "street2", "city", "state_id", "country_id", "user_id", "write_date", "is_company", "parent_id", "active", "customer_rank", "function"), ("|", ("customer_rank", ">", 0), ("ref", "=like", "CUS-%"))),
+    "customers": OdooProfile("customers", "客户与联系人", "res.partner", ("name", "ref", "phone", "mobile", "email", "street", "street2", "city", "state_id", "country_id", "user_id", "write_date", "is_company", "parent_id", "active", "customer_rank", "function"), (("active", "=", True), ("customer_rank", ">", 0))),
     "products": OdooProfile("products", "商品", "product.product", ("name", "default_code", "barcode", "categ_id", "list_price", "standard_price", "qty_available", "virtual_available", "uom_id", "active", "write_date"), (("active", "=", True),)),
     "sales": OdooProfile("sales", "销售订单", "sale.order", ("name", "state", "partner_id", "user_id", "amount_total", "date_order", "commitment_date", "warehouse_id", "write_date")),
     "purchases": OdooProfile("purchases", "采购订单", "purchase.order", ("name", "state", "partner_id", "user_id", "amount_total", "date_order", "date_planned", "picking_type_id", "write_date")),
@@ -175,13 +175,27 @@ class OdooClient:
         if not clean["name"]:
             raise OdooError("客户名称不能为空", "CUSTOMER_NAME_REQUIRED")
         clean.setdefault("is_company", True)
+        # Odoo owns ref numbering. CRM identifiers stay in the platform mapping.
+        clean.pop("ref", None)
+        if "customer_rank" not in field_meta:
+            raise OdooError("Odoo 缺少客户标记字段", "CUSTOMER_RANK_UNAVAILABLE")
+        # readonly is a UI flag for this standard ORM field, not an ACL.
+        clean["customer_rank"] = 1
         if odoo_partner_id:
+            rows = self._model_call("res.partner", "read", [[int(odoo_partner_id)]], {"fields": ["customer_rank"]})
+            if not rows:
+                raise OdooError("Odoo 客户不存在", "CUSTOMER_NOT_FOUND")
+            clean["customer_rank"] = max(1, int(rows[0].get("customer_rank") or 0))
             changed = bool(self._model_call("res.partner", "write", [[int(odoo_partner_id)], clean], {}))
             self._upsert_contacts(int(odoo_partner_id), contacts)
             return {"partnerId": int(odoo_partner_id), "created": False, "updated": changed}
         duplicate = self._customer_duplicate(clean)
         if duplicate:
             partner_id = int(duplicate["id"])
+            rows = self._model_call("res.partner", "read", [[partner_id]], {"fields": ["customer_rank"]})
+            if not rows:
+                raise OdooError("Odoo 客户不存在", "CUSTOMER_NOT_FOUND")
+            clean["customer_rank"] = max(1, int(rows[0].get("customer_rank") or 0))
             changed = bool(self._model_call("res.partner", "write", [[partner_id], clean], {}))
             self._upsert_contacts(partner_id, contacts)
             return {"partnerId": partner_id, "created": False, "updated": changed, "matched": True}
