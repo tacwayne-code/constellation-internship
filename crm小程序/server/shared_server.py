@@ -821,10 +821,48 @@ class SharedCrmHandler(BaseHTTPRequestHandler):
 
             if method == "GET" and not item_id:
                 filters = {key: values[0] for key, values in parse_qs(parsed.query).items()}
+                platform_customers = (
+                    self.platform_connector.list_customers()
+                    if collection == "customers"
+                    else None
+                )
                 with self.state.lock:
+                    source_items = self.state.db[collection]
+                    if platform_customers is not None:
+                        local_by_id = {str(row.get("id") or ""): row for row in source_items}
+                        local_by_odoo = {
+                            str(row.get("erpCustomerId")): row
+                            for row in source_items
+                            if row.get("erpCustomerId")
+                        }
+                        merged_items = []
+                        matched_local_ids = set()
+                        for platform_item in platform_customers:
+                            local = local_by_id.get(str(platform_item.get("id") or "")) or local_by_odoo.get(
+                                str(platform_item.get("erpCustomerId") or "")
+                            )
+                            if local:
+                                matched_local_ids.add(str(local.get("id") or ""))
+                            workflow = {
+                                key: local[key]
+                                for key in ("status", "nextFollow", "note", "ownerId", "createdBy", "updatedBy")
+                                if local and key in local
+                            }
+                            merged_items.append({**copy.deepcopy(platform_item), **workflow})
+                        merged_items.extend(
+                            copy.deepcopy(row)
+                            for row in source_items
+                            if str(row.get("id") or "") not in matched_local_ids
+                            and not any(
+                                str(item.get("erpCustomerId") or "")
+                                and str(item.get("erpCustomerId")) == str(row.get("erpCustomerId") or "")
+                                for item in platform_customers
+                            )
+                        )
+                        source_items = merged_items
                     items = [
                         copy.deepcopy(item)
-                        for item in self.state.db[collection]
+                        for item in source_items
                         if all(str(item.get(key, "")) == value for key, value in filters.items())
                     ]
                     revision = self.state.db["revision"]

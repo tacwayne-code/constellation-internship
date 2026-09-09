@@ -20,6 +20,26 @@ class PlatformConnector:
     def mode(self) -> str:
         return "UNIFIED_PLATFORM" if self.enabled else "LOCAL_ONLY"
 
+    def list_customers(self) -> list[dict[str, Any]] | None:
+        """Return the platform customer master, or None when local fallback is required."""
+        if not self.enabled:
+            return None
+        request = urllib.request.Request(
+            f"{self.base_url}/api/internal/crm/customers",
+            headers={
+                "X-Platform-Internal-Key": self.internal_secret,
+                "X-CRM-Actor-Name": "CRM",
+                "User-Agent": "constellation-crm/1.0",
+            },
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=self.timeout) as response:
+                result = json.load(response)
+            items = result.get("items")
+            return items if isinstance(items, list) else None
+        except (urllib.error.URLError, TimeoutError, json.JSONDecodeError):
+            return None
+
     def upsert_customer(self, customer: dict[str, Any], actor: dict[str, Any]) -> dict[str, Any]:
         if not self.enabled:
             return customer

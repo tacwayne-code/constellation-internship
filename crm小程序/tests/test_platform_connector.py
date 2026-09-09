@@ -36,3 +36,14 @@ def test_bridge_maps_odoo_identity_without_replacing_crm_fields(monkeypatch):
 def test_disabled_bridge_keeps_customer_local():
     customer = {"id": "CUS-1", "name": "客户A"}
     assert PlatformConnector().upsert_customer(customer, {"name": "销售A"}) is customer
+
+
+def test_bridge_lists_platform_customer_master(monkeypatch):
+    class CustomerResponse(FakeResponse):
+        def __enter__(self):
+            return BytesIO(json.dumps({"items": [{"id": "ODOO-2467", "name": "Odoo客户"}]}).encode())
+
+    monkeypatch.setattr("urllib.request.urlopen", lambda request, timeout: CustomerResponse())
+    connector = PlatformConnector("http://platform:8011", "internal-secret")
+
+    assert connector.list_customers() == [{"id": "ODOO-2467", "name": "Odoo客户"}]

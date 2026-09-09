@@ -127,8 +127,10 @@ def local_customer_view(item: Customer) -> dict[str, Any]:
     contacts = (item.raw or {}).get("contacts", [])
     if not contacts and (item.phone or item.mobile):
         contacts = [{"name": item.name, "phone": item.phone or item.mobile, "isPrimary": True}]
+    stable_id = item.legacy_id or (f"ODOO-{item.odoo_partner_id}" if item.odoo_partner_id else str(item.id))
+    primary_contact = next((row for row in contacts if row.get("isPrimary")), None) or next(iter(contacts), {})
     return {
-        "id": item.legacy_id or str(item.id),
+        "id": stable_id,
         "legacyId": item.legacy_id or "",
         "name": item.name,
         "phone": item.phone,
@@ -137,7 +139,11 @@ def local_customer_view(item: Customer) -> dict[str, Any]:
         "address": item.address,
         "ownerName": item.owner_name,
         "owner": item.owner_name,
+        "contact": primary_contact.get("name") or item.name,
         "contacts": contacts,
+        "status": "正常",
+        "nextFollow": "",
+        "note": "",
         "erpCustomerId": str(item.odoo_partner_id or ""),
         "erpCustomerCode": item.odoo_ref,
         "erpSyncStatus": sync.get("status", "LOCAL_ONLY"),
@@ -291,6 +297,13 @@ def admin_create_customer(body: CustomerWriteBody, actor: str = Depends(require_
 def internal_upsert_customer(body: InternalCustomerUpsert, actor: str = Depends(require_internal), db: Session = Depends(get_db)):
     item, job = create_or_update_customer(body, actor, db, body.odoo_partner_id)
     return {"item": local_customer_view(item), "sync": {"status": job.status, "errorCode": job.error_code}}
+
+
+@app.get("/api/internal/crm/customers")
+def internal_crm_customers(actor: str = Depends(require_internal), db: Session = Depends(get_db)):
+    del actor
+    statement = select(Customer).where(Customer.active.is_(True)).order_by(Customer.updated_at.desc()).limit(500)
+    return {"items": [local_customer_view(item) for item in db.scalars(statement).all()]}
 
 
 @app.post("/api/admin/customers/{customer_id}/sync")

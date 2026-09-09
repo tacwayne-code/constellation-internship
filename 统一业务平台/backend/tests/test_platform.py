@@ -101,3 +101,21 @@ def test_internal_customer_bridge_requires_secret(tmp_path: Path):
     client = build_client(tmp_path)
     response = client.post("/api/internal/crm/customers/upsert", json={"name": "未授权客户"})
     assert response.status_code == 401
+
+
+def test_internal_customer_list_requires_secret_and_uses_stable_odoo_id(tmp_path: Path):
+    client = build_client(tmp_path)
+    from app.database import SessionLocal
+    from app.models import Customer
+
+    with SessionLocal() as db:
+        db.add(Customer(name="Odoo客户", odoo_partner_id=2467, odoo_ref="P001", source="ODOO"))
+        db.commit()
+
+    assert client.get("/api/internal/crm/customers").status_code == 401
+    response = client.get(
+        "/api/internal/crm/customers",
+        headers={"X-Platform-Internal-Key": "test-internal-secret"},
+    )
+    assert response.status_code == 200
+    assert response.json()["items"][0]["id"] == "ODOO-2467"

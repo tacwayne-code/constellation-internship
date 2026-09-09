@@ -102,6 +102,9 @@ class FakePlatformConnector:
     def __init__(self):
         self.calls = []
 
+    def list_customers(self):
+        return None
+
     def upsert_customer(self, customer, actor):
         self.calls.append((customer["id"], actor["id"]))
         return {**customer, "erpCustomerId": "991", "erpCustomerCode": customer["id"], "erpSyncStatus": "SYNCED"}
@@ -259,6 +262,53 @@ class SharedServerTest(unittest.TestCase):
             self.assertEqual(payload["item"]["erpCustomerId"], "991")
             self.assertEqual(payload["item"]["erpSyncStatus"], "SYNCED")
             self.assertEqual(connector.calls[0][1], "USR-00018")
+        finally:
+            bridged.shutdown()
+            bridged.server_close()
+            thread.join(timeout=3)
+
+    def test_customer_list_uses_platform_master_and_preserves_local_workflow(self):
+        connector = FakePlatformConnector()
+        connector.list_customers = lambda: [
+            {
+                "id": "ODOO-2467",
+                "name": "Odoo客户",
+                "erpCustomerId": "2467",
+                "phone": "18800001111",
+                "nextFollow": "",
+                "status": "正常",
+            }
+        ]
+        with self.server.RequestHandlerClass.state.lock:
+            self.server.RequestHandlerClass.state.db["customers"].append(
+                {
+                    "id": "CUS-LOCAL-1",
+                    "name": "本地客户",
+                    "erpCustomerId": "2467",
+                    "nextFollow": "2026-09-10",
+                    "note": "CRM跟进信息",
+                }
+            )
+        bridged = create_server(
+            "127.0.0.1",
+            0,
+            self.data_file,
+            seed_file=self.seed_file,
+            erp_adapter=self.erp_adapter,
+            route_adapter=self.route_adapter,
+            platform_connector=connector,
+            state=self.server.RequestHandlerClass.state,
+            auth_manager=self.server.RequestHandlerClass.auth_manager,
+        )
+        thread = threading.Thread(target=bridged.serve_forever, daemon=True)
+        thread.start()
+        try:
+            status, payload = request(f"http://127.0.0.1:{bridged.server_address[1]}", "/api/customers")
+            self.assertEqual(status, 200)
+            customer = next(item for item in payload["items"] if item["erpCustomerId"] == "2467")
+            self.assertEqual(customer["name"], "Odoo客户")
+            self.assertEqual(customer["nextFollow"], "2026-09-10")
+            self.assertEqual(customer["note"], "CRM跟进信息")
         finally:
             bridged.shutdown()
             bridged.server_close()
