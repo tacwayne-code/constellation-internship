@@ -1,0 +1,1 @@
+{"name":"delivery-tower-concept","version":"0.1.0","private":true,"type":"module","scripts":{"dev":"vite --host 127.0.0.1 --port 8781 --strictPort","build":"vite build","preview":"vite preview --host 127.0.0.1 --port 8781 --strictPort"},"dependencies":{"react":"19.2.8","react-dom":"19.2.8","lucide-react":"1.30.0"},"devDependencies":{"vite":"8.2.0"}}

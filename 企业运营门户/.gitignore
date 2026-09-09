@@ -1,0 +1,17 @@
+.venv/
+__pycache__/
+.pytest_cache/
+*.pyc
+.env
+.env.*
+!.env.example
+*.sqlite3*
+*.db
+*.db-*
+node_modules/
+dist/
+*.log
+.runtime/
+.delivery/
+delivery-tower/frontend/node_modules/
+delivery-tower/frontend/dist/

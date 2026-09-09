@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <link rel="stylesheet" href="/shared.css" />
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+    <meta http-equiv="Pragma" content="no-cache" />
+    <meta http-equiv="Expires" content="0" />
+    <title>紧急采购</title>
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' fill='%2307111f'/%3E%3Cpath d='M12 44 28 14l24 36H18' fill='none' stroke='%2338bdf8' stroke-width='5' stroke-linejoin='round'/%3E%3Cpath d='M29 31h10M29 41h18' stroke='%2322c55e' stroke-width='5' stroke-linecap='round'/%3E%3C/svg%3E" />
+    <link rel="stylesheet" href="./styles.css?v=1787294400" />
+  </head>
+  <body data-board="urgent">
+    <script src="/shared.js"></script>
+    <main class="risk-shell">
+      <header class="command-bar">
+        <div class="brand">
+          <span class="brand-mark" aria-hidden="true"></span>
+          <div>
+            <h1>紧急采购</h1>
+          </div>
+        </div>
+
+        <div class="toolbar">
+          <label class="search-control">
+            <span>搜索</span>
+            <input id="orderSearch" autocomplete="off" placeholder="板块 / 清单 / 单号 / 供应商 / 物料" />
+          </label>
+          <button class="tool-button" id="refreshBtn" type="button" title="刷新数据">刷新</button>
+          
+          <button class="icon-button" id="fullscreenBtn" type="button" title="全屏显示" aria-label="全屏显示">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" />
+            </svg>
+          </button>
+        </div>
+      </header>
+
+      <section class="status-strip" aria-label="数据状态">
+        <span class="live-dot" id="connectionDot"></span>
+        <span id="connectionStatus">正在连接 Odoo ERP</span>
+        <span id="refreshMeta">等待刷新</span>
+        <span id="dataCoverage">数据覆盖：等待同步</span>
+        <span id="clock">--:--:--</span>
+        <span class="board-hint">点击清单卡片查看该清单下的采购单；此看板只读，不写回 ERP。</span>
+      </section>
+
+      <section class="dashboard-view active" id="urgentView" aria-label="紧急未采购订单看板">
+        <div id="urgentLayout" class="dashboard-layout"></div>
+      </section>
+    </main>
+
+    <div class="detail-overlay" id="detailOverlay">
+      <div class="detail-modal">
+        <div class="detail-modal-header">
+          <h2 id="detailTitle">订单明细</h2>
+          <button class="detail-close" id="detailClose" type="button" aria-label="关闭">✕</button>
+        </div>
+        <div class="detail-modal-body" id="detailBody"></div>
+      </div>
+    </div>
+
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+    <script src="./app.js?v=1787294400"></script>
+  </body>
+</html>

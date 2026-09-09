@@ -1,0 +1,14 @@
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>灯塔 · 运营副屏</title><link rel="stylesheet" href="/shell.css"><link rel="icon" href="data:,"></head>
+<body>
+<header class="shell-bar">
+  <a class="brand" href="#purchase"><svg viewBox="0 0 30 32" aria-hidden="true"><path d="M12 12h6l4 17H8zM11 9h8V5h-8zM15 1v3M3 8l5-1M22 7l5 1"/></svg><strong>灯塔</strong><span>运营副屏</span></a>
+  <nav aria-label="选择看板"><a href="#purchase" data-screen="purchase">采购异常</a><a href="#inventory" data-screen="inventory">库存通知</a><a href="#urgent" data-screen="urgent">紧急采购</a><a href="#orders" data-screen="orders">订单交付</a></nav>
+  <div class="tools"><span class="readonly">● 只读</span><button id="access">访问口令</button><button id="focus">专注副屏</button></div>
+</header>
+<main><iframe id="screen" title="灯塔运营看板" allow="fullscreen" src="/boards/inventory/?screen=purchase"></iframe></main>
+<button id="exitFocus" hidden>退出专注 · Esc</button>
+<dialog id="accessDialog"><form method="dialog"><h2>展示访问口令</h2><p>口令仅保存在当前浏览器会话，用于读取看板。</p><input id="accessInput" type="password" autocomplete="off" aria-label="展示访问口令"><div><button value="cancel">取消</button><button id="saveAccess" value="save">连接</button></div></form></dialog>
+<script src="/shell.js"></script>
+</body></html>
