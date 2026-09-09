@@ -7,7 +7,8 @@ const STORAGE_KEYS = {
   workingOrderId: "aftersales_working_order_id",
 };
 
-const FAULT_TYPES = ["机械故障", "电气控制故障", "液压/气动泄漏", "软件/程序异常", "其他故障"];
+const DEVICE_TYPES = ["分光机", "编带机", "点胶机", "堆垛机", "搅拌机", "非标设备"];
+const FAULT_TYPES = ["机械故障", "电气控制故障", "液压/气动泄漏", "软件/程序异常", "测试模块故障", "点胶结构故障", "真空模块故障", "其他故障"];
 const ADDRESS_DATA = window.CHINA_ADDRESS_DATA || [];
 const TAB_CONFIG = {
   paidan: [
@@ -693,8 +694,11 @@ function renderCreate() {
           <input class="form-input" name="customer_phone" value="${esc(current?.customer_phone || "")}" placeholder="选择客户自动带出，也可手动修改" autocomplete="off">
         </div>
         <div class="form-group">
-          <label class="form-label">报修设备名称</label>
-          <input class="form-input" name="device_name" value="${esc(current?.device_name || "")}" placeholder="例如：液压打包机">
+          <label class="form-label">设备类型</label>
+          <select class="form-select" name="device_name">
+            <option value="">请选择设备类型</option>
+            ${[...new Set([...DEVICE_TYPES, ...(current?.device_name ? [current.device_name] : [])])].map((item) => `<option value="${esc(item)}" ${current?.device_name === item ? "selected" : ""}>${esc(item)}</option>`).join("")}
+          </select>
         </div>
         <div class="form-group">
           <label class="form-label">设备序列号 / SN 码</label>

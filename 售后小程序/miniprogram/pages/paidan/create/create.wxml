@@ -36,8 +36,10 @@
     </view>
 
     <view class="form-group">
-      <text class="form-label">报修设备名称</text>
-      <input class="form-input" data-field="device_name" value="{{form.device_name}}" bindinput="onInput" placeholder="例如：液压打包机" />
+      <text class="form-label">设备类型</text>
+      <picker mode="selector" range="{{deviceTypes}}" bindchange="onDeviceChange">
+        <view class="form-select">{{form.device_name || '请选择设备类型'}}</view>
+      </picker>
     </view>
 
     <view class="form-group">

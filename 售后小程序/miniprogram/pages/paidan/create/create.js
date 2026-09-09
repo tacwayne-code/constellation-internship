@@ -2,7 +2,8 @@ const api = require('../../../utils/request');
 
 Page({
   data: {
-    faultTypes: ['机械故障', '电气控制故障', '液压/气动泄漏', '软件/程序异常', '其他故障'],
+    deviceTypes: ['分光机', '编带机', '点胶机', '堆垛机', '搅拌机', '非标设备'],
+    faultTypes: ['机械故障', '电气控制故障', '液压/气动泄漏', '软件/程序异常', '测试模块故障', '点胶结构故障', '真空模块故障', '其他故障'],
     faultIndex: 0,
     engineers: [],
     engineerNames: [],
@@ -27,6 +28,10 @@ Page({
 
   onLoad() {
     this.fetchEngineers();
+  },
+
+  onDeviceChange(event) {
+    this.setData({ 'form.device_name': this.data.deviceTypes[Number(event.detail.value)] });
   },
 
   onShow() {
