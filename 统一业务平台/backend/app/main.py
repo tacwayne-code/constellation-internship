@@ -439,7 +439,19 @@ def wechat_login(body: WechatLoginBody, db: Session = Depends(get_db)):
     return {"status": "AUTHORIZED", "employee": {"id": hashlib.sha256(subject.encode()).hexdigest()[:16], "name": identity.display_name}, "roles": roles, "modules": list(tickets), "tickets": tickets}
 
 
-frontend_root = Path(os.getenv("FRONTEND_DIST", Path(__file__).resolve().parents[2] / "frontend-dist"))
+def resolve_frontend_root() -> Path:
+    configured = os.getenv("FRONTEND_DIST", "").strip()
+    if configured:
+        return Path(configured).expanduser().resolve()
+    module_path = Path(__file__).resolve()
+    candidates = (
+        module_path.parents[1] / "frontend-dist",  # Production image: /app/frontend-dist
+        module_path.parents[2] / "frontend" / "dist",  # Source checkout: frontend/dist
+    )
+    return next((candidate for candidate in candidates if candidate.exists()), candidates[0])
+
+
+frontend_root = resolve_frontend_root()
 if frontend_root.exists():
     assets = frontend_root / "assets"
     if assets.exists():
