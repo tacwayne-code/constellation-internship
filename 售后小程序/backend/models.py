@@ -68,3 +68,22 @@ class WorkRecord(Base):
     analysis = Column(Text)
     images = Column(Text)  # JSON string of image URLs
     submitted_at = Column(DateTime, default=datetime.utcnow)
+
+
+class Notification(Base):
+    __tablename__ = "notification_outbox"
+
+    id = Column(String, primary_key=True)
+    work_order_id = Column(Integer, index=True, nullable=False)
+    engineer_id = Column(Integer, nullable=False)
+    actor_id = Column(Integer, nullable=False)
+    status = Column(String, nullable=False, index=True)
+    attempts = Column(Integer, nullable=False, default=0)
+    recipient = Column(String, nullable=True)
+    content = Column(Text, nullable=False)
+    error_code = Column(String, nullable=True)
+    message_id = Column(String, nullable=True)
+    retry_actor_id = Column(Integer, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    next_attempt_at = Column(DateTime, default=datetime.utcnow, nullable=False)

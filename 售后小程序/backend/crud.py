@@ -5,6 +5,7 @@ from datetime import datetime, timedelta
 from passlib.context import CryptContext
 import json
 import secrets
+from wecom_notifications import enqueue_assignment
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
@@ -125,6 +126,7 @@ def create_work_order(db: Session, data, created_by: int):
         status="assigned"
     )
     db.add(order)
+    enqueue_assignment(db, order, created_by)
     db.commit()
     db.refresh(order)
     return order
@@ -189,11 +191,12 @@ def get_work_order(db: Session, order_id: int):
     )
 
 
-def update_work_order(db: Session, order_id: int, data):
+def update_work_order(db: Session, order_id: int, data, actor_id=None):
     order = db.query(WorkOrder).filter(WorkOrder.id == order_id).first()
     if not order:
         return None
 
+    previous_engineer_id = order.engineer_id
     for field in ("customer_name", "customer_phone", "device_name", "sn_code", "address", "fault_type", "fault_desc", "engineer_id"):
         setattr(order, field, getattr(data, field))
     order.fault_images = json.dumps(data.fault_images or [])
@@ -202,6 +205,8 @@ def update_work_order(db: Session, order_id: int, data):
     if getattr(data, "status", None):
         order.status = data.status
 
+    if previous_engineer_id != order.engineer_id:
+        enqueue_assignment(db, order, actor_id or order.created_by)
     db.commit()
     db.refresh(order)
     return order

@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta, timezone
+from contextlib import asynccontextmanager
 import base64
 import hashlib
 import hmac
@@ -53,7 +54,8 @@ from crud import (
     update_work_order_status,
 )
 from database import Base, engine, get_db
-from models import Engineer, User, WorkOrder
+from models import Engineer, User, WorkOrder, Notification
+from wecom_notifications import start_worker, stop_worker, enabled as wecom_enabled
 from odoo_client import OdooError, odoo_client
 from schemas import (
     EngineerCreate,
@@ -135,7 +137,16 @@ def ensure_schema() -> None:
 
 ensure_schema()
 
-app = FastAPI(title=APP_TITLE)
+@asynccontextmanager
+async def lifespan(app):
+    start_worker()
+    try:
+        yield
+    finally:
+        stop_worker()
+
+
+app = FastAPI(title=APP_TITLE, lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -907,10 +918,45 @@ def edit_work_order(
 ):
     if current_user.role != "paidan":
         raise HTTPException(status_code=403, detail="No permission to update work order")
-    order = update_work_order(db, order_id, data)
+    order = update_work_order(db, order_id, data, current_user.id)
     if not order:
         raise HTTPException(status_code=404, detail="Work order not found")
     return enrich_order(order)
+
+
+@app.get("/notifications")
+def list_notifications(
+    db: Session = Depends(get_db), current_user: User = Depends(get_current_user),
+    limit: int = Query(50, ge=1, le=200),
+):
+    if current_user.role != "paidan":
+        raise HTTPException(status_code=403, detail="仅派单员可查看通知记录")
+    rows = db.query(Notification).order_by(Notification.created_at.desc()).limit(limit).all()
+    return {"enabled": wecom_enabled(), "items": [{
+        "id": r.id, "work_order_id": r.work_order_id, "engineer_id": r.engineer_id,
+        "status": r.status, "attempts": r.attempts, "error_code": r.error_code,
+        "created_at": r.created_at, "updated_at": r.updated_at,
+    } for r in rows]}
+
+
+@app.post("/notifications/{notification_id}/retry")
+def retry_notification(
+    notification_id: str, db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    if current_user.role != "paidan":
+        raise HTTPException(status_code=403, detail="仅派单员可重试通知")
+    if not wecom_enabled():
+        raise HTTPException(status_code=409, detail="通知开关未启用")
+    # UNKNOWN requires operator investigation: sending again could duplicate delivery.
+    count = db.query(Notification).filter(
+        Notification.id == notification_id, Notification.status.in_(["FAILED", "BLOCKED"])
+    ).update({"status": "PENDING", "attempts": 0, "error_code": None,
+              "retry_actor_id": current_user.id, "next_attempt_at": datetime.utcnow()})
+    db.commit()
+    if not count:
+        raise HTTPException(status_code=409, detail="记录不存在或状态不允许重试；结果未知的消息须人工核验")
+    return {"ok": True, "status": "PENDING"}
 
 
 @app.delete("/workorders/{order_id}")
