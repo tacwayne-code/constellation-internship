@@ -2,6 +2,8 @@ import json
 import tempfile
 import threading
 import unittest
+import base64
+from unittest.mock import patch
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -168,6 +170,18 @@ class SharedServerTest(unittest.TestCase):
         self.server.server_close()
         self.thread.join(timeout=3)
         self.temporary.cleanup()
+
+    def test_sales_can_get_limited_service_request_link(self):
+        with patch.dict('os.environ', {'SSO_SHARED_SECRET': 'test-only'}):
+            status, result = request(self.base_url, '/api/service-request-link', method='POST')
+            self.assertEqual(status, 200)
+            ticket = result['url'].split('#ticket=')[1]
+            encoded = ticket.split('.')[1]
+            payload = json.loads(base64.urlsafe_b64decode(encoded + '=' * (-len(encoded) % 4)))
+            self.assertEqual(payload['aud'], 'service_requests')
+            self.assertEqual(payload['role'], '销售人员')
+            status, _ = request(self.base_url, '/api/service-request-link', actor='not-an-employee', method='POST')
+            self.assertEqual(status, 401)
 
     def test_two_ports_can_share_one_in_memory_state(self):
         secondary = create_server(

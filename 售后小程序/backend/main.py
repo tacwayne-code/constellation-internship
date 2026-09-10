@@ -54,8 +54,9 @@ from crud import (
     update_work_order_status,
 )
 from database import Base, engine, get_db
-from models import Engineer, User, WorkOrder, Notification
+from models import Engineer, User, WorkOrder, Notification, ServiceRequestReceipt
 from wecom_notifications import start_worker, stop_worker, enabled as wecom_enabled
+from service_requests import router as requests_router, issue_ticket
 from odoo_client import OdooError, odoo_client
 from schemas import (
     EngineerCreate,
@@ -147,6 +148,7 @@ async def lifespan(app):
 
 
 app = FastAPI(title=APP_TITLE, lifespan=lifespan)
+app.include_router(requests_router)
 
 app.add_middleware(
     CORSMiddleware,
@@ -514,6 +516,14 @@ def sso_handoff(req: dict, db: Session = Depends(get_db)):
 def logout(response: Response):
     response.delete_cookie(TOKEN_COOKIE_NAME, path="/")
     return {"ok": True}
+
+
+@app.post("/service-request-link")
+def service_request_link(current_user: User = Depends(get_current_user)):
+    if current_user.role not in ("engineer", "paidan"):
+        raise HTTPException(403, "无报备权限")
+    ticket = issue_ticket("ass:" + str(current_user.id), current_user.name, current_user.role)
+    return {"url": "/web/request.html#ticket=" + ticket}
 
 
 @app.put("/users/me", response_model=UserOut)
@@ -924,6 +934,9 @@ def edit_work_order(
 ):
     if current_user.role != "paidan":
         raise HTTPException(status_code=403, detail="No permission to update work order")
+    assignee = db.get(Engineer, data.engineer_id)
+    if not assignee or assignee.status != "active" or not assignee.user or assignee.user.role != "engineer":
+        raise HTTPException(400, "请选择有效的售后工程师")
     order = update_work_order(db, order_id, data, current_user.id)
     if not order:
         raise HTTPException(status_code=404, detail="Work order not found")
@@ -973,6 +986,8 @@ def remove_work_order(
 ):
     if current_user.role != "paidan":
         raise HTTPException(status_code=403, detail="No permission to delete work order")
+    if db.query(ServiceRequestReceipt).filter(ServiceRequestReceipt.work_order_id == order_id).first():
+        raise HTTPException(409, "需求报备工单需保留来源记录，暂不支持直接删除")
     order = delete_work_order(db, order_id)
     if not order:
         raise HTTPException(status_code=404, detail="Work order not found")
@@ -1049,7 +1064,12 @@ def get_order(
     current_user: User = Depends(get_current_user),
 ):
     order = require_order_access(db, order_id, current_user)
-    return enrich_order(order)
+    data = enrich_order(order)
+    receipt = db.query(ServiceRequestReceipt).filter(ServiceRequestReceipt.work_order_id == order_id).first()
+    if receipt:
+        data["requester_name"] = receipt.reporter_name
+        data["request_source"] = "工程师报备" if receipt.source_role == "engineer" else "销售报备" if receipt.source_role in ("销售人员", "销售经理") else "派单报备"
+    return data
 
 
 @app.post("/workorders/{order_id}/records")

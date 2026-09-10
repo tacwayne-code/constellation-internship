@@ -20,6 +20,20 @@ import { Icon } from "./icons.jsx";
 import { money, shortMoney, todayText } from "./formatters.js";
 import { listExpenseReports } from "./trip/tripApi.js";
 import { listEmployees, removeEmployee, reviewEmployee } from "./employees/employeeApi.js";
+import { authHeaders } from "./auth/session.js";
+
+async function openServiceRequest(event) {
+  const button = event.currentTarget;
+  if (button.disabled) return;
+  button.disabled = true;
+  try {
+    const response = await fetch('/api/service-request-link', { method: 'POST', credentials: 'same-origin', headers: authHeaders('POST') });
+    const result = await response.json();
+    if (!response.ok || !result.url) throw new Error(result.message || '报备入口暂不可用');
+    window.location.assign(result.url);
+  } catch (error) { window.alert(error.message || '无法打开报备'); }
+  finally { button.disabled = false; }
+}
 
 const TripTestApp = lazy(() => import("./trip/TripTestApp.jsx"));
 
@@ -314,6 +328,7 @@ function Home({ data, user, open, setTab }) {
         ))}
       </div>
       <SectionTitle>最近客户</SectionTitle>
+      <button className="btn" onClick={openServiceRequest}>提交售后需求 / 查看我的报备</button>
       <div className="customer-preview">
         {data.customers.length ? data.customers.slice(0, 3).map((c, i) => (
           <button key={c.id} onClick={() => open("customerDetail", c.id)}>

@@ -5,6 +5,10 @@ from __future__ import annotations
 
 import argparse
 import copy
+import base64
+import hashlib
+import hmac
+import time
 import json
 import math
 import mimetypes
@@ -377,6 +381,17 @@ class SharedCrmHandler(BaseHTTPRequestHandler):
                 return
 
             actor = self._actor()
+            if parsed.path == "/api/service-request-link" and method == "POST":
+                secret = os.getenv("SSO_SHARED_SECRET", "")
+                if actor["role"] not in {"销售人员", "销售经理"} or not secret:
+                    raise ApiError("售后报备暂不可用", 403, "REQUEST_UNAVAILABLE")
+                payload = {"aud": "service_requests", "sub": "crm:" + actor["id"],
+                           "name": actor["name"], "role": actor["role"], "exp": int(time.time()) + 600}
+                encoded = base64.urlsafe_b64encode(json.dumps(payload).encode()).rstrip(b"=")
+                signature = base64.urlsafe_b64encode(hmac.new(secret.encode(), encoded, hashlib.sha256).digest()).rstrip(b"=")
+                ticket = "v1." + encoded.decode() + "." + signature.decode()
+                self._send_json(200, {"url": os.getenv("ASS_REQUEST_PAGE_URL", "https://service.inspiri.cn/web/request.html") + "#ticket=" + ticket})
+                return
             if parsed.path == "/api/employees" and method == "GET":
                 if actor["role"] != "销售经理":
                     raise ApiError(

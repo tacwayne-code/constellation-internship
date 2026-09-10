@@ -87,3 +87,14 @@ class Notification(Base):
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     next_attempt_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+
+class ServiceRequestReceipt(Base):
+    __tablename__ = "service_request_receipts"
+    id = Column(String, primary_key=True)
+    reporter = Column(String, nullable=False, index=True)
+    reporter_name = Column(String, nullable=False)
+    source_role = Column(String, nullable=False)
+    payload_hash = Column(String, nullable=False)
+    work_order_id = Column(Integer, ForeignKey("work_orders.id"), unique=True, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)

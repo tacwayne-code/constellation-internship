@@ -206,6 +206,8 @@ def update_work_order(db: Session, order_id: int, data, actor_id=None):
         order.status = data.status
 
     if previous_engineer_id != order.engineer_id:
+        if order.engineer_id and order.status == "pending":
+            order.status = "assigned"
         enqueue_assignment(db, order, actor_id or order.created_by)
     db.commit()
     db.refresh(order)

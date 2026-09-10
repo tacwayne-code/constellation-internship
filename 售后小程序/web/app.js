@@ -938,6 +938,7 @@ function renderAccountForm() {
 
 function renderTasks() {
   return renderShell(`
+    <section class="card"><button class="btn" type="button" data-service-request>提交售后需求 / 查看我的报备</button></section>
     <section class="card summary-card">
       <div class="summary-eyebrow">今日待执行任务</div>
       <div class="summary-value">${esc(state.taskOrders.length)} 单待处理</div>
@@ -1096,6 +1097,7 @@ function renderDetail() {
     <section class="card">
       <div class="card-title">工单信息</div>
       <div class="info-row"><span class="info-label">工单编号</span><span class="info-val strong-text">${esc(order.order_no)}</span></div>
+      ${order.requester_name ? `<div class="info-row"><span class="info-label">报备来源</span><span class="info-val">${esc(order.requester_name)} · ${esc(order.request_source)}</span></div>` : ""}
       <div class="info-row"><span class="info-label">工单状态</span><span class="info-val"><span class="badge ${statusMeta(order.status).cls}">${esc(statusMeta(order.status).text)}</span></span></div>
       <div class="info-row"><span class="info-label">客户名称</span><span class="info-val">${esc(order.customer_name)}</span></div>
       ${order.customer_phone ? `<div class="info-row"><span class="info-label">联系电话</span><span class="info-val">${esc(order.customer_phone)}</span></div>` : ""}
@@ -1354,6 +1356,18 @@ function bindEvents() {
       setWorkingOrder(await api(`/workorders/${id}/accept`, { method: "POST" }));
       await refreshAll();
       setRoute("working");
+    });
+  });
+
+  document.querySelectorAll('[data-service-request]').forEach(button => {
+    button.addEventListener('click', async () => {
+      if (button.disabled) return;
+      button.disabled = true;
+      try {
+        const result = await api('/service-request-link', { method: 'POST' });
+        window.location.assign(result.url);
+      } catch (error) { window.alert(error.message || '报备入口暂不可用'); }
+      finally { button.disabled = false; }
     });
   });
 

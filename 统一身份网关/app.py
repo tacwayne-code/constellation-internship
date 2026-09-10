@@ -92,7 +92,9 @@ class App:
         subject = self.exchange_code(code)
         identity = self.store.record_login(subject)
         if identity["status"] != "ACTIVE":
-            return {"status": "PENDING", "message": "身份已登记，等待管理员授权"}
+            registration_code = hashlib.sha256(subject.encode()).hexdigest()[:16]
+            return {"status": "PENDING", "registrationCode": registration_code,
+                    "message": "身份已登记，等待管理员授权。登记码：" + registration_code}
         now = int(time.time())
         base = {"sub": subject, "name": identity["display_name"], "iat": now, "exp": now + 120, "jti": secrets.token_urlsafe(18)}
         tickets: dict[str, str] = {}
