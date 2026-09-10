@@ -25,7 +25,7 @@ class RequestsTest(unittest.TestCase):
         self.db.commit()
         self.client = TestClient(app)
         self.headers = {'X-Request-Ticket': issue_ticket('crm:employee-1', '销售', '销售人员')}
-        self.body = dict(request_id=str(uuid.uuid4()), customer_name='测试客户', customer_phone='123', device_name='分光机', fault_desc='故障')
+        self.body = dict(request_id=str(uuid.uuid4()), customer_name='测试客户', customer_contact='李采购', customer_phone='123', device_name='分光机', fault_desc='故障')
 
     def tearDown(self):
         app.dependency_overrides.clear()
@@ -75,6 +75,36 @@ class RequestsTest(unittest.TestCase):
             self.assertEqual(self.client.get('/service-requests?limit=1&offset=0',headers=headers).json()['total'], 1)
             self.assertEqual(self.client.get('/service-requests?offset=1',headers=headers).json()['items'], [])
             app.dependency_overrides.clear()
+
+    def test_contacts_are_order_scoped_and_append_only(self):
+        from models import OrderContact
+        for bad in ("", "   "):
+            self.assertEqual(self.client.post('/service-requests', headers=self.headers, json={**self.body, 'customer_contact':bad}).status_code, 422)
+        oid = self.client.post('/service-requests', headers=self.headers, json=self.body).json()['id']
+        original = self.client.get(f'/service-requests/{oid}', headers=self.headers).json()['contacts']
+        self.assertEqual(original[0]['name'], '李采购')
+        other = {'X-Request-Ticket':issue_ticket('crm:other', '其他人', '销售人员')}
+        path = f'/service-requests/{oid}/contacts'
+        contact = {'purpose':'onsite','name':'张师傅','phone':'0755-12345678转801'}
+        self.assertEqual(self.client.post(path, headers=other, json=contact).status_code, 404)
+        self.assertEqual(self.client.post(path, headers=self.headers, json=contact).status_code, 200)
+        app.dependency_overrides[get_current_user] = lambda: self.db.get(User, 2)
+        self.assertEqual(self.client.get(f'/workorders/{oid}/contacts').status_code, 403)
+        app.dependency_overrides[get_current_user] = lambda: self.db.get(User, 1)
+        self.assertEqual(self.client.get(f'/workorders/{oid}/contacts').status_code, 200)
+        self.assertEqual(self.client.put(f'/workorders/{oid}',json={**self.body,'engineer_id':1,'fault_type':'机械故障'}).status_code,200)
+        app.dependency_overrides[get_current_user] = lambda: self.db.get(User, 2)
+        self.assertEqual(self.client.post(f'/workorders/{oid}/contacts',json={**contact,'name':'王主管'}).status_code,200)
+        detail = self.client.get(f'/service-requests/{oid}', headers=self.headers).json()
+        self.assertEqual([c['name'] for c in detail['contacts']], ['李采购','张师傅','王主管'])
+        self.assertEqual(detail['contacts'][0], original[0])
+        new_id = self.client.post('/service-requests',headers=self.headers,json={**self.body,'request_id':str(uuid.uuid4()),'customer_contact':'赵采购','customer_phone':'456'}).json()['id']
+        self.assertEqual(len(self.client.get(f'/service-requests/{new_id}',headers=self.headers).json()['contacts']),1)
+        self.db.expire_all()
+        self.assertEqual(self.db.get(WorkOrder,oid).customer_phone,'123')
+        order = self.db.get(WorkOrder,oid);order.status='done';self.db.commit()
+        self.assertEqual(self.client.post(path, headers=self.headers, json=contact).status_code,409)
+        self.assertEqual(self.db.query(OrderContact).filter_by(work_order_id=oid).count(),3)
 
     def test_old_order_history_is_not_invented(self):
         oid = self.client.post('/service-requests', headers=self.headers, json=self.body).json()['id']

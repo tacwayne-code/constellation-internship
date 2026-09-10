@@ -109,3 +109,14 @@ class WorkOrderEvent(Base):
     actor_id = Column(String)
     engineer_name = Column(String)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+
+class OrderContact(Base):
+    __tablename__ = "order_contacts"
+    id = Column(Integer, primary_key=True)
+    work_order_id = Column(Integer, ForeignKey("work_orders.id"), nullable=False, index=True)
+    purpose = Column(String, nullable=False)
+    name = Column(String, nullable=False)
+    phone = Column(String, nullable=False)
+    actor = Column(String, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)

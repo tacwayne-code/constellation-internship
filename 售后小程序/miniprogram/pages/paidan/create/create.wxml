@@ -30,9 +30,11 @@
       </view>
     </view>
 
+    <view class="form-group"><text class="form-label">本次报修联系人（必填）</text><input class="form-input" data-field="customer_contact" value="{{form.customer_contact}}" bindinput="onInput" maxlength="100" placeholder="填写本次报修人姓名" /></view>
+    <text>仅用于本次工单，不同步 CRM 或 Odoo 联系人。</text>
     <view class="form-group">
       <text class="form-label">客户联系电话</text>
-      <input class="form-input" type="number" data-field="customer_phone" value="{{form.customer_phone}}" bindinput="onInput" placeholder="选择客户自动带出，也可手动修改" />
+      <input class="form-input" type="text" data-field="customer_phone" value="{{form.customer_phone}}" bindinput="onInput" placeholder="填写本次报修人电话（必填）" />
     </view>
 
     <view class="form-group">

@@ -39,7 +39,7 @@ class NotificationsTest(unittest.TestCase):
         self.db.commit()
         self.client = Mock()
         self.client.send.return_value = "message-test"
-        self.payload = dict(customer_name="private customer", device_name="device", fault_type="fault", fault_desc="private", engineer_id=1)
+        self.payload = dict(customer_name="private customer", customer_contact="测试联系人", customer_phone="0755-12345678", device_name="device", fault_type="fault", fault_desc="private", engineer_id=1)
 
     def tearDown(self):
         self.db.close()

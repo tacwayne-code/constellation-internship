@@ -16,6 +16,7 @@ Page({
     form: {
       customer_name: '',
       customer_phone: '',
+      customer_contact: '',
       device_name: '',
       sn_code: '',
       address: '',
@@ -110,7 +111,6 @@ Page({
       odooError: false,
       'form.customer_name': name,
       'form.address': address || this.data.form.address,
-      'form.customer_phone': phone || this.data.form.customer_phone,
       'form.odoo_partner_id': String(id),
       // 客户地址带出 → 自动显示；否则手动填写
       addressAutoMode: !!address
@@ -141,7 +141,7 @@ Page({
 
   async submitOrder() {
     const { form } = this.data;
-    if (!form.customer_name || !form.device_name || !form.fault_desc || !form.engineer_id) {
+    if (!form.customer_contact.trim() || !form.customer_phone.trim() || !form.customer_name || !form.device_name || !form.fault_desc || !form.engineer_id) {
       wx.showToast({ title: '请填写完整信息', icon: 'none' });
       return;
     }
@@ -153,6 +153,7 @@ Page({
         form: {
           customer_name: '',
           customer_phone: '',
+      customer_contact: '',
           device_name: '',
           sn_code: '',
           address: '',

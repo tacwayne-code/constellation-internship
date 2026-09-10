@@ -1,6 +1,8 @@
+from fastapi import HTTPException
+from order_contacts import ContactInput, append_contact
 from sqlalchemy.orm import Session, selectinload
 from sqlalchemy import or_
-from models import User, Engineer, WorkOrder, WorkRecord, WorkOrderEvent
+from models import User, Engineer, WorkOrder, WorkRecord, WorkOrderEvent, OrderContact
 from datetime import datetime, timedelta
 from passlib.context import CryptContext
 import json
@@ -134,6 +136,8 @@ def create_work_order(db: Session, data, created_by: int):
         status="assigned"
     )
     db.add(order)
+    db.flush()
+    append_contact(db, order, ContactInput(purpose="reporting", name=data.customer_contact, phone=data.customer_phone), "ass:" + str(created_by))
     record_event(db, order, "创建并派单", created_by)
     enqueue_assignment(db, order, created_by)
     db.commit()
@@ -205,6 +209,8 @@ def update_work_order(db: Session, order_id: int, data, actor_id=None):
     if not order:
         return None
 
+    if db.query(OrderContact).filter(OrderContact.work_order_id == order_id).first() and data.customer_phone != order.customer_phone:
+        raise HTTPException(409, "请在工单联系记录中补充新联系人，原报修电话保留")
     previous_status = order.status
     previous_engineer_id = order.engineer_id
     for field in ("customer_name", "customer_phone", "device_name", "sn_code", "address", "fault_type", "fault_desc", "engineer_id"):
@@ -234,6 +240,7 @@ def delete_work_order(db: Session, order_id: int):
     records = db.query(WorkRecord).filter(WorkRecord.work_order_id == order_id).all()
     for record in records:
         db.delete(record)
+    db.query(OrderContact).filter(OrderContact.work_order_id == order_id).delete(synchronize_session=False)
     db.query(WorkOrderEvent).filter(WorkOrderEvent.work_order_id == order_id).delete(synchronize_session=False)
     db.delete(order)
     db.commit()

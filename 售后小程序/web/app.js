@@ -689,9 +689,11 @@ function renderCreate() {
             <input class="form-input" name="address" value="${esc(addressText)}" placeholder="请输入服务地址（省/市/区/道路/门牌号等）">
           </div>
         </div>
+        ${!current ? `<div class="form-group"><label class="form-label">本次报修联系人</label><input class="form-input" name="customer_contact" required maxlength="100" autocomplete="off" placeholder="本次报修人的姓名"></div>` : ""}
+        <p>联系方式仅用于本次工单，向提交人、派单员和承派工程师显示，不同步客户主档。更换联系人请在工单详情中补充。</p>
         <div class="form-group">
           <label class="form-label">客户联系电话</label>
-          <input class="form-input" name="customer_phone" value="${esc(current?.customer_phone || "")}" placeholder="选择客户自动带出，也可手动修改" autocomplete="off">
+          <input class="form-input" name="customer_phone" value="${esc(current?.customer_phone || "")}" placeholder="填写本次报修人的电话，不从客户库带出" autocomplete="off" ${current ? "readonly" : "required"}>
         </div>
         <div class="form-group">
           <label class="form-label">设备类型</label>
@@ -1120,6 +1122,7 @@ function renderDetail() {
         </div>
       ` : ""}
     </section>
+    <section class="card" id="order-contacts"></section>
     ${faultImages.length ? `
       <section class="card">
         <div class="card-title">故障照片</div>
@@ -1213,6 +1216,15 @@ function render() {
 }
 
 function bindEvents() {
+  const contactPanel = document.getElementById('order-contacts');
+  if (contactPanel && state.detailOrder) {
+    const id = state.detailOrder.id, editable = !['done','rejected'].includes(state.detailOrder.status);
+    api(`/workorders/${id}/contacts`).then(result => {
+      if (contactPanel.isConnected) window.mountOrderContacts(contactPanel, result.items,
+        body => api(`/workorders/${id}/contacts`, {method:'POST',body}), editable);
+    }).catch(error => {contactPanel.textContent=error.message;});
+  }
+
   document.querySelectorAll("[data-role]").forEach((button) => {
     button.addEventListener("click", () => {
       const form = document.getElementById("login-form");
@@ -1473,7 +1485,7 @@ function bindEvents() {
       updateHint("");
       // 联系电话：客户带出（优先手机号，其次座机），可手动修改
       const phoneInput = createOrderForm.querySelector('input[name="customer_phone"]');
-      if (phoneInput) phoneInput.value = phone || "";
+      // 联系电话由本次报修人填写，不使用 Odoo 主档电话。
       if (address) {
         // 客户地址已带出：直接显示，同时填充隐藏的地址输入框
         const addressInput = createOrderForm.querySelector('input[name="address"]');
@@ -1543,6 +1555,7 @@ function bindEvents() {
       const uploadedFaultImages = await uploadFiles(createOrderForm.fault_images.files);
       const payload = {
         customer_name: formData.get("customer_name"),
+        customer_contact: formData.get("customer_contact") || undefined,
         customer_phone: formData.get("customer_phone") || null,
         device_name: formData.get("device_name"),
         sn_code: formData.get("sn_code"),

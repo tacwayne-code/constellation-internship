@@ -57,6 +57,7 @@ from database import Base, engine, get_db
 from models import Engineer, User, WorkOrder, Notification, ServiceRequestReceipt
 from wecom_notifications import start_worker, stop_worker, enabled as wecom_enabled
 from service_requests import router as requests_router, issue_ticket
+from order_contacts import ContactInput, append_contact, contact_views
 from odoo_client import OdooError, odoo_client
 from schemas import (
     EngineerCreate,
@@ -1070,6 +1071,20 @@ def get_order(
         data["requester_name"] = receipt.reporter_name
         data["request_source"] = "工程师报备" if receipt.source_role == "engineer" else "销售报备" if receipt.source_role in ("销售人员", "销售经理") else "派单报备"
     return data
+
+
+@app.get("/workorders/{order_id}/contacts")
+def list_order_contacts(order_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    require_order_access(db, order_id, current_user)
+    return {"items": contact_views(db, order_id)}
+
+
+@app.post("/workorders/{order_id}/contacts")
+def add_order_contact(order_id: int, data: ContactInput, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    order = require_order_access(db, order_id, current_user)
+    append_contact(db, order, data, "ass:" + str(current_user.id))
+    db.commit()
+    return {"items": contact_views(db, order_id)}
 
 
 @app.post("/workorders/{order_id}/records")

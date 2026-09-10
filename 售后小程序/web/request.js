@@ -39,6 +39,8 @@ async function showDetail(id) {
     panel.replaceChildren(element('h2',item.customer_name),element('p',item.order_no),element('h3',names[item.status] || item.status),
       element('p','承派工程师：' + (item.engineer_name || '等待指派')), element('p','设备：' + item.device_name),
       element('p','服务地址：' + (item.address || '未填写')),element('p','故障描述：' + item.fault_desc),element('h3','工单流程记录'));
+    const contacts = element('section',''); panel.append(contacts);
+    window.mountOrderContacts(contacts, item.contacts || [], body => request('POST', body, '/' + id + '/contacts'), !['done','rejected'].includes(item.status));
     if (!item.history_complete) panel.append(element('p','此历史工单的早期流转时间未保存，以下仅展示已有记录。'));
     const timeline = element('ol','');
     item.timeline.forEach(e => timeline.append(element('li',`${e.action} · ${timeText(e.at)}${e.engineer_name ? ' · ' + e.engineer_name : ''}${e.status ? ' · ' + (names[e.status] || e.status) : ''}`)));

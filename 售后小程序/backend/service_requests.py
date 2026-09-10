@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 from database import get_db
 from models import ServiceRequestReceipt, WorkOrder, WorkOrderEvent
 from sqlalchemy import or_
+from order_contacts import ContactInput, append_contact, contact_views
 
 router = APIRouter()
 ROLES = {"engineer", "paidan", "销售人员", "销售经理"}
@@ -47,13 +48,14 @@ def reporter(x_request_ticket: str = Header(default="")):
 class Demand(BaseModel):
     request_id: uuid.UUID
     customer_name: str = Field(min_length=1, max_length=200)
+    customer_contact: str = Field(min_length=1, max_length=100)
     customer_phone: str = Field(min_length=1, max_length=50)
     address: str = Field(default="", max_length=500)
     device_name: str = Field(min_length=1, max_length=200)
     sn_code: str = Field(default="", max_length=100)
     fault_desc: str = Field(min_length=1, max_length=5000)
 
-    @field_validator("customer_name", "customer_phone", "device_name", "fault_desc")
+    @field_validator("customer_name", "customer_contact", "customer_phone", "device_name", "fault_desc")
     @classmethod
     def nonblank(cls, value):
         if not value.strip():
@@ -79,11 +81,13 @@ def submit(data: Demand, identity=Depends(reporter), db: Session = Depends(get_d
     receipt = db.get(ServiceRequestReceipt, key)
     if receipt:
         return existing(receipt)
-    order = WorkOrder(**fields, order_no="SR-" + uuid.uuid4().hex[:16].upper(),
+    order_fields = {k: v for k, v in fields.items() if k != "customer_contact"}
+    order = WorkOrder(**order_fields, order_no="SR-" + uuid.uuid4().hex[:16].upper(),
                       status="pending", engineer_id=None, created_by=None,
                       fault_type="需求报备", fault_images="[]")
     db.add(order)
     db.flush()
+    append_contact(db, order, ContactInput(purpose="reporting", name=data.customer_contact, phone=data.customer_phone), subject)
     db.add(WorkOrderEvent(work_order_id=order.id, status="pending", action="提交需求", actor_id=subject))
     db.add(ServiceRequestReceipt(id=key, reporter=subject, reporter_name=identity["name"],
         source_role=identity["role"], payload_hash=payload_hash, work_order_id=order.id))
@@ -132,7 +136,17 @@ def request_detail(order_id: int, identity=Depends(reporter), db: Session = Depe
     complete = bool(events and events[0].action in ("提交需求", "创建并派单"))
     if not complete:
         timeline.insert(0, {"status": "", "action": "工单创建（历史记录）", "at": order.created_at})
-    return {**summary(order), "address": order.address, "fault_desc": order.fault_desc,
+    return {**summary(order), "contacts": contact_views(db, order.id), "address": order.address, "fault_desc": order.fault_desc,
             "sn_code": order.sn_code, "timeline": timeline, "history_complete": complete,
             "records": [{"submitted_at": r.submitted_at, "start_time": r.start_time,
                          "end_time": r.end_time, "analysis": r.analysis} for r in order.records]}
+
+
+@router.post("/service-requests/{order_id}/contacts")
+def add_request_contact(order_id: int, data: ContactInput, identity=Depends(reporter), db: Session = Depends(get_db)):
+    order = own_orders(db, identity).filter(WorkOrder.id == order_id).first()
+    if not order:
+        raise HTTPException(404, "工单不存在或不属于本人提交")
+    append_contact(db, order, data, hashlib.sha256(identity["sub"].encode()).hexdigest())
+    db.commit()
+    return {"items": contact_views(db, order.id)}

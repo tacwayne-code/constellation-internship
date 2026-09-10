@@ -75,7 +75,16 @@ class EngineerOut(BaseModel):
 
 class WorkOrderCreate(BaseModel):
     customer_name: str = Field(..., max_length=200)
-    customer_phone: Optional[str] = Field(default=None, max_length=50, description="客户联系电话")
+    customer_contact: str = Field(min_length=1, max_length=100)
+    customer_phone: str = Field(min_length=1, max_length=50)
+
+    @field_validator("customer_contact", "customer_phone")
+    @classmethod
+    def contact_nonblank(cls, value):
+        if not value.strip():
+            raise ValueError("本次联系人和电话不能为空")
+        return value.strip()
+
     device_name: str = Field(..., max_length=200)
     sn_code: Optional[str] = Field(default=None, max_length=100)
     address: Optional[str] = Field(default=None, max_length=500)
