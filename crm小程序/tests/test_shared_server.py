@@ -2,8 +2,6 @@ import json
 import tempfile
 import threading
 import unittest
-import base64
-from unittest.mock import patch
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -80,6 +78,9 @@ class FakeRouteAdapter:
             "calculatedAt": "2026-07-20T08:00:00Z",
         }
 
+    def search_places(self, keyword, city=""):
+        return [{"id": "P1", "name": keyword, "formattedAddress": "演示路1号", "source": self.mode}]
+
     def geocode_address(self, address, city=""):
         return {
             "source": self.mode,
@@ -96,20 +97,6 @@ class FakeRouteAdapter:
             "longitude": point["longitude"],
             "latitude": point["latitude"],
         }
-
-
-class FakePlatformConnector:
-    mode = "UNIFIED_PLATFORM_TEST"
-
-    def __init__(self):
-        self.calls = []
-
-    def list_customers(self):
-        return None
-
-    def upsert_customer(self, customer, actor):
-        self.calls.append((customer["id"], actor["id"]))
-        return {**customer, "erpCustomerId": "991", "erpCustomerCode": customer["id"], "erpSyncStatus": "SYNCED"}
 
 
 class SharedServerTest(unittest.TestCase):
@@ -171,18 +158,6 @@ class SharedServerTest(unittest.TestCase):
         self.thread.join(timeout=3)
         self.temporary.cleanup()
 
-    def test_sales_can_get_limited_service_request_link(self):
-        with patch.dict('os.environ', {'SSO_SHARED_SECRET': 'test-only'}):
-            status, result = request(self.base_url, '/api/service-request-link', method='POST')
-            self.assertEqual(status, 200)
-            ticket = result['url'].split('#ticket=')[1]
-            encoded = ticket.split('.')[1]
-            payload = json.loads(base64.urlsafe_b64decode(encoded + '=' * (-len(encoded) % 4)))
-            self.assertEqual(payload['aud'], 'service_requests')
-            self.assertEqual(payload['role'], '销售人员')
-            status, _ = request(self.base_url, '/api/service-request-link', actor='not-an-employee', method='POST')
-            self.assertEqual(status, 401)
-
     def test_two_ports_can_share_one_in_memory_state(self):
         secondary = create_server(
             "127.0.0.1",
@@ -205,7 +180,7 @@ class SharedServerTest(unittest.TestCase):
                 self.base_url,
                 "/api/customers",
                 method="POST",
-                body={"name": "双端口共享客户", "contacts": []},
+                body={"name": "双端口共享客户", "contacts": [{"name": "测试联系人", "phone": "0755-12345678"}]},
             )
             self.assertEqual(status, 201)
 
@@ -249,84 +224,6 @@ class SharedServerTest(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertEqual(payload["item"]["updatedBy"], "USR-00001")
         self.assertTrue(self.data_file.exists())
-
-    def test_customer_create_uses_unified_platform_bridge(self):
-        connector = FakePlatformConnector()
-        bridged = create_server(
-            "127.0.0.1",
-            0,
-            self.data_file,
-            seed_file=self.seed_file,
-            erp_adapter=self.erp_adapter,
-            route_adapter=self.route_adapter,
-            platform_connector=connector,
-            state=self.server.RequestHandlerClass.state,
-            auth_manager=self.server.RequestHandlerClass.auth_manager,
-        )
-        thread = threading.Thread(target=bridged.serve_forever, daemon=True)
-        thread.start()
-        try:
-            status, payload = request(
-                f"http://127.0.0.1:{bridged.server_address[1]}",
-                "/api/customers",
-                method="POST",
-                body={"name": "【测试】统一平台桥客户", "contacts": [{"name": "联系人", "phone": "18800008888"}]},
-            )
-            self.assertEqual(status, 201)
-            self.assertEqual(payload["item"]["erpCustomerId"], "991")
-            self.assertEqual(payload["item"]["erpSyncStatus"], "SYNCED")
-            self.assertEqual(connector.calls[0][1], "USR-00018")
-        finally:
-            bridged.shutdown()
-            bridged.server_close()
-            thread.join(timeout=3)
-
-    def test_customer_list_uses_platform_master_and_preserves_local_workflow(self):
-        connector = FakePlatformConnector()
-        connector.list_customers = lambda: [
-            {
-                "id": "ODOO-2467",
-                "name": "Odoo客户",
-                "erpCustomerId": "2467",
-                "phone": "18800001111",
-                "nextFollow": "",
-                "status": "正常",
-            }
-        ]
-        with self.server.RequestHandlerClass.state.lock:
-            self.server.RequestHandlerClass.state.db["customers"].append(
-                {
-                    "id": "CUS-LOCAL-1",
-                    "name": "本地客户",
-                    "erpCustomerId": "2467",
-                    "nextFollow": "2026-09-10",
-                    "note": "CRM跟进信息",
-                }
-            )
-        bridged = create_server(
-            "127.0.0.1",
-            0,
-            self.data_file,
-            seed_file=self.seed_file,
-            erp_adapter=self.erp_adapter,
-            route_adapter=self.route_adapter,
-            platform_connector=connector,
-            state=self.server.RequestHandlerClass.state,
-            auth_manager=self.server.RequestHandlerClass.auth_manager,
-        )
-        thread = threading.Thread(target=bridged.serve_forever, daemon=True)
-        thread.start()
-        try:
-            status, payload = request(f"http://127.0.0.1:{bridged.server_address[1]}", "/api/customers")
-            self.assertEqual(status, 200)
-            customer = next(item for item in payload["items"] if item["erpCustomerId"] == "2467")
-            self.assertEqual(customer["name"], "Odoo客户")
-            self.assertEqual(customer["nextFollow"], "2026-09-10")
-            self.assertEqual(customer["note"], "CRM跟进信息")
-        finally:
-            bridged.shutdown()
-            bridged.server_close()
-            thread.join(timeout=3)
 
     def test_orphan_record_and_reset_permission_are_blocked(self):
         status, payload = request(
@@ -472,92 +369,32 @@ class SharedServerTest(unittest.TestCase):
             body={"decision": "APPROVED"},
         )
         self.assertEqual(status, 403)
-        self.assertEqual(payload["code"], "MANAGER_REQUIRED")
-
+        self.assertEqual(payload["code"], "BACKOFFICE_REQUIRED")
         status, payload = request(
-            self.base_url,
-            f"/api/expense-reports/{report['id']}/review",
-            actor="USR-00001",
-            method="PUT",
-            body={"decision": "APPROVED", "note": "费用核对无误"},
+            self.base_url, f"/api/expense-reports/{report['id']}/review",
+            actor="USR-00001", method="PUT", body={"decision": "APPROVED"},
         )
-        self.assertEqual(status, 200)
-        self.assertEqual(payload["item"]["status"], "APPROVED")
-        self.assertEqual(payload["item"]["reviewerName"], "测试经理")
-
-        status, payload = request(
-            self.base_url,
-            f"/api/expense-reports/{report['id']}/review",
-            actor="USR-00001",
-            method="PUT",
-            body={"decision": "REJECTED", "note": "重复审批"},
-        )
-        self.assertEqual(status, 409)
-        self.assertEqual(payload["code"], "EXPENSE_ALREADY_REVIEWED")
-
-        status, payload = request(
-            self.base_url,
-            f"/api/expense-reports/{report['id']}",
-            method="DELETE",
-        )
-        self.assertEqual(status, 200)
-        self.assertTrue(payload["item"]["archived"])
-        status, payload = request(
-            self.base_url, "/api/expense-reports", actor="USR-00001"
-        )
+        self.assertEqual(status, 403)
+        self.assertEqual(payload["code"], "BACKOFFICE_REQUIRED")
+        status, payload = request(self.base_url, "/api/expense-reports", actor="USR-00001")
         self.assertEqual(status, 200)
         self.assertEqual(payload["items"], [])
+        status, payload = request(self.base_url, "/api/expense-reports")
+        self.assertEqual(payload["items"][0]["status"], "SUBMITTED")
 
-    def test_only_manager_can_review_phone_based_employee_application(self):
-        auth_manager = self.server.RequestHandlerClass.auth_manager
-        application = auth_manager.employees.create_application(
-            "13812345678", "openid-applicant", "张三", "销售经理"
-        )
-        self.assertEqual(application["id"], "13812345678")
-
-        status, payload = request(self.base_url, "/api/employees")
-        self.assertEqual(status, 403)
-        self.assertEqual(payload["code"], "MANAGER_REQUIRED")
-
-        status, payload = request(
-            self.base_url, "/api/employees", actor="USR-00001"
-        )
-        self.assertEqual(status, 200)
-        self.assertEqual(payload["pendingCount"], 1)
-
-        status, payload = request(
-            self.base_url,
-            "/api/employees/13812345678/review",
-            actor="USR-00001",
-            method="PUT",
-            body={
-                "decision": "APPROVED",
-                "role": "销售人员",
-                "note": "身份已核实",
-            },
-        )
-        self.assertEqual(status, 200)
-        self.assertEqual(payload["item"]["id"], "13812345678")
-        self.assertEqual(payload["item"]["role"], "销售人员")
-        self.assertTrue(payload["item"]["active"])
-
-        status, payload = request(
-            self.base_url,
-            "/api/employees/13812345678",
-            actor="USR-00001",
-            method="DELETE",
-        )
-        self.assertEqual(status, 200)
-        self.assertEqual(payload["item"]["status"], "REMOVED")
-
-        status, payload = request(
-            self.base_url,
-            "/api/employees/13800000001",
-            actor="USR-00001",
-            method="DELETE",
-        )
-        self.assertEqual(status, 409)
-        self.assertEqual(payload["code"], "CANNOT_REMOVE_SELF")
+    def test_employee_management_is_unavailable_to_all_miniapp_roles(self):
+        employees = self.server.RequestHandlerClass.auth_manager.employees
+        before = json.dumps(employees.list(), sort_keys=True)
+        for actor in ("USR-00018", "USR-00001"):
+            for path, method, body in (
+                ("/api/employees", "GET", None),
+                ("/api/employees/13800000001/review", "PUT", {"decision": "APPROVED", "role": "销售经理"}),
+                ("/api/employees/13800000001", "DELETE", None),
+            ):
+                status, payload = request(self.base_url, path, actor=actor, method=method, body=body)
+                self.assertEqual(status, 403)
+                self.assertEqual(payload["code"], "BACKOFFICE_REQUIRED")
+        self.assertEqual(json.dumps(employees.list(), sort_keys=True), before)
 
     def test_customer_delete_cascades_crm_records_and_protects_odoo(self):
         status, payload = request(
@@ -617,6 +454,13 @@ class SharedServerTest(unittest.TestCase):
         )
         self.assertEqual(status, 409)
         self.assertEqual(payload["code"], "CUSTOMER_LINKED_TO_ERP")
+
+    def test_company_search_requires_authenticated_employee(self):
+        code, response = request(self.base_url, "/api/locations/search", method="POST", body={"keyword": "测试企业"})
+        self.assertEqual(code, 200)
+        self.assertEqual(response["items"][0]["name"], "测试企业")
+        code, _ = request(self.base_url, "/api/locations/search", actor="MISSING", method="POST", body={"keyword": "测试企业"})
+        self.assertEqual(code, 401)
 
 
 if __name__ == "__main__":

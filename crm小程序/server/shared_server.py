@@ -3,6 +3,10 @@
 
 from __future__ import annotations
 
+import base64
+import hashlib
+import hmac
+import time
 import argparse
 import copy
 import base64
@@ -14,6 +18,7 @@ import math
 import mimetypes
 import os
 import re
+import secrets
 import threading
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -22,11 +27,13 @@ from typing import Any
 from urllib.parse import parse_qs, unquote, urlparse
 
 try:
+    from .contact_privacy import contact_input, save_contact, project, scrub, PRIVATE_KEYS
     from .odoo_adapter import OdooAdapterError, create_erp_adapter_from_environment
     from .amap_route import RouteAdapterError, create_route_adapter_from_environment
     from .wechat_auth import AuthError, AuthManager, create_auth_manager_from_environment
     from .platform_connector import create_platform_connector_from_environment
 except ImportError:  # pragma: no cover - direct script execution
+    from contact_privacy import contact_input, save_contact, project, scrub, PRIVATE_KEYS
     from odoo_adapter import OdooAdapterError, create_erp_adapter_from_environment
     from amap_route import RouteAdapterError, create_route_adapter_from_environment
     from wechat_auth import AuthError, AuthManager, create_auth_manager_from_environment
@@ -211,27 +218,11 @@ class SharedCrmState:
     def assert_unique_customer(
         self, item: dict[str, Any], exclude_id: str = ""
     ) -> None:
-        contacts = item.get("contacts") or []
-        primary = next(
-            (contact for contact in contacts if contact.get("isPrimary")),
-            contacts[0] if contacts else {},
-        )
-        phone = primary.get("phone", "")
         name = str(item.get("name", "")).strip()
         for customer in self.db["customers"]:
-            if customer.get("id") == exclude_id:
-                continue
-            same_name = str(customer.get("name", "")).strip() == name
-            same_phone = bool(phone) and any(
-                contact.get("phone") == phone
-                for contact in customer.get("contacts", [])
-            )
-            if same_name or same_phone:
-                raise ApiError(
-                    f"客户名称或联系电话已存在：{customer.get('name', '')}",
-                    409,
-                    "DUPLICATE_CUSTOMER",
-                )
+            if customer.get("id") != exclude_id and str(customer.get("name", "")).strip() == name:
+                raise ApiError("客户公司已存在，请在该公司下填写自己的联系人", 409, "DUPLICATE_CUSTOMER")
+
 
 
 class SharedCrmHandler(BaseHTTPRequestHandler):
@@ -380,6 +371,41 @@ class SharedCrmHandler(BaseHTTPRequestHandler):
                 self._send_json(200, {"ok": True}, {"Set-Cookie": cookie})
                 return
 
+            if parsed.path.startswith("/api/internal/expense-reports"):
+                expected = os.environ.get("CRM_EXPENSE_ADMIN_SECRET", "")
+                supplied = self.headers.get("X-Expense-Admin-Key", "")
+                if not expected or not secrets.compare_digest(supplied, expected):
+                    raise ApiError("后台认证失败", 403, "BACKOFFICE_REQUIRED")
+                if parsed.path == "/api/internal/expense-reports" and method == "GET":
+                    with self.state.lock:
+                        items = copy.deepcopy([r for r in self.state.db["expenseReports"] if not r.get("archived")])
+                    self._send_json(200, {"items": items})
+                    return
+                match = re.fullmatch(r"/api/internal/expense-reports/([^/]+)/review", parsed.path)
+                if not match or method != "PUT":
+                    raise ApiError("接口不存在", 404, "NOT_FOUND")
+                body = self._body()
+                decision = body.get("decision")
+                note = str(body.get("note") or "").strip()[:1000]
+                reviewer = str(body.get("reviewer") or "").strip()[:100]
+                if decision not in {"APPROVED", "REJECTED"} or not reviewer or (decision == "REJECTED" and not note):
+                    raise ApiError("请填写有效审批结果，驳回必须说明原因", 400, "EXPENSE_DECISION_INVALID")
+                with self.state.lock:
+                    report = next((r for r in self.state.db["expenseReports"] if r["id"] == unquote(match[1]) and not r.get("archived")), None)
+                    if not report:
+                        raise ApiError("报销单不存在", 404, "EXPENSE_REPORT_NOT_FOUND")
+                    if report["status"] != "SUBMITTED":
+                        raise ApiError("该报销单已经审批", 409, "EXPENSE_ALREADY_REVIEWED")
+                    now = utc_now()
+                    report.update(status=decision, statusLabel="审批通过" if decision == "APPROVED" else "已驳回",
+                                  reviewedAt=now, reviewedBy="admin:" + reviewer, reviewerName=reviewer, reviewNote=note)
+                    report.setdefault("history", []).append({"action": decision, "actorId": "admin:" + reviewer,
+                                                            "actorName": reviewer, "note": note, "at": now})
+                    self.state.commit()
+                    saved = copy.deepcopy(report)
+                self._send_json(200, {"item": saved})
+                return
+
             actor = self._actor()
             if parsed.path == "/api/service-request-link" and method == "POST":
                 secret = os.getenv("SSO_SHARED_SECRET", "")
@@ -392,121 +418,15 @@ class SharedCrmHandler(BaseHTTPRequestHandler):
                 ticket = "v1." + encoded.decode() + "." + signature.decode()
                 self._send_json(200, {"url": os.getenv("ASS_REQUEST_PAGE_URL", "https://service.inspiri.cn/web/request.html") + "#ticket=" + ticket})
                 return
-            if parsed.path == "/api/employees" and method == "GET":
-                if actor["role"] != "销售经理":
-                    raise ApiError(
-                        "只有销售经理可以查看人员申请",
-                        403,
-                        "MANAGER_REQUIRED",
-                    )
-                employees = []
-                for employee in self.auth_manager.employees.list():
-                    employees.append(
-                        {
-                            "id": employee.get("id", ""),
-                            "name": employee.get("name", ""),
-                            "phone": employee.get("phone", ""),
-                            "role": employee.get("role", ""),
-                            "requestedRole": employee.get("requestedRole", ""),
-                            "status": employee.get("status")
-                            or ("ACTIVE" if employee.get("active", True) else "DISABLED"),
-                            "active": bool(employee.get("active", True)),
-                            "appliedAt": employee.get("appliedAt", ""),
-                            "reviewedAt": employee.get("reviewedAt", ""),
-                            "reviewedBy": employee.get("reviewedBy", ""),
-                            "reviewNote": employee.get("reviewNote", ""),
-                            "wechatBound": bool(employee.get("openid")),
-                        }
-                    )
-                employees.sort(
-                    key=lambda row: (
-                        0 if row["status"] == "PENDING" else 1,
-                        str(row.get("appliedAt") or row.get("name") or ""),
-                    )
-                )
-                self._send_json(
-                    200,
-                    {
-                        "items": employees,
-                        "pendingCount": sum(
-                            1 for row in employees if row["status"] == "PENDING"
-                        ),
-                    },
-                )
-                return
-
-            employee_review_match = re.fullmatch(
-                r"/api/employees/([^/]+)/review", parsed.path
-            )
-            if employee_review_match and method == "PUT":
-                if actor["role"] != "销售经理":
-                    raise ApiError(
-                        "只有销售经理可以审核人员",
-                        403,
-                        "MANAGER_REQUIRED",
-                    )
-                body = self._body()
-                decision = str(body.get("decision") or "").upper()
-                saved = self.auth_manager.employees.review_application(
-                    unquote(employee_review_match.group(1)),
-                    decision,
-                    str(body.get("role") or ""),
-                    actor["id"],
-                    str(body.get("note") or ""),
-                )
-                self._send_json(
-                    200,
-                    {
-                        "item": {
-                            "id": saved.get("id", ""),
-                            "name": saved.get("name", ""),
-                            "phone": saved.get("phone", ""),
-                            "role": saved.get("role", ""),
-                            "requestedRole": saved.get("requestedRole", ""),
-                            "status": saved.get("status", ""),
-                            "active": saved.get("active", False),
-                            "reviewedAt": saved.get("reviewedAt", ""),
-                            "reviewedBy": saved.get("reviewedBy", ""),
-                            "reviewNote": saved.get("reviewNote", ""),
-                            "wechatBound": bool(saved.get("openid")),
-                        }
-                    },
-                )
-                return
-            employee_delete_match = re.fullmatch(r"/api/employees/([^/]+)", parsed.path)
-            if employee_delete_match and method == "DELETE":
-                if actor["role"] != "销售经理":
-                    raise ApiError(
-                        "只有销售经理可以移除员工",
-                        403,
-                        "MANAGER_REQUIRED",
-                    )
-                saved = self.auth_manager.employees.disable_employee(
-                    unquote(employee_delete_match.group(1)), actor["id"]
-                )
-                self._send_json(
-                    200,
-                    {
-                        "item": {
-                            "id": saved.get("id", ""),
-                            "name": saved.get("name", ""),
-                            "phone": saved.get("phone", ""),
-                            "status": saved.get("status", "REMOVED"),
-                            "active": False,
-                        }
-                    },
-                )
-                return
+            if parsed.path == "/api/employees" or parsed.path.startswith("/api/employees/"):
+                raise ApiError("人员管理已移至企业服务管理后台", 403, "BACKOFFICE_REQUIRED")
             if parsed.path == "/api/expense-reports" and method == "GET":
                 with self.state.lock:
                     reports = [
                         copy.deepcopy(row)
                         for row in self.state.db["expenseReports"]
                         if not row.get("archived", False)
-                        and (
-                            actor["role"] == "销售经理"
-                            or row.get("applicantId") == actor["id"]
-                        )
+                        and row.get("applicantId") == actor["id"]
                     ]
                 reports.sort(
                     key=lambda row: str(row.get("submittedAt") or ""), reverse=True
@@ -568,7 +488,7 @@ class SharedCrmHandler(BaseHTTPRequestHandler):
                     ][:50],
                     "relatedVisitCount": len(body.get("relatedVisitIds") or []),
                     "status": "SUBMITTED",
-                    "statusLabel": "待经理审批",
+                    "statusLabel": "待后台审批",
                     "reviewedAt": "",
                     "reviewedBy": "",
                     "reviewerName": "",
@@ -607,7 +527,7 @@ class SharedCrmHandler(BaseHTTPRequestHandler):
                     )
                     if not report:
                         raise ApiError("报销记录不存在", 404, "EXPENSE_REPORT_NOT_FOUND")
-                    if actor["role"] != "销售经理" and report.get("applicantId") != actor["id"]:
+                    if report.get("applicantId") != actor["id"]:
                         raise ApiError(
                             "只能删除自己的报销记录",
                             403,
@@ -635,69 +555,11 @@ class SharedCrmHandler(BaseHTTPRequestHandler):
                 r"/api/expense-reports/([^/]+)/review", parsed.path
             )
             if expense_review_match and method == "PUT":
-                if actor["role"] != "销售经理":
-                    raise ApiError(
-                        "只有销售经理可以审批报销",
-                        403,
-                        "MANAGER_REQUIRED",
-                    )
-                body = self._body()
-                decision = str(body.get("decision") or "").upper()
-                if decision not in {"APPROVED", "REJECTED"}:
-                    raise ApiError(
-                        "审批结果必须是通过或驳回",
-                        400,
-                        "EXPENSE_DECISION_INVALID",
-                    )
-                report_id = unquote(expense_review_match.group(1))
-                note = str(body.get("note") or "").strip()[:1000]
-                if decision == "REJECTED" and not note:
-                    raise ApiError(
-                        "驳回时请填写原因",
-                        400,
-                        "REJECTION_NOTE_REQUIRED",
-                    )
-                with self.state.lock:
-                    report = next(
-                        (
-                            row
-                            for row in self.state.db["expenseReports"]
-                            if row.get("id") == report_id
-                        ),
-                        None,
-                    )
-                    if not report:
-                        raise ApiError("报销单不存在", 404, "EXPENSE_REPORT_NOT_FOUND")
-                    if report.get("status") != "SUBMITTED":
-                        raise ApiError(
-                            "该报销单已经审批，不能重复操作",
-                            409,
-                            "EXPENSE_ALREADY_REVIEWED",
-                        )
-                    now = utc_now()
-                    report.update(
-                        {
-                            "status": decision,
-                            "statusLabel": "审批通过" if decision == "APPROVED" else "已驳回",
-                            "reviewedAt": now,
-                            "reviewedBy": actor["id"],
-                            "reviewerName": actor["name"],
-                            "reviewNote": note,
-                        }
-                    )
-                    report.setdefault("history", []).append(
-                        {
-                            "action": decision,
-                            "actorId": actor["id"],
-                            "actorName": actor["name"],
-                            "note": note,
-                            "at": now,
-                        }
-                    )
-                    self.state.commit()
-                    saved = copy.deepcopy(report)
-                    revision = self.state.db["revision"]
-                self._send_json(200, {"item": saved, "revision": revision})
+                raise ApiError(
+                    "报销审批已移至后台，小程序账号无审批权限",
+                    403,
+                    "BACKOFFICE_REQUIRED",
+                )
                 return
             if method == "GET" and parsed.path == "/api/meta":
                 self._send_json(
@@ -718,6 +580,11 @@ class SharedCrmHandler(BaseHTTPRequestHandler):
                     200,
                     {"result": result, "routeMode": self.route_adapter.mode},
                 )
+                return
+            if method == "POST" and parsed.path == "/api/locations/search":
+                body = self._body()
+                items = self.route_adapter.search_places(body.get("keyword"), body.get("city") or "")
+                self._send_json(200, {"items": items, "routeMode": self.route_adapter.mode})
                 return
             if method == "POST" and parsed.path == "/api/locations/geocode":
                 body = self._body()
@@ -820,7 +687,7 @@ class SharedCrmHandler(BaseHTTPRequestHandler):
                         "SALE_STATUS_INVALID",
                     )
                 result = self.erp_adapter.submit_sale(
-                    sale, customer, idempotency_key
+                    scrub(sale), scrub(customer), idempotency_key
                 )
                 self._send_json(
                     200,
@@ -833,6 +700,35 @@ class SharedCrmHandler(BaseHTTPRequestHandler):
                 raise ApiError("接口不存在", 404, "API_NOT_FOUND")
             resource, item_id = match.group(1), unquote(match.group(2) or "")
             collection, business_type = RESOURCES[resource]
+
+            def public(item):
+                with self.state.lock:
+                    return project(item, collection, actor, self.state.db["customers"])
+
+            def read_write_body():
+                incoming = self._body()
+                try:
+                    contact = contact_input(incoming, collection)
+                except ValueError as error:
+                    raise ApiError(str(error), 400, "PERSONAL_CONTACT_INVALID")
+                clean = {key: value for key, value in incoming.items()
+                         if key not in PRIVATE_KEYS - {"requestPayload", "responsePayload"}}
+                return clean, contact
+
+            def claim(saved, contact):
+                if collection not in {"customers", "visits", "opportunities", "sales"}:
+                    return
+                customer = saved if collection == "customers" else next(
+                    c for c in self.state.db["customers"] if c["id"] == saved["customerId"])
+                now = utc_now()
+                if save_contact(customer, actor, contact, now):
+                    self.state.db["auditLogs"].insert(0, {
+                        "id": self.state.next_id("audit"), "customerId": customer["id"],
+                        "entityType": "CUSTOMER", "entityId": customer["id"],
+                        "action": "PERSONAL_CONTACT_SAVED", "detail": "保存个人联系人（仅本人可见）",
+                        "createdAt": now, "updatedAt": now,
+                        "createdBy": actor["id"], "updatedBy": actor["id"],
+                    })
 
             if method == "GET" and not item_id:
                 filters = {key: values[0] for key, values in parse_qs(parsed.query).items()}
@@ -860,7 +756,7 @@ class SharedCrmHandler(BaseHTTPRequestHandler):
                                 matched_local_ids.add(str(local.get("id") or ""))
                             workflow = {
                                 key: local[key]
-                                for key in ("status", "nextFollow", "note", "ownerId", "createdBy", "updatedBy")
+                                for key in ("id", "status", "nextFollow", "note", "ownerId", "createdBy", "updatedBy", "_salesContacts")
                                 if local and key in local
                             }
                             merged_items.append({**copy.deepcopy(platform_item), **workflow})
@@ -876,8 +772,9 @@ class SharedCrmHandler(BaseHTTPRequestHandler):
                         )
                         source_items = merged_items
                     items = [
-                        copy.deepcopy(item)
-                        for item in source_items
+                        item
+                        for row in source_items
+                        for item in [public(row)]
                         if all(str(item.get(key, "")) == value for key, value in filters.items())
                     ]
                     revision = self.state.db["revision"]
@@ -895,10 +792,12 @@ class SharedCrmHandler(BaseHTTPRequestHandler):
                     )
                 if not item:
                     raise ApiError(f"未找到记录：{item_id}", 404, "NOT_FOUND")
-                self._send_json(200, {"item": item, "revision": self.state.db["revision"]})
+                self._send_json(200, {"item": public(item), "revision": self.state.db["revision"]})
                 return
             if method == "POST" and not item_id:
-                body = self._body()
+                body, personal_contact = read_write_body()
+                if collection == "customers" and (not personal_contact or not personal_contact["phone"]):
+                    raise ApiError("请填写联系人和联系电话", 400, "PERSONAL_CONTACT_INVALID")
                 with self.state.lock:
                     if collection == "customers":
                         self.state.assert_unique_customer(body)
@@ -922,12 +821,13 @@ class SharedCrmHandler(BaseHTTPRequestHandler):
                             saved.setdefault("ownerName", actor["name"])
                             saved = self.platform_connector.upsert_customer(saved, actor)
                         self.state.db[collection].insert(0, saved)
+                    claim(saved, personal_contact)
                     self.state.commit()
                     revision = self.state.db["revision"]
-                self._send_json(201, {"item": saved, "revision": revision})
+                self._send_json(201, {"item": public(saved), "revision": revision})
                 return
             if method == "PUT" and item_id:
-                body = self._body()
+                body, personal_contact = read_write_body()
                 with self.state.lock:
                     index = next(
                         (
@@ -954,10 +854,11 @@ class SharedCrmHandler(BaseHTTPRequestHandler):
                         self.state.assert_unique_customer(saved, item_id)
                         saved = self.platform_connector.upsert_customer(saved, actor)
                     self.state.assert_relations(collection, saved)
+                    claim(saved, personal_contact)
                     self.state.db[collection][index] = saved
                     self.state.commit()
                     revision = self.state.db["revision"]
-                self._send_json(200, {"item": saved, "revision": revision})
+                self._send_json(200, {"item": public(saved), "revision": revision})
                 return
             if method == "DELETE" and item_id and collection == "customers":
                 with self.state.lock:
@@ -1031,7 +932,7 @@ class SharedCrmHandler(BaseHTTPRequestHandler):
                     ]
                     self.state.commit()
                     revision = self.state.db["revision"]
-                self._send_json(200, {"item": removed, "revision": revision})
+                self._send_json(200, {"item": public(removed), "revision": revision})
                 return
             raise ApiError("请求方式不支持", 405, "METHOD_NOT_ALLOWED")
         except ApiError as error:

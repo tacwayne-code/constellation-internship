@@ -51,7 +51,7 @@ body:has(.trip-app:not(.trip-app--embedded)) {
 .trip-eyebrow {
   margin: 0 0 3px;
   color: #607080;
-  font-size: 12px;
+  font-size: 18px;
 }
 
 .trip-header h1 {
@@ -79,13 +79,13 @@ body:has(.trip-app:not(.trip-app--embedded)) {
 .trip-confirm > p {
   margin: 0;
   color: #667583;
-  font-size: 14px;
+  font-size: 18px;
   line-height: 1.6;
 }
 
 .trip-step-label {
   color: #2563a9;
-  font-size: 12px;
+  font-size: 18px;
   font-weight: 700;
 }
 
@@ -94,7 +94,7 @@ body:has(.trip-app:not(.trip-app--embedded)) {
   padding: 11px 13px;
   border: 1px solid transparent;
   border-radius: 6px;
-  font-size: 13px;
+  font-size: 18px;
   line-height: 1.55;
 }
 
@@ -132,7 +132,7 @@ body:has(.trip-app:not(.trip-app--embedded)) {
 
 .trip-point h2 {
   margin: 0;
-  font-size: 16px;
+  font-size: 18px;
 }
 
 .trip-point__index {
@@ -143,7 +143,7 @@ body:has(.trip-app:not(.trip-app--embedded)) {
   border-radius: 50%;
   background: #edf3f8;
   color: #225b90;
-  font-size: 12px;
+  font-size: 18px;
   font-weight: 800;
 }
 
@@ -155,7 +155,7 @@ body:has(.trip-app:not(.trip-app--embedded)) {
 
 .trip-field > span {
   color: #526270;
-  font-size: 12px;
+  font-size: 18px;
   font-weight: 650;
 }
 
@@ -170,7 +170,7 @@ body:has(.trip-app:not(.trip-app--embedded)) {
   background: #ffffff;
   color: #17212b;
   font: inherit;
-  font-size: 14px;
+  font-size: 18px;
   letter-spacing: 0;
 }
 
@@ -201,7 +201,7 @@ body:has(.trip-app:not(.trip-app--embedded)) {
   border: 1px solid transparent;
   border-radius: 6px;
   font: inherit;
-  font-size: 14px;
+  font-size: 18px;
   font-weight: 700;
   letter-spacing: 0;
   cursor: pointer;
@@ -266,7 +266,7 @@ body:has(.trip-app:not(.trip-app--embedded)) {
 .trip-point__match {
   margin: 8px 0 0;
   color: #607080;
-  font-size: 12px;
+  font-size: 18px;
   text-align: center;
 }
 
@@ -304,20 +304,20 @@ body:has(.trip-app:not(.trip-app--embedded)) {
 
 .trip-fuel-entry__content h2 {
   margin: 0;
-  font-size: 17px;
+  font-size: 18px;
 }
 
 .trip-fuel-entry__content > p {
   margin: 3px 0 10px;
   color: #667785;
-  font-size: 13px;
+  font-size: 18px;
 }
 
 .trip-visit-link {
   display: block;
   margin-top: 8px;
   color: #8a5c18;
-  font-size: 12px;
+  font-size: 18px;
 }
 
 .trip-visit-link--ok {
@@ -333,13 +333,13 @@ body:has(.trip-app:not(.trip-app--embedded)) {
 
 .trip-section-heading > span {
   color: #607080;
-  font-size: 13px;
+  font-size: 18px;
 }
 
 .trip-source {
   padding: 5px 8px;
   border-radius: 5px;
-  font-size: 12px;
+  font-size: 18px;
   font-weight: 750;
 }
 
@@ -365,13 +365,13 @@ body:has(.trip-app:not(.trip-app--embedded)) {
 .trip-route-skipped strong {
   display: block;
   color: #17212b;
-  font-size: 14px;
+  font-size: 18px;
 }
 
 .trip-route-skipped p {
   margin: 3px 0 0;
   color: #667785;
-  font-size: 13px;
+  font-size: 18px;
   line-height: 1.55;
 }
 
@@ -393,7 +393,7 @@ body:has(.trip-app:not(.trip-app--embedded)) {
 .trip-report p {
   margin: 4px 0 0;
   color: #6a7885;
-  font-size: 12px;
+  font-size: 18px;
   line-height: 1.5;
 }
 
@@ -406,7 +406,7 @@ body:has(.trip-app:not(.trip-app--embedded)) {
 
 .trip-leg__numbers span {
   color: #607080;
-  font-size: 12px;
+  font-size: 18px;
 }
 
 .trip-route-options {
@@ -427,7 +427,7 @@ body:has(.trip-app:not(.trip-app--embedded)) {
   background: #f7f9fa;
   color: #526270;
   font: inherit;
-  font-size: 11px;
+  font-size: 18px;
   letter-spacing: 0;
   text-align: left;
   cursor: pointer;
@@ -435,7 +435,7 @@ body:has(.trip-app:not(.trip-app--embedded)) {
 
 .trip-route-options button strong {
   color: #173c5d;
-  font-size: 12px;
+  font-size: 18px;
 }
 
 .trip-route-options button.is-selected {
@@ -466,8 +466,8 @@ body:has(.trip-app:not(.trip-app--embedded)) {
   border-left: 1px solid rgba(255, 255, 255, 0.22);
 }
 
-.trip-summary span { color: #bfd2e2; font-size: 11px; }
-.trip-summary strong { font-size: 16px; }
+.trip-summary span { color: #bfd2e2; font-size: 18px; }
+.trip-summary strong { font-size: 18px; }
 
 .trip-expense-total {
   display: grid;
@@ -483,7 +483,7 @@ body:has(.trip-app:not(.trip-app--embedded)) {
 
 .trip-expense-total span {
   color: #526270;
-  font-size: 13px;
+  font-size: 18px;
 }
 
 .trip-expense-total strong {
@@ -494,7 +494,7 @@ body:has(.trip-app:not(.trip-app--embedded)) {
 .trip-expense-total small {
   grid-column: 1 / -1;
   color: #6a7885;
-  font-size: 12px;
+  font-size: 18px;
 }
 
 .trip-confirm {
@@ -523,14 +523,14 @@ body:has(.trip-app:not(.trip-app--embedded)) {
 
 .trip-report__topline strong {
   min-width: 0;
-  font-size: 14px;
+  font-size: 18px;
   line-height: 1.5;
 }
 
 .trip-report__topline span {
   flex: 0 0 auto;
   color: #6a7885;
-  font-size: 12px;
+  font-size: 18px;
 }
 
 .trip-report__statusline {
@@ -540,7 +540,7 @@ body:has(.trip-app:not(.trip-app--embedded)) {
   gap: 10px;
   margin-top: 8px;
   color: #6a7885;
-  font-size: 12px;
+  font-size: 18px;
 }
 
 .trip-status {
@@ -549,7 +549,7 @@ body:has(.trip-app:not(.trip-app--embedded)) {
   border-radius: 5px;
   background: #fff1d6;
   color: #8a5709;
-  font-size: 11px;
+  font-size: 18px;
 }
 
 .trip-status--approved { background: #e6f3eb; color: #23744c; }
@@ -561,7 +561,7 @@ body:has(.trip-app:not(.trip-app--embedded)) {
   gap: 8px 20px;
   margin-top: 10px;
   color: #526270;
-  font-size: 13px;
+  font-size: 18px;
 }
 
 .trip-report__totals b {
@@ -571,7 +571,7 @@ body:has(.trip-app:not(.trip-app--embedded)) {
 .trip-report > p {
   margin: 8px 0 0;
   color: #5d6d7a;
-  font-size: 12px;
+  font-size: 18px;
   line-height: 1.55;
 }
 
@@ -603,7 +603,7 @@ body:has(.trip-app:not(.trip-app--embedded)) {
   background: #fff;
   color: #a23a34;
   font: inherit;
-  font-size: 12px;
+  font-size: 18px;
   font-weight: 700;
 }
 
@@ -621,7 +621,7 @@ body:has(.trip-app:not(.trip-app--embedded)) {
 
 .trip-empty p {
   margin: 0;
-  font-size: 13px;
+  font-size: 18px;
 }
 
 .trip-spin {
@@ -695,4 +695,12 @@ body:has(.trip-app:not(.trip-app--embedded)) {
     white-space: normal;
     line-height: 1.25;
   }
+}
+.trip-field input, .trip-field textarea { min-height: 54px; }
+.trip-field textarea { min-height: 120px; }
+.trip-button, .trip-link-button { min-height: 48px; }
+.trip-button--primary { background: #b94a08; }
+.trip-add-destination, .trip-link-button { color: #a64108; }
+@media (max-width: 480px) {
+  .trip-coordinate-row, .trip-edit-row { grid-template-columns: minmax(0, 1fr); }
 }

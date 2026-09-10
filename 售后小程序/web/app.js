@@ -807,6 +807,7 @@ function renderOrders() {
       : `<div class="empty-tip">暂无符合条件的工单</div>`;
   const hasMore = !state.ordersLoading && state.orders.length > 0 && state.orders.length < state.orderTotal;
   return renderShell(`
+    <section class="card"><button class="btn" type="button" data-service-request data-request-view="mine">我提交的工单</button></section>
     ${renderStats()}
     ${renderDashboard()}
     <div class="card filter-bar">
@@ -938,7 +939,7 @@ function renderAccountForm() {
 
 function renderTasks() {
   return renderShell(`
-    <section class="card"><button class="btn" type="button" data-service-request>提交售后需求 / 查看我的报备</button></section>
+    <section class="card"><button class="btn" type="button" data-service-request>提交售后需求</button> <button class="btn" type="button" data-service-request data-request-view="mine">我提交的工单</button></section>
     <section class="card summary-card">
       <div class="summary-eyebrow">今日待执行任务</div>
       <div class="summary-value">${esc(state.taskOrders.length)} 单待处理</div>
@@ -1365,7 +1366,9 @@ function bindEvents() {
       button.disabled = true;
       try {
         const result = await api('/service-request-link', { method: 'POST' });
-        window.location.assign(result.url);
+        const url = new URL(result.url, location.href);
+        if (button.dataset.requestView === "mine") url.searchParams.set("view", "mine");
+        window.location.assign(url.href);
       } catch (error) { window.alert(error.message || '报备入口暂不可用'); }
       finally { button.disabled = false; }
     });

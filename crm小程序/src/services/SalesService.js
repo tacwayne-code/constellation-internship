@@ -122,6 +122,7 @@ export class SalesService {
       warehouseCode: input.warehouseCode || sale.warehouseCode,
       attachmentNames: input.attachmentNames || sale.attachmentNames || [],
       note: input.note ?? sale.note,
+      personalContact: input.personalContact || null,
       erpSyncStatus: ErpSyncStatus.FAILED,
       erpErrorMessage: "",
       updatedAt: new Date().toISOString(),

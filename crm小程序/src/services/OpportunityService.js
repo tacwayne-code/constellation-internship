@@ -95,7 +95,12 @@ export class OpportunityService {
     const existing = (
       await this.repositories.sale.list({ sourceOpportunityId: id })
     )[0];
-    if (existing) return existing;
+    if (existing) {
+      if (input?.personalContact) {
+        return this.repositories.sale.update({ id: existing.id, personalContact: input.personalContact });
+      }
+      return existing;
+    }
     const sale = createSale(
       {
         ...input,

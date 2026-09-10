@@ -1,3 +1,4 @@
+import AddressAssist from "./location/AddressAssist.jsx";
 import React, {
   lazy,
   Suspense,
@@ -19,7 +20,7 @@ import { listOpportunityTransitions } from "./domain/stateMachines.js";
 import { Icon } from "./icons.jsx";
 import { money, shortMoney, todayText } from "./formatters.js";
 import { listExpenseReports } from "./trip/tripApi.js";
-import { listEmployees, removeEmployee, reviewEmployee } from "./employees/employeeApi.js";
+
 import { authHeaders } from "./auth/session.js";
 
 async function openServiceRequest(event) {
@@ -30,7 +31,9 @@ async function openServiceRequest(event) {
     const response = await fetch('/api/service-request-link', { method: 'POST', credentials: 'same-origin', headers: authHeaders('POST') });
     const result = await response.json();
     if (!response.ok || !result.url) throw new Error(result.message || '报备入口暂不可用');
-    window.location.assign(result.url);
+    const url = new URL(result.url, location.href);
+    if (button.dataset.requestView === "mine") url.searchParams.set("view", "mine");
+    window.location.assign(url.href);
   } catch (error) { window.alert(error.message || '无法打开报备'); }
   finally { button.disabled = false; }
 }
@@ -45,7 +48,6 @@ const EMPTY = {
     auditLogs: [],
     auditCount: 0,
     expenseReports: [],
-    employees: [],
   };
 const NavBar = ({ title, onBack }) => (
   <header className="nav-bar">
@@ -248,8 +250,6 @@ const TabBar = ({ active, onChange }) => (
 );
 function Home({ data, user, open, setTab }) {
   const total = data.intentions.reduce((n, x) => n + x.qty * x.price, 0);
-  const pendingExpenses = data.expenseReports.filter((item) => item.status === "SUBMITTED").length;
-  const pendingEmployees = data.employees.filter((item) => item.status === "PENDING").length;
   return (
     <div className="page home-page">
       <section className="home-heading">
@@ -262,28 +262,7 @@ function Home({ data, user, open, setTab }) {
           拜访打卡
         </button>
       </section>
-      {user.role === "销售经理" ? (
-        <>
-        <button className="home-approval-alert home-approval-alert--people" onClick={() => open("employeeManagement")}>
-          <span><Icon name="users" size={21} /></span>
-          <span className="grow">
-            <strong>人员待审核</strong>
-            <small>{pendingEmployees ? `有 ${pendingEmployees} 人等待确认身份` : "员工手机号与角色管理"}</small>
-          </span>
-          {pendingEmployees ? <b>{pendingEmployees}</b> : null}
-          <Icon name="chevron" size={18} />
-        </button>
-        <button className="home-approval-alert" onClick={() => open("expenseApproval")}>
-          <span><Icon name="order" size={21} /></span>
-          <span className="grow">
-            <strong>行程报销待审批</strong>
-            <small>{pendingExpenses ? `有 ${pendingExpenses} 条申请等待处理` : "当前没有待审批申请"}</small>
-          </span>
-          {pendingExpenses ? <b>{pendingExpenses}</b> : null}
-          <Icon name="chevron" size={18} />
-        </button>
-        </>
-      ) : null}
+      <div className="flow-actions"><button className="secondary" onClick={openServiceRequest}>提交售后需求</button><button className="secondary" data-request-view="mine" onClick={openServiceRequest}>我提交的售后工单</button></div>
       <div className="stat-strip">
         <div>
           <span className="stat-icon blue">
@@ -328,7 +307,6 @@ function Home({ data, user, open, setTab }) {
         ))}
       </div>
       <SectionTitle>最近客户</SectionTitle>
-      <button className="btn" onClick={openServiceRequest}>提交售后需求 / 查看我的报备</button>
       <div className="customer-preview">
         {data.customers.length ? data.customers.slice(0, 3).map((c, i) => (
           <button key={c.id} onClick={() => open("customerDetail", c.id)}>
@@ -369,28 +347,15 @@ function Customers({ rows, open }) {
       <div className="list-card">
         {list.length ? (
           list.map((c, i) => (
-            <button
-              className="customer-row"
-              key={c.id}
-              onClick={() => open("customerDetail", c.id)}
-            >
-              <Avatar name={c.name} index={i} />
-              <span className="grow">
+            <div className="customer-row" key={c.id}>
+              <button className="customer-open" onClick={() => open("customerDetail", c.id)}>
+                <Avatar name={c.name} index={i} />
                 <strong>{c.name}</strong>
-                <small>
-                  {c.contact} · {c.phone}
-                </small>
-                <em>
-                  <Icon name="pin" size={13} />
-                  {c.address}
-                </em>
-              </span>
-              <span className="row-side">
-                <Status text={c.status} />
-                <small>{c.nextFollow?.slice(5)} 跟进</small>
-              </span>
-              <Icon name="chevron" size={18} />
-            </button>
+              </button>
+              <button className="customer-follow" onClick={() => open("visitForm", c.id)}>
+                跟进
+              </button>
+            </div>
           ))
         ) : (
           <Empty text="没有找到匹配客户" />
@@ -715,7 +680,7 @@ function CustomerDetail({ customer, data, open, onDelete }) {
         <Status text={customer.status} />
       </section>
       <div className="detail-actions">
-        <button onClick={() => (location.href = `tel:${customer.phone}`)}>
+        <button disabled={!customer.phone} onClick={() => (location.href = `tel:${customer.phone}`)}>
           <Icon name="phone" />
           拨打电话
         </button>
@@ -730,13 +695,15 @@ function CustomerDetail({ customer, data, open, onDelete }) {
       </div>
       <div className="detail-card">
         <Info
-          label="主要联系人"
-          value={`${customer.contact} ${customer.phone}`}
+          label="我的联系人"
+          value={customer.contact ? `${customer.contact} ${customer.phone}` : "尚未填写，在拜访或做单时添加"}
         />
         <Info
-          label="联系人数量"
+          label="我的联系人数量"
           value={`${customer.contacts?.length || 0} 位`}
         />
+        {(customer.contacts || []).filter(contact => !contact.isPrimary).map(contact =>
+          <Info key={contact.id} label="我的补充联系人" value={`${contact.name} ${contact.phone}`} />)}
         <Info label="客户地址" value={customer.address} />
         <Info label="所属销售" value={customer.owner} />
       </div>
@@ -884,8 +851,8 @@ function CustomerForm({ initial, user, onSave }) {
     [error, setError] = useState("");
   const submit = async (e) => {
     e.preventDefault();
-    if (!f.name || !f.contact || !f.address)
-      return setError("请填写客户名称、联系人和地址");
+    if (!f.name.trim() || !f.contact.trim() || !f.phone.trim() || !f.address.trim())
+      return setError("请填写客户名称、联系人、联系电话和地址");
     try {
       await onSave({
         ...f,
@@ -903,7 +870,7 @@ function CustomerForm({ initial, user, onSave }) {
   return (
     <form className="page form-page" onSubmit={submit}>
       <p className="form-tip">
-        Service会统一校验客户重复与访问权限；Odoo联系人编码后续由后台自动匹配
+        请填写客户资料，带 * 的项目为必填项。联系人和电话仅自己可见，不覆盖原库联系人。
       </p>
       <div className="form-card">
         <Field label="客户名称" required>
@@ -912,14 +879,17 @@ function CustomerForm({ initial, user, onSave }) {
             onChange={(e) => setF({ ...f, name: e.target.value })}
           />
         </Field>
-        <Field label="主要联系人" required>
+        <Field label="我的联系人" required>
           <input
             value={f.contact}
             onChange={(e) => setF({ ...f, contact: e.target.value })}
           />
         </Field>
-        <Field label="联系电话">
+        <Field label="我的联系电话" required>
           <input
+            required
+            type="tel"
+            maxLength={50}
             value={f.phone}
             onChange={(e) => setF({ ...f, phone: e.target.value })}
           />
@@ -930,6 +900,8 @@ function CustomerForm({ initial, user, onSave }) {
             onChange={(e) => setF({ ...f, address: e.target.value })}
           />
         </Field>
+        <AddressAssist companyName={f.name} value={f.address}
+          onChange={address => setF(current => ({ ...current, address }))} />
         <Field label="客户状态">
           <select
             value={f.relationshipStatus}
@@ -962,40 +934,41 @@ function CustomerForm({ initial, user, onSave }) {
     </form>
   );
 }
+function PersonalContactFields({ value, customer, onChange }) {
+  const contact = value || { name: "", phone: "" };
+  return <>
+    <p className="inline-note">联系人和电话仅自己可见。填写并保存后，建立你与该客户的关联。</p>
+    {(customer?.contacts?.length || 0) > 1 && <Field label="选择我填写过的联系人">
+      <select value="" onChange={(event) => {
+        const selected = customer.contacts.find(item => item.id === event.target.value);
+        if (selected) onChange({ name: selected.name, phone: selected.phone });
+      }}>
+        <option value="">选择已有联系人，或在下方填写新的联系人</option>
+        {customer.contacts.map(item => <option key={item.id} value={item.id}>{item.name} · {item.phone}</option>)}
+      </select>
+    </Field>}
+    <Field label="我的联系人" required>
+      <input required maxLength={100} autoComplete="off" value={contact.name}
+        onChange={event => onChange({ ...contact, name: event.target.value })} placeholder="填写你联系的人员姓名" />
+    </Field>
+    <Field label="我的联系电话" required>
+      <input required type="tel" maxLength={50} autoComplete="off" value={contact.phone}
+        onChange={event => onChange({ ...contact, phone: event.target.value })} placeholder="填写你掌握的联系电话" />
+    </Field>
+  </>;
+}
+
 function VisitForm({ customers, customerId, onSave }) {
   const [f, setF] = useState({
       customerId: customerId || customers[0]?.id || "",
+      personalContact: customers.find(c => c.id === (customerId || customers[0]?.id))?.personalContact || { name: "", phone: "" },
       occurredAt: "2026-07-16T10:00",
       location: "",
       photoUrls: [],
       result: "",
       nextFollowAt: "2026-07-20",
     }),
-    [error, setError] = useState(""),
-    [locating, setLocating] = useState(false);
-  const locate = () => {
-    setLocating(true);
-    if (!navigator.geolocation) {
-      setError("当前浏览器不支持定位，请手工填写位置");
-      setLocating(false);
-      return;
-    }
-    navigator.geolocation.getCurrentPosition(
-      ({ coords }) => {
-        setF((current) => ({
-          ...current,
-          location: `经度 ${coords.longitude.toFixed(6)}，纬度 ${coords.latitude.toFixed(6)}`,
-        }));
-        setError("");
-        setLocating(false);
-      },
-      () => {
-        setError("定位未授权或当前HTTP环境不可用，可手工填写详细地址");
-        setLocating(false);
-      },
-      { enableHighAccuracy: true, timeout: 8000, maximumAge: 60000 },
-    );
-  };
+    [error, setError] = useState("");
   const addPhoto = (event) => {
     const file = event.target.files?.[0];
     if (!file) return;
@@ -1037,7 +1010,8 @@ function VisitForm({ customers, customerId, onSave }) {
         <Field label="拜访客户" required>
           <select
             value={f.customerId}
-            onChange={(e) => setF({ ...f, customerId: e.target.value })}
+            onChange={(e) => setF({ ...f, customerId: e.target.value,
+              personalContact: customers.find(c => c.id === e.target.value)?.personalContact || { name: "", phone: "" } })}
           >
             {customers.map((x) => (
               <option key={x.id} value={x.id}>
@@ -1046,6 +1020,8 @@ function VisitForm({ customers, customerId, onSave }) {
             ))}
           </select>
         </Field>
+        <PersonalContactFields value={f.personalContact} customer={customers.find(c => c.id === f.customerId)}
+          onChange={personalContact => setF(current => ({ ...current, personalContact }))} />
         <Field label="拜访时间" required>
           <input
             type="datetime-local"
@@ -1054,18 +1030,11 @@ function VisitForm({ customers, customerId, onSave }) {
           />
         </Field>
         <Field label="拜访位置" required>
-          <div className="location-input">
-            <input
-              value={f.location}
-              onChange={(e) => setF({ ...f, location: e.target.value })}
-              placeholder="获取定位或手工填写"
-            />
-            <button type="button" onClick={locate} disabled={locating}>
-              <Icon name="pin" size={16} />
-              {locating ? "定位中" : "获取定位"}
-            </button>
-          </div>
+          <input value={f.location} onChange={e => setF(current => ({ ...current, location: e.target.value }))}
+            placeholder="获取当前位置或填写详细地址" />
         </Field>
+        <AddressAssist companyName={customers.find(c => c.id === f.customerId)?.name || ""} value={f.location}
+          onChange={location => setF(current => ({ ...current, location }))} />
         <Field label="现场照片" required>
           <div className="photo-grid">
             {f.photoUrls.map((url, index) => (
@@ -1136,6 +1105,7 @@ function BusinessForm({
   const initialCustomer = customers.find((x) => x.id === initialCustomerId);
   const [f, setF] = useState({
       customerId: initialCustomerId,
+      personalContact: initialCustomer?.personalContact || { name: "", phone: "" },
       productName: sourceBusiness?.product || "",
       specification: sourceBusiness?.spec || "",
       quantity: sourceBusiness?.qty || 1,
@@ -1212,6 +1182,7 @@ function BusinessForm({
               setF({
                 ...f,
                 customerId: e.target.value,
+                personalContact: selected?.personalContact || { name: "", phone: "" },
                 ...(sale && !f.deliveryAddress
                   ? { deliveryAddress: selected?.address || "" }
                   : {}),
@@ -1225,6 +1196,8 @@ function BusinessForm({
             ))}
           </select>
         </Field>
+        <PersonalContactFields value={f.personalContact} customer={customers.find(c => c.id === f.customerId)}
+          onChange={personalContact => setF(current => ({ ...current, personalContact }))} />
         {sourceId ? (
           <Info label={sale ? "来源意向" : "来源拜访"} value={sourceId} />
         ) : null}
@@ -1412,6 +1385,8 @@ function VisitDetail({ visit, open }) {
         </div>
       </section>
       <div className="detail-card">
+        <Info label="我的联系人" value={visit.personalContact?.name || "尚未填写"} />
+        <Info label="我的联系电话" value={visit.personalContact?.phone || "—"} />
         <Info label="拜访时间" value={visit.arrivedAt.replace("T", " ")} />
         <Info label="位置" value={visit.location} />
         <Info label="拜访结果" value={visit.content} />
@@ -1454,6 +1429,8 @@ function OpportunityDetail({ opportunity, transition, open }) {
         <Status value={opportunity.status} />
       </section>
       <div className="detail-card">
+        <Info label="我的联系人" value={opportunity.personalContact?.name || "尚未填写"} />
+        <Info label="我的联系电话" value={opportunity.personalContact?.phone || "—"} />
         <Info label="来源拜访" value={opportunity.sourceVisitId} />
         <Info
           label="商品"
@@ -1515,6 +1492,8 @@ function SaleDetail({ sale, submit, confirm, erp, retry, correct }) {
       </section>
       <SectionTitle>销售与交付</SectionTitle>
       <div className="detail-card">
+        <Info label="我的联系人" value={sale.personalContact?.name || "尚未填写"} />
+        <Info label="我的联系电话" value={sale.personalContact?.phone || "—"} />
         <Info label="来源意向" value={sale.sourceOpportunityId} />
         <Info label="商品" value={`${sale.product} ${sale.spec}`} />
         <Info label="Odoo商品编码" value={sale.erpProductCode} />
@@ -1606,94 +1585,7 @@ function SaleDetail({ sale, submit, confirm, erp, retry, correct }) {
     </div>
   );
 }
-function EmployeeManagement({ employees, onReview, onRemove, currentUserId }) {
-  const pending = employees.filter((employee) => employee.status === "PENDING");
-  const activeEmployees = employees.filter((employee) => employee.status === "ACTIVE" || employee.active);
-  const [roles, setRoles] = useState({});
-  const [notes, setNotes] = useState({});
-  const [busy, setBusy] = useState("");
-  const [error, setError] = useState("");
-
-  const review = async (employee, decision) => {
-    const role = roles[employee.phone] || employee.requestedRole || "销售人员";
-    setBusy(employee.phone);
-    setError("");
-    try {
-      await onReview(employee.phone, decision, role, notes[employee.phone] || "");
-    } catch (reason) {
-      setError(reason.message || "人员审核失败");
-    } finally {
-      setBusy("");
-    }
-  };
-
-  const remove = async (employee) => {
-    if (!window.confirm(`确认移除员工“${employee.name}”吗？移除后该手机号将无法进入 CRM。`)) return;
-    setBusy(employee.phone);
-    setError("");
-    try {
-      await onRemove(employee.phone);
-    } catch (reason) {
-      setError(reason.message || "员工移除失败");
-    } finally {
-      setBusy("");
-    }
-  };
-
-  return (
-    <div className="page employee-page">
-      <section className="employee-summary">
-        <span><Icon name="users" size={22} /></span>
-        <div><strong>{pending.length} 人待审核</strong><p>手机号是员工唯一身份，最终角色由经理确认</p></div>
-      </section>
-      {error ? <p className="form-error submit-error">{error}</p> : null}
-      <SectionTitle>人员申请</SectionTitle>
-      <div className="employee-list">
-        {pending.length ? pending.map((employee) => (
-          <article className="employee-card" key={employee.phone}>
-            <div className="employee-card__heading">
-              <div><strong>{employee.name}</strong><span>{employee.phone}</span></div>
-              <Status text="待审核" />
-            </div>
-            <Info label="申请角色" value={employee.requestedRole} />
-            <label className="form-field">
-              <span>确认最终角色</span>
-              <select value={roles[employee.phone] || employee.requestedRole || "销售人员"} onChange={(event) => setRoles((current) => ({ ...current, [employee.phone]: event.target.value }))}>
-                <option>销售人员</option>
-                <option>销售经理</option>
-              </select>
-            </label>
-            <label className="form-field">
-              <span>审核说明（选填）</span>
-              <input value={notes[employee.phone] || ""} onChange={(event) => setNotes((current) => ({ ...current, [employee.phone]: event.target.value }))} placeholder="例如：身份已核实" />
-            </label>
-            <div className="employee-card__actions">
-              <button className="secondary" type="button" disabled={busy === employee.phone} onClick={() => review(employee, "REJECTED")}>拒绝</button>
-              <button className="primary" type="button" disabled={busy === employee.phone} onClick={() => review(employee, "APPROVED")}>确认并开通</button>
-            </div>
-          </article>
-        )) : <Empty text="当前没有人员申请" />}
-      </div>
-      <SectionTitle>已开通员工</SectionTitle>
-      <div className="employee-list">
-        {activeEmployees.map((employee) => (
-          <article className="employee-card employee-card--active" key={employee.phone || employee.id}>
-            <div className="employee-card__heading">
-              <div><strong>{employee.name}</strong><span>{employee.phone}</span></div>
-              <Status text={employee.role} />
-            </div>
-            <Info label="微信绑定" value={employee.wechatBound ? "已绑定" : "首次登录时绑定"} />
-            {employee.id !== currentUserId ? (
-              <button className="employee-remove-button" type="button" disabled={busy === employee.phone} onClick={() => remove(employee)}>移除员工</button>
-            ) : null}
-          </article>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function Mine({ user, count, authMode, open, pendingEmployees }) {
+function Mine({ user, count, authMode, open }) {
   return (
     <div className="page mine-page">
       <section className="profile">
@@ -1721,13 +1613,6 @@ function Mine({ user, count, authMode, open, pendingEmployees }) {
           所有内部员工可查看和维护共享业务数据；系统仍记录每次操作的员工和时间。
         </p>
       </div>
-      {user.role === "销售经理" ? (
-        <button className="trip-expense-entry" onClick={() => open("employeeManagement")}>
-          <span className="trip-expense-entry__icon"><Icon name="users" size={21} /></span>
-          <span className="grow"><strong>员工管理</strong><small>{pendingEmployees ? `${pendingEmployees} 人等待审核` : "查看员工手机号和角色"}</small></span>
-          <Icon name="chevron" size={18} />
-        </button>
-      ) : null}
       <div className="mine-card">
         <h3>共享业务数据</h3>
         <p className="permission-note">
@@ -1756,8 +1641,6 @@ const titles = {
     customerDetail: "客户业务中心",
     visitDetail: "拜访详情",
     tripExpense: "行程报销",
-    expenseApproval: "报销审批",
-    employeeManagement: "员工管理",
     opportunityDetail: "意向详情",
     saleDetail: "实际销售详情",
   };
@@ -1778,7 +1661,7 @@ export default function AppV2({ user, authMode }) {
       registry.setActor(actor);
       if (!silent) setLoading(true);
       try {
-        const [customers, visits, opportunities, sales, auditLogs, expenseReports, employees] =
+        const [customers, visits, opportunities, sales, auditLogs, expenseReports] =
             await Promise.all([
               registry.customerService.listCustomers(actor),
               registry.visitService.listVisits(actor),
@@ -1786,7 +1669,6 @@ export default function AppV2({ user, authMode }) {
               registry.salesService.listSales(actor),
               registry.repositories.audit.list(),
               listExpenseReports(),
-              actor.role === "销售经理" ? listEmployees() : Promise.resolve([]),
             ]),
           allowed = new Set(customers.map((x) => x.id));
         setData({
@@ -1798,7 +1680,6 @@ export default function AppV2({ user, authMode }) {
             auditLogs: auditLogs.filter((x) => allowed.has(x.customerId)),
           }),
           expenseReports,
-          employees,
         });
         setLoadError("");
       } catch (error) {
@@ -1893,35 +1774,6 @@ export default function AppV2({ user, authMode }) {
       >
         <TripTestApp embedded visits={data.visits} user={user} />
       </Suspense>
-    );
-  else if (sub?.type === "expenseApproval")
-    content = (
-      <Suspense
-        fallback={
-          <div className="loading-page">
-            <span />
-            <p>正在加载报销审批...</p>
-          </div>
-        }
-      >
-        <TripTestApp embedded approvalOnly user={user} />
-      </Suspense>
-    );
-  else if (sub?.type === "employeeManagement")
-    content = (
-      <EmployeeManagement
-        employees={data.employees}
-        currentUserId={user.id}
-        onReview={(phone, decision, role, note) =>
-          done(
-            () => reviewEmployee(phone, decision, role, note),
-            decision === "APPROVED" ? "员工身份已开通" : "人员申请已拒绝",
-          )
-        }
-        onRemove={(phone) =>
-          done(() => removeEmployee(phone), "员工已移除")
-        }
-      />
     );
   else if (sub?.type === "opportunityForm")
     content = (
@@ -2065,7 +1917,6 @@ export default function AppV2({ user, authMode }) {
         count={data.auditCount}
         authMode={authMode}
         open={open}
-        pendingEmployees={data.employees.filter((item) => item.status === "PENDING").length}
       />
     );
   return (

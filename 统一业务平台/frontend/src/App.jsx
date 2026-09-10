@@ -6,6 +6,7 @@ const NAV = [
   ["customers", "people", "客户资料"],
   ["odoo", "database", "Odoo 数据中心"],
   ["health", "pulse", "集成状态"],
+  ["expenses", "document", "报销审批"],
   ["audit", "document", "操作审计"],
 ];
 
@@ -163,6 +164,27 @@ function AuditTable({ items = [] }) {
   return <section className="audit-panel"><header><div><h2>操作审计</h2><p>管理操作全部留痕，不记录登录票据和密钥</p></div></header>{items.length ? <div className="table-wrap"><table><thead><tr><th>时间</th><th>操作人</th><th>操作类型</th><th>对象</th><th>结果</th></tr></thead><tbody>{items.map((item) => <tr key={item.id}><td>{new Date(item.createdAt).toLocaleString("zh-CN", { hour12: false })}</td><td>{item.actor}</td><td>{actionLabel[item.action] || item.action}</td><td>{item.targetType}{item.targetId ? ` · ${item.targetId.slice(0, 12)}` : ""}</td><td><span className="result-success">成功</span></td></tr>)}</tbody></table></div> : <div className="empty-inline">暂无审计记录</div>}</section>;
 }
 
+function ExpensePanel() {
+  const [items, setItems] = useState([]), [error, setError] = useState(""), [busy, setBusy] = useState(false), [notes, setNotes] = useState({});
+  const load = useCallback(async () => { const result = await request("/api/admin/expense-reports"); setItems(result.items); }, []);
+  useEffect(() => { load().catch(e => setError(e.message)); }, [load]);
+  const review = async (id, decision) => {
+    if (decision === "REJECTED" && !notes[id]?.trim()) { setError("驳回时请填写原因"); return; }
+    setBusy(true); setError("");
+    try { await request(`/api/admin/expense-reports/${encodeURIComponent(id)}/review`, {method:"PUT", body:JSON.stringify({decision, note:notes[id] || ""})}); await load(); }
+    catch(e) { setError(e.message); await load().catch(() => {}); } finally { setBusy(false); }
+  };
+  return <section className="people-panel"><header><div><h1>报销审批</h1><p>核对行程、油费和高速费，审批结果同步给申请人。</p></div><button disabled={busy} onClick={() => load().catch(e => setError(e.message))}>刷新</button></header>
+    {error ? <p role="alert">{error}</p> : null}
+    <div className="table-wrap"><table><thead><tr><th>申请人 / 日期</th><th>行程与费用</th><th>状态</th><th>审批意见</th><th>操作</th></tr></thead><tbody>{items.map(r => <tr key={r.id}>
+      <td>{r.applicantName}<br/>{r.reportDate}<br/>{r.id}</td>
+      <td>{r.reportedDistanceKm} 公里<br/>油费 ¥{r.actualFuelAmount} / 高速费 ¥{r.actualTollAmount}<br/>合计 ¥{r.reimbursementTotal}<details><summary>行程明细</summary><p>出发：{r.origin?.address || r.origin?.name || "未填写"}<br/>目的地：{(r.destinations?.length ? r.destinations : [r.destination]).map(p => p?.address || p?.name || "未填写").join(" → ")}<br/>返回：{r.returnPoint?.address || r.returnPoint?.name || "未填写"}<br/>调整说明：{r.adjustmentReason || "无"}<br/>关联拜访：{r.relatedVisitCount || 0} 条</p></details></td>
+      <td>{{SUBMITTED:"待审批",APPROVED:"已通过",REJECTED:"已驳回"}[r.status] || r.status}<br/>{r.reviewerName}</td>
+      <td>{r.status === "SUBMITTED" ? <textarea aria-label={`${r.applicantName}的审批意见`} value={notes[r.id] || ""} onChange={e => setNotes({...notes,[r.id]:e.target.value})} placeholder="驳回时必填"/> : r.reviewNote}</td>
+      <td>{r.status === "SUBMITTED" ? <><button disabled={busy} onClick={() => review(r.id,"APPROVED")}>通过</button><button disabled={busy} onClick={() => review(r.id,"REJECTED")}>驳回</button></> : "已处理"}</td>
+    </tr>)}</tbody></table>{!items.length && !error ? <p>暂无报销申请</p> : null}</div></section>;
+}
+
 function AppShell({ me, onLogout }) {
   const [active, setActive] = useState("people");
   const [overview, setOverview] = useState(null);
@@ -226,6 +248,7 @@ function AppShell({ me, onLogout }) {
         <div className={`main-layout ${active !== "people" && active !== "home" ? "single" : ""}`}>
           {(active === "people" || active === "home") ? <section className="people-panel"><header><div><h1>人员与角色</h1><p>统一控制企业小程序入口与 CRM、ASS 业务权限</p></div><div className="search"><Icon name="search" size={17}/><input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="搜索姓名或身份"/></div></header><div className="tabs">{[["ALL", "全部人员"], ["PENDING", "待授权"], ["ACTIVE", "已授权"], ["DISABLED", "已禁用"]].map(([id, label]) => <button key={id} className={filter === id ? "active" : ""} onClick={() => setFilter(id)}>{label}{id !== "ALL" ? ` (${overview?.identities?.[id.toLowerCase()] || 0})` : ""}</button>)}</div><IdentityTable items={visible} onSave={saveIdentity} busySubject={busySubject}/></section> : null}
           {(active === "people" || active === "home") ? <div className="right-rail"><OdooPanel overview={overview} preview={preview} onPreview={loadPreview} onImport={importSelected} selected={selected} setSelected={setSelected} busy={syncBusy} profiles={profiles}/><HealthPanel items={overview?.integrations} onRefresh={load}/></div> : null}
+          {active === "expenses" ? <ExpensePanel/> : null}
           {active === "customers" ? <CustomerPanel items={customers} onCreate={createCustomer} busy={customerBusy}/> : null}
           {active === "odoo" ? <OdooPanel overview={overview} preview={preview} onPreview={loadPreview} onImport={importSelected} selected={selected} setSelected={setSelected} busy={syncBusy} profiles={profiles}/> : null}
           {active === "health" ? <HealthPanel items={overview?.integrations} onRefresh={load}/> : null}

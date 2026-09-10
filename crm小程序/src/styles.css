@@ -5,12 +5,12 @@
   color: #0d1b3a;
   background: #dfe7f1;
   font-synthesis: none;
-  --blue: #1677ff;
+  --blue: #b94a08;
   --teal: #0cb7b5;
   --orange: #ff7a1a;
   --purple: #6d63ef;
   --ink: #0d1b3a;
-  --muted: #65718a;
+  --muted: #595b63;
   --line: #e6ebf2;
   --bg: #f5f8fc;
   --surface: #fff;
@@ -155,7 +155,7 @@ button {
   align-items: center;
   justify-content: center;
   gap: 2px;
-  font-size: 11px;
+  font-size: 18px;
   color: #4c5568;
   position: relative;
 }
@@ -188,7 +188,7 @@ button {
   background: #0b1835e8;
   color: #fff;
   border-radius: 22px;
-  font-size: 13px;
+  font-size: 18px;
   white-space: nowrap;
   box-shadow: 0 10px 30px #0d1b3a33;
   animation: toast-in 0.25s ease;
@@ -210,7 +210,7 @@ button {
 .home-heading p {
   margin: 0;
   color: var(--muted);
-  font-size: 14px;
+  font-size: 18px;
 }
 .checkin-button {
   height: 46px;
@@ -221,9 +221,9 @@ button {
   background: var(--blue);
   color: #fff;
   border-radius: 14px;
-  font-size: 15px;
+  font-size: 18px;
   font-weight: 600;
-  box-shadow: 0 8px 18px #1677ff33;
+  box-shadow: 0 8px 18px #b94a0833;
 }
 .stat-strip {
   display: grid;
@@ -258,7 +258,7 @@ button {
 }
 .stat-icon.blue {
   color: var(--blue);
-  background: #eaf3ff;
+  background: #fff1e7;
 }
 .stat-icon.orange {
   color: var(--orange);
@@ -271,7 +271,7 @@ button {
 .stat-strip p {
   margin: 0;
   color: var(--muted);
-  font-size: 11px;
+  font-size: 18px;
   white-space: nowrap;
 }
 .stat-strip strong {
@@ -282,7 +282,7 @@ button {
 }
 .stat-strip > div:last-child strong {
   color: var(--teal);
-  font-size: 16px;
+  font-size: 18px;
 }
 .section-title {
   display: flex;
@@ -298,7 +298,7 @@ button {
   display: flex;
   align-items: center;
   color: var(--blue);
-  font-size: 12px;
+  font-size: 18px;
 }
 .quick-actions {
   display: grid;
@@ -314,7 +314,7 @@ button {
   flex-direction: column;
   align-items: center;
   gap: 9px;
-  font-size: 12px;
+  font-size: 18px;
 }
 .quick-actions button > span {
   width: 46px;
@@ -325,7 +325,7 @@ button {
 }
 .quick-actions .blue {
   color: var(--blue);
-  background: #edf5ff;
+  background: #fff1e7;
 }
 .quick-actions .teal {
   color: var(--teal);
@@ -361,7 +361,7 @@ button {
   grid-template-columns: 9px minmax(0, 1fr) 46px 58px 18px;
   gap: 8px;
   border-bottom: 1px solid var(--line);
-  font-size: 12px;
+  font-size: 18px;
   text-align: left;
   position: relative;
 }
@@ -388,11 +388,11 @@ button {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 13px;
+  font-size: 18px;
 }
 .timeline-list time {
   color: var(--blue);
-  background: #edf5ff;
+  background: #fff1e7;
   padding: 5px 6px;
   border-radius: 7px;
 }
@@ -438,17 +438,17 @@ button {
 .customer-preview strong,
 .customer-row strong {
   display: block;
-  font-size: 13px;
+  font-size: 18px;
 }
 .customer-preview small,
 .customer-row small {
   display: block;
   color: var(--muted);
-  font-size: 11px;
+  font-size: 18px;
   margin-top: 3px;
 }
 .status {
-  font-size: 10px;
+  font-size: 18px;
   padding: 3px 6px;
   border-radius: 6px;
   white-space: nowrap;
@@ -458,8 +458,8 @@ button {
   background: #fff0e5;
 }
 .status.blue {
-  color: #096de8;
-  background: #eaf3ff;
+  color: #a64108;
+  background: #fff1e7;
 }
 .status.green {
   color: #087f5b;
@@ -470,13 +470,13 @@ button {
   background: #f0f2f5;
 }
 .customer-preview time {
-  font-size: 11px;
+  font-size: 18px;
 }
 .view-all {
   width: 100%;
   height: 40px;
   color: var(--blue);
-  font-size: 12px;
+  font-size: 18px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -503,7 +503,7 @@ button {
   border: 0;
   outline: 0;
   background: transparent;
-  font-size: 13px;
+  font-size: 18px;
   color: var(--ink);
 }
 .icon-primary {
@@ -526,12 +526,12 @@ button {
   border-radius: 16px;
   background: #fff;
   border: 1px solid var(--line);
-  font-size: 11px;
+  font-size: 18px;
   white-space: nowrap;
 }
 .filter-row button.selected {
-  background: #eaf3ff;
-  border-color: #cde2ff;
+  background: #fff1e7;
+  border-color: #f2c9ac;
   color: var(--blue);
 }
 .customer-row {
@@ -555,7 +555,7 @@ button {
   align-items: center;
   gap: 3px;
   color: #8b93a4;
-  font-size: 10px;
+  font-size: 18px;
   font-style: normal;
   white-space: nowrap;
   overflow: hidden;
@@ -582,15 +582,15 @@ button {
   background: var(--blue);
   color: #fff;
   font-weight: 600;
-  font-size: 13px;
-  box-shadow: 0 8px 22px #1677ff4d;
+  font-size: 18px;
+  box-shadow: 0 8px 22px #b94a084d;
 }
 .summary-line {
   display: flex;
   justify-content: space-between;
   margin: 13px 2px 10px;
   color: var(--muted);
-  font-size: 12px;
+  font-size: 18px;
 }
 .summary-line strong {
   color: var(--ink);
@@ -629,11 +629,11 @@ button {
   z-index: 1;
 }
 .visit-date strong {
-  font-size: 16px;
+  font-size: 18px;
   line-height: 1;
 }
 .visit-date small {
-  font-size: 9px;
+  font-size: 18px;
   color: var(--muted);
 }
 .visit-list > button > i {
@@ -649,25 +649,25 @@ button {
   box-shadow: 0 4px 10px #1f3a5f0a;
 }
 .visit-list .grow > strong {
-  font-size: 13px;
+  font-size: 18px;
 }
 .visit-list .grow > small {
   display: flex;
   align-items: center;
   color: var(--muted);
-  font-size: 10px;
+  font-size: 18px;
   margin: 6px 0;
 }
 .visit-list p {
   margin: 0;
-  font-size: 11px;
+  font-size: 18px;
   line-height: 1.55;
   color: #46526a;
 }
 .visit-list em {
   display: block;
   color: var(--teal);
-  font-size: 10px;
+  font-size: 18px;
   font-style: normal;
   margin-top: 8px;
 }
@@ -685,7 +685,7 @@ button {
 }
 .segmented button {
   border-radius: 9px;
-  font-size: 13px;
+  font-size: 18px;
   color: var(--muted);
 }
 .segmented button.active {
@@ -709,12 +709,12 @@ button {
 .order-summary small {
   display: block;
   color: var(--muted);
-  font-size: 10px;
+  font-size: 18px;
 }
 .order-summary strong {
   display: block;
   margin-top: 3px;
-  font-size: 17px;
+  font-size: 18px;
 }
 .order-list {
   display: grid;
@@ -731,16 +731,16 @@ button {
   display: flex;
   justify-content: space-between;
   color: var(--muted);
-  font-size: 10px;
+  font-size: 18px;
 }
 .order-list h3 {
   margin: 10px 0 4px;
-  font-size: 14px;
+  font-size: 18px;
 }
 .order-list > article > p {
   margin: 0 0 12px;
   color: var(--muted);
-  font-size: 11px;
+  font-size: 18px;
 }
 .order-list article > div {
   display: grid;
@@ -754,11 +754,11 @@ button {
 .order-list article > div small {
   display: block;
   color: var(--muted);
-  font-size: 9px;
+  font-size: 18px;
 }
 .order-list article > div strong {
   display: block;
-  font-size: 11px;
+  font-size: 18px;
   margin-top: 3px;
 }
 .order-list footer {
@@ -772,9 +772,9 @@ button {
 }
 .order-list footer button {
   color: var(--blue);
-  font-size: 11px;
+  font-size: 18px;
   padding: 5px 10px;
-  background: #eaf3ff;
+  background: #fff1e7;
   border-radius: 7px;
 }
 .profile {
@@ -796,14 +796,14 @@ button {
 .profile p {
   margin: 0;
   color: var(--muted);
-  font-size: 12px;
+  font-size: 18px;
 }
 .mine-card {
   padding: 15px;
   margin-bottom: 12px;
 }
 .mine-card h3 {
-  font-size: 14px;
+  font-size: 18px;
   margin: 0 0 10px;
 }
 .info-row {
@@ -813,7 +813,7 @@ button {
   padding: 10px 0;
   border-bottom: 1px solid var(--line);
   gap: 18px;
-  font-size: 12px;
+  font-size: 18px;
 }
 .info-row span {
   color: var(--muted);
@@ -833,23 +833,23 @@ button {
   height: 36px;
   border: 1px solid var(--line);
   border-radius: 9px;
-  font-size: 12px;
+  font-size: 18px;
 }
 .role-switch button.active {
   border-color: #a9ceff;
-  background: #edf5ff;
+  background: #fff1e7;
   color: var(--blue);
 }
 .permission-note {
   display: flex;
   align-items: center;
   gap: 6px;
-  color: #65718a;
+  color: #595b63;
   background: #f5f8fc;
   border-radius: 8px;
   padding: 8px;
   margin: 10px 0 0;
-  font-size: 10px;
+  font-size: 18px;
 }
 .settings-row {
   width: 100%;
@@ -862,12 +862,12 @@ button {
 }
 .settings-row > span {
   flex: 1;
-  font-size: 12px;
+  font-size: 18px;
 }
 .settings-row small {
   display: block;
   color: var(--muted);
-  font-size: 9px;
+  font-size: 18px;
   margin-top: 3px;
 }
 .settings-row.danger {
@@ -877,7 +877,7 @@ button {
 .version {
   text-align: center;
   color: #9aa3b2;
-  font-size: 10px;
+  font-size: 18px;
   margin-top: 22px;
 }
 .detail-hero {
@@ -890,13 +890,13 @@ button {
   flex: 1;
 }
 .detail-hero h2 {
-  font-size: 16px;
+  font-size: 18px;
   margin: 0 0 4px;
 }
 .detail-hero p {
   margin: 0;
   color: var(--muted);
-  font-size: 10px;
+  font-size: 18px;
 }
 .detail-actions {
   display: grid;
@@ -912,7 +912,7 @@ button {
   flex-direction: column;
   align-items: center;
   gap: 5px;
-  font-size: 10px;
+  font-size: 18px;
   color: #3b4861;
   border-right: 1px solid var(--line);
 }
@@ -946,7 +946,7 @@ button {
 }
 .record-summary small {
   color: var(--muted);
-  font-size: 10px;
+  font-size: 18px;
 }
 .note-card {
   margin-top: 12px;
@@ -954,7 +954,7 @@ button {
   border: 1px solid #f7e7c4;
   border-radius: 14px;
   padding: 13px;
-  font-size: 11px;
+  font-size: 18px;
 }
 .note-card p {
   margin: 5px 0 0;
@@ -964,7 +964,7 @@ button {
 .form-tip {
   margin: 0 2px 10px;
   color: var(--muted);
-  font-size: 11px;
+  font-size: 18px;
   line-height: 1.5;
 }
 .form-card {
@@ -983,7 +983,7 @@ button {
 .form-field > span {
   display: block;
   font-weight: 600;
-  font-size: 12px;
+  font-size: 18px;
   margin-bottom: 7px;
 }
 .form-field b {
@@ -1000,7 +1000,7 @@ button {
   background: #f9fbfd;
   color: var(--ink);
   padding: 9px 10px;
-  font-size: 12px;
+  font-size: 18px;
   resize: none;
 }
 .form-field input,
@@ -1010,8 +1010,8 @@ button {
 .form-field input:focus,
 .form-field textarea:focus,
 .form-field select:focus {
-  border-color: #7db5ff;
-  box-shadow: 0 0 0 3px #1677ff12;
+  border-color: #ce7435;
+  box-shadow: 0 0 0 3px #b94a0812;
   background: #fff;
 }
 .form-field.has-error input,
@@ -1023,7 +1023,7 @@ button {
 .form-error {
   display: block;
   color: #df3e3e;
-  font-size: 10px;
+  font-size: 18px;
   margin-top: 5px;
 }
 .counter {
@@ -1031,7 +1031,7 @@ button {
   right: 8px;
   bottom: 17px;
   color: #98a1b1;
-  font-size: 9px;
+  font-size: 18px;
 }
 .two-cols {
   display: grid;
@@ -1053,17 +1053,17 @@ button {
   height: 45px;
   border-radius: 12px;
   font-weight: 600;
-  font-size: 14px;
+  font-size: 18px;
 }
 .primary {
   color: #fff;
   background: var(--blue);
-  box-shadow: 0 7px 16px #1677ff2e;
+  box-shadow: 0 7px 16px #b94a082e;
 }
 .secondary {
   color: var(--blue);
-  background: #edf5ff;
-  border: 1px solid #d1e5ff;
+  background: #fff1e7;
+  border: 1px solid #f2c9ac;
 }
 .wide {
   width: 100%;
@@ -1080,7 +1080,7 @@ button {
   align-items: center;
   gap: 4px;
   color: #8993a5;
-  font-size: 10px;
+  font-size: 18px;
 }
 .steps i {
   width: 22px;
@@ -1113,7 +1113,7 @@ button {
   align-items: center;
   gap: 4px;
   color: var(--blue);
-  font-size: 10px;
+  font-size: 18px;
   padding: 0 5px;
 }
 .photo-grid {
@@ -1136,7 +1136,7 @@ button {
   align-items: center;
   justify-content: center;
   gap: 4px;
-  font-size: 10px;
+  font-size: 18px;
 }
 .photo-upload input,
 .file-button input {
@@ -1169,7 +1169,7 @@ button {
   gap: 7px;
   padding: 0 10px;
   color: var(--blue);
-  font-size: 11px;
+  font-size: 18px;
 }
 .empty {
   display: grid;
@@ -1178,7 +1178,7 @@ button {
   color: #9aa3b2;
 }
 .empty p {
-  font-size: 11px;
+  font-size: 18px;
 }
 @keyframes toast-in {
   from {
@@ -1198,9 +1198,9 @@ button {
   margin: 9px 0 5px;
   padding: 9px 10px;
   border-radius: 9px;
-  background: #edf5ff;
+  background: #fff1e7;
   color: #426184;
-  font-size: 10px;
+  font-size: 18px;
   line-height: 1.55;
 }
 .form-card > .inline-note {

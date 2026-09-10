@@ -60,6 +60,9 @@ def _haversine_meters(origin: dict[str, Any], destination: dict[str, Any]) -> fl
 class MockRouteAdapter:
     mode = "MOCK_ESTIMATE"
 
+    def search_places(self, keyword: str, city: str = "") -> list[dict[str, Any]]:
+        raise RouteAdapterError("尚未配置地图查询服务，请手动填写地址")
+
     def geocode_address(self, address: str, city: str = "") -> dict[str, Any]:
         raise RouteAdapterError("未配置高德Key，暂不能按地址解析坐标")
 
@@ -181,6 +184,31 @@ class AmapRouteAdapter:
             "alternatives": alternatives,
             "selectionMode": "TIME_TOLL_BALANCED",
         }
+
+    def search_places(self, keyword: str, city: str = "") -> list[dict[str, Any]]:
+        keyword = str(keyword or "").strip()
+        if not keyword or len(keyword) > 80:
+            raise RouteAdapterError("请填写不超过80字的企业名称")
+        params = urllib.parse.urlencode({"key": self.api_key, "keywords": keyword,
+            "city": str(city or "").strip(), "offset": "8", "page": "1",
+            "extensions": "base", "output": "json"})
+        payload = self.fetch_json(f"https://restapi.amap.com/v3/place/text?{params}", self.timeout_seconds)
+        if str(payload.get("status")) != "1":
+            raise RouteAdapterError("地图企业地址查询失败，请稍后重试或手动填写")
+        items = []
+        for poi in (payload.get("pois") or [])[:8]:
+            # Do not forward public POI telephone/contact information to sales.
+            def text(key):
+                value = poi.get(key)
+                return value.strip() if isinstance(value, str) else ""
+            address = text("address")
+            if not address or not text("name"):
+                continue
+            prefix = "".join(dict.fromkeys(filter(None, [text("pname"), text("cityname"), text("adname")])))
+            items.append({"id": text("id"), "name": text("name"),
+                "formattedAddress": address if prefix and address.startswith(prefix) else prefix + address,
+                "source": self.mode})
+        return items
 
     def geocode_address(self, address: str, city: str = "") -> dict[str, Any]:
         normalized_address = str(address or "").strip()

@@ -118,3 +118,11 @@ test("意向和销售状态仅允许合法流转", () => {
     /不允许/,
   );
 });
+test("拜访、意向和实际销售保留本次填写的个人联系人", () => {
+  const personalContact = { name: "测试私有联系人", phone: "18800001111" };
+  const input = { customerId: "CUS-TEST", personalContact, occurredAt: now,
+    result: "拜访测试", productName: "测试商品", quantity: 1, unitPrice: 100 };
+  for (const create of [createVisit, createOpportunity, createSale]) {
+    assert.deepEqual(create(input, context()).personalContact, personalContact);
+  }
+});

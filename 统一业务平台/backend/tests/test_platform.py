@@ -137,3 +137,21 @@ def test_ass_search_phone_details_and_auth(tmp_path: Path):
     assert rows[0]["address"] == "测试地址"
     assert client.get(url, params={"keyword": "%"}, headers=headers).json()["items"] == []
     assert client.get(url, params={"partner_id": 456}, headers=headers).json()["items"] == rows
+
+
+def test_expenses_require_admin_and_use_authenticated_reviewer(tmp_path, monkeypatch):
+    client = build_client(tmp_path)
+    assert client.get("/api/admin/expense-reports").status_code == 401
+    assert client.put("/api/admin/expense-reports/EXP-1/review", json={"decision":"APPROVED"}).status_code == 401
+    client.post("/api/admin/session", json={"username":"wayne", "password":"test-only-password"})
+    import app.main
+    calls = []
+    def fake_bridge(path="", body=None):
+        calls.append((path, body))
+        return {"items": []} if body is None else {"item": body}
+    monkeypatch.setattr(app.main, "expense_bridge", fake_bridge)
+    assert client.get("/api/admin/expense-reports").status_code == 200
+    assert client.put("/api/admin/expense-reports/EXP-1/review", json={"decision":"REJECTED"}).status_code == 400
+    result = client.put("/api/admin/expense-reports/EXP-1/review", json={"decision":"APPROVED", "reviewer":"forged"})
+    assert result.status_code == 200
+    assert calls[-1][1]["reviewer"] == "wayne"

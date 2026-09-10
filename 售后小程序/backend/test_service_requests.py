@@ -53,6 +53,39 @@ class RequestsTest(unittest.TestCase):
         self.assertEqual(self.db.query(Notification).count(), 1)
         self.assertEqual(self.client.get('/service-requests', headers=self.headers).json()['items'][0]['status'], 'assigned')
 
+    def test_submitter_can_track_full_lifecycle_but_not_other_orders(self):
+        from crud import update_work_order_status, create_work_record
+        from types import SimpleNamespace
+        for role, subject in (("engineer", "ass:2"), ("销售人员", "crm:sales-test"), ("销售经理", "crm:manager-test")):
+            headers = {"X-Request-Ticket": issue_ticket(subject, "测试提交人", role)}
+            body = {**self.body, "request_id": str(uuid.uuid4())}
+            oid = self.client.post('/service-requests', headers=headers, json=body).json()['id']
+            self.assertEqual(self.client.get(f'/service-requests/{oid}', headers=self.headers).status_code, 404)
+            self.assertEqual(self.client.get(f'/service-requests/{oid}').status_code, 401)
+            app.dependency_overrides[get_current_user] = lambda: self.db.get(User, 1)
+            self.assertEqual(self.client.put(f'/workorders/{oid}', json={**body, 'engineer_id':1, 'fault_type':'机械故障'}).status_code, 200)
+            self.db.expire_all()
+            update_work_order_status(self.db, oid, 'processing', engineer_id=1)
+            create_work_record(self.db, oid, SimpleNamespace(check_in_location='测试现场', start_time='09:00', end_time='10:00', analysis='已更换零件并测试正常', images=[]), 1)
+            detail = self.client.get(f'/service-requests/{oid}', headers=headers).json()
+            self.assertEqual(detail['status'], 'done')
+            self.assertEqual([e['status'] for e in detail['timeline']], ['pending','assigned','processing','done'])
+            self.assertTrue(detail['history_complete'])
+            self.assertEqual(detail['records'][0]['analysis'], '已更换零件并测试正常')
+            self.assertEqual(self.client.get('/service-requests?limit=1&offset=0',headers=headers).json()['total'], 1)
+            self.assertEqual(self.client.get('/service-requests?offset=1',headers=headers).json()['items'], [])
+            app.dependency_overrides.clear()
+
+    def test_old_order_history_is_not_invented(self):
+        oid = self.client.post('/service-requests', headers=self.headers, json=self.body).json()['id']
+        from models import WorkOrderEvent
+        self.db.query(WorkOrderEvent).delete()
+        self.db.commit()
+        detail = self.client.get(f'/service-requests/{oid}', headers=self.headers).json()
+        self.assertFalse(detail['history_complete'])
+        self.assertEqual(len(detail['timeline']), 1)
+        self.assertEqual(detail['timeline'][0]['status'], '')
+
     def test_idempotency_and_conflict(self):
         first = self.client.post('/service-requests', headers=self.headers, json=self.body)
         again = self.client.post('/service-requests', headers=self.headers, json=self.body)

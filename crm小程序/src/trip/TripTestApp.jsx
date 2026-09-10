@@ -1,3 +1,4 @@
+import { wgs84ToGcj02 } from "../location/coordinates.js";
 import React, { useEffect, useMemo, useState } from "react";
 import { Icon } from "../icons";
 import {
@@ -6,7 +7,6 @@ import {
   geocodeAddress,
   listExpenseReports,
   reverseGeocode,
-  reviewExpenseReport,
   submitExpenseReport,
 } from "./tripApi";
 import "./trip-test.css";
@@ -22,41 +22,6 @@ const SAMPLE_POINTS = {
 function round(value, digits = 1) {
   const factor = 10 ** digits;
   return Math.round((Number(value) + Number.EPSILON) * factor) / factor;
-}
-
-function isInChina(longitude, latitude) {
-  return longitude >= 72.004 && longitude <= 137.8347 && latitude >= 0.8293 && latitude <= 55.8271;
-}
-
-function transformLatitude(x, y) {
-  let result = -100 + 2 * x + 3 * y + 0.2 * y * y + 0.1 * x * y + 0.2 * Math.sqrt(Math.abs(x));
-  result += ((20 * Math.sin(6 * x * Math.PI) + 20 * Math.sin(2 * x * Math.PI)) * 2) / 3;
-  result += ((20 * Math.sin(y * Math.PI) + 40 * Math.sin((y / 3) * Math.PI)) * 2) / 3;
-  result += ((160 * Math.sin((y / 12) * Math.PI) + 320 * Math.sin((y * Math.PI) / 30)) * 2) / 3;
-  return result;
-}
-
-function transformLongitude(x, y) {
-  let result = 300 + x + 2 * y + 0.1 * x * x + 0.1 * x * y + 0.1 * Math.sqrt(Math.abs(x));
-  result += ((20 * Math.sin(6 * x * Math.PI) + 20 * Math.sin(2 * x * Math.PI)) * 2) / 3;
-  result += ((20 * Math.sin(x * Math.PI) + 40 * Math.sin((x / 3) * Math.PI)) * 2) / 3;
-  result += ((150 * Math.sin((x / 12) * Math.PI) + 300 * Math.sin((x / 30) * Math.PI)) * 2) / 3;
-  return result;
-}
-
-function wgs84ToGcj02(longitude, latitude) {
-  if (!isInChina(longitude, latitude)) return { longitude, latitude };
-  const axis = 6378245;
-  const eccentricity = 0.006693421622965943;
-  let latitudeDelta = transformLatitude(longitude - 105, latitude - 35);
-  let longitudeDelta = transformLongitude(longitude - 105, latitude - 35);
-  const latitudeRadians = (latitude / 180) * Math.PI;
-  let magic = Math.sin(latitudeRadians);
-  magic = 1 - eccentricity * magic * magic;
-  const rootMagic = Math.sqrt(magic);
-  latitudeDelta = (latitudeDelta * 180) / (((axis * (1 - eccentricity)) / (magic * rootMagic)) * Math.PI);
-  longitudeDelta = (longitudeDelta * 180) / ((axis / rootMagic) * Math.cos(latitudeRadians) * Math.PI);
-  return { longitude: longitude + longitudeDelta, latitude: latitude + latitudeDelta };
 }
 
 function todayKey() {
@@ -186,7 +151,7 @@ function makeRoute(legs) {
   };
 }
 
-function ReportItem({ report, canReview = false, canDelete = false, note = "", onNoteChange, onReview, onDelete, reviewing }) {
+function ReportItem({ report, canDelete = false, onDelete, reviewing }) {
   const fuelAmount = Number(report.actualFuelAmount || 0);
   const tollAmount = Number(report.actualTollAmount || 0);
   const fuelOnly = report.route?.calculationMode === "FUEL_ONLY";
@@ -205,7 +170,7 @@ function ReportItem({ report, canReview = false, canDelete = false, note = "", o
       <div className="trip-report__statusline">
         {report.applicantName ? <span>{report.applicantName} · {report.reportDate}</span> : <span>{report.reportDate}</span>}
         <b className={`trip-status trip-status--${String(report.status || "SUBMITTED").toLowerCase()}`}>
-          {report.statusLabel || "待经理审批"}
+          {report.statusLabel || "待后台审批"}
         </b>
       </div>
       <div className="trip-report__totals">
@@ -217,23 +182,6 @@ function ReportItem({ report, canReview = false, canDelete = false, note = "", o
       {report.adjustmentReason ? <p>调整说明：{report.adjustmentReason}</p> : null}
       {report.reviewNote ? <p>审批意见：{report.reviewNote}</p> : null}
       {report.reviewerName ? <p>审批人：{report.reviewerName}</p> : null}
-      {canReview && report.status === "SUBMITTED" ? (
-        <div className="trip-review">
-          <label className="trip-field">
-            <span>审批意见（驳回时必填）</span>
-            <textarea
-              rows="2"
-              value={note}
-              onChange={(event) => onNoteChange(event.target.value)}
-              placeholder="可填写报销核对说明"
-            />
-          </label>
-          <div className="trip-review__actions">
-            <button type="button" className="trip-button trip-button--secondary" disabled={reviewing} onClick={() => onReview("REJECTED")}>驳回</button>
-            <button type="button" className="trip-button trip-button--primary" disabled={reviewing} onClick={() => onReview("APPROVED")}>通过</button>
-          </div>
-        </div>
-      ) : null}
       {canDelete && report.status !== "SUBMITTED" ? (
         <button className="trip-delete-report" type="button" disabled={reviewing} onClick={onDelete}>
           <Icon name="trash" size={16} />
@@ -244,7 +192,7 @@ function ReportItem({ report, canReview = false, canDelete = false, note = "", o
   );
 }
 
-export default function TripTestApp({ embedded = false, visits = EMPTY_VISITS, user, approvalOnly = false }) {
+export default function TripTestApp({ embedded = false, visits = EMPTY_VISITS, user }) {
   const [points, setPoints] = useState(() => ({
     origin: { ...EMPTY_POINT },
     destination: { ...EMPTY_POINT },
@@ -260,7 +208,6 @@ export default function TripTestApp({ embedded = false, visits = EMPTY_VISITS, u
   const [reportsLoading, setReportsLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [reviewing, setReviewing] = useState("");
-  const [reviewNotes, setReviewNotes] = useState({});
   const [loading, setLoading] = useState(false);
   const [locating, setLocating] = useState("");
   const [resolving, setResolving] = useState("");
@@ -485,29 +432,11 @@ export default function TripTestApp({ embedded = false, visits = EMPTY_VISITS, u
     try {
       const saved = await submitExpenseReport(report);
       setReports((current) => [saved, ...current]);
-      setNotice({ type: "success", text: "报销申请已提交，经理将在 CRM 待办中收到提醒。" });
+      setNotice({ type: "success", text: "报销申请已提交，请等待后台审批。" });
     } catch (error) {
       setNotice({ type: "error", text: error.message });
     } finally {
       setSubmitting(false);
-    }
-  };
-
-  const reviewReport = async (report, decision) => {
-    const note = String(reviewNotes[report.id] || "").trim();
-    if (decision === "REJECTED" && !note) {
-      setNotice({ type: "error", text: "驳回报销时请填写原因。" });
-      return;
-    }
-    setReviewing(report.id);
-    try {
-      const saved = await reviewExpenseReport(report.id, decision, note);
-      setReports((current) => current.map((item) => (item.id === saved.id ? saved : item)));
-      setNotice({ type: "success", text: decision === "APPROVED" ? "报销已审批通过。" : "报销已驳回并记录原因。" });
-    } catch (error) {
-      setNotice({ type: "error", text: error.message });
-    } finally {
-      setReviewing("");
     }
   };
 
@@ -548,52 +477,6 @@ export default function TripTestApp({ embedded = false, visits = EMPTY_VISITS, u
   const destinations = [points.destination, ...extraDestinations];
   const routeStops = [points.origin, ...destinations, points.returnPoint];
 
-  if (approvalOnly) {
-    const pending = reports.filter((report) => report.status === "SUBMITTED");
-    const reviewed = reports.filter((report) => report.status !== "SUBMITTED");
-    return (
-      <div className="trip-app trip-app--embedded trip-approval-page">
-        <main className="trip-main">
-          <section className="trip-intro">
-            <div className="trip-step-label">经理审批</div>
-            <h2>行程报销待办</h2>
-            <p>核对拜访行程、里程、油费和高速费后进行审批。</p>
-          </section>
-          {notice.text ? <div className={`trip-notice trip-notice--${notice.type}`} role="status">{notice.text}</div> : null}
-          <section className="trip-daily">
-            <div className="trip-section-heading">
-              <div><p className="trip-eyebrow">待处理</p><h2>{pending.length} 条报销申请</h2></div>
-            </div>
-            {reportsLoading ? <div className="trip-empty"><p>正在读取报销申请...</p></div> : pending.length ? pending.map((report) => (
-              <ReportItem
-                key={report.id}
-                report={report}
-                canReview={user?.role === "销售经理"}
-                note={reviewNotes[report.id] || ""}
-                onNoteChange={(value) => setReviewNotes((current) => ({ ...current, [report.id]: value }))}
-                onReview={(decision) => reviewReport(report, decision)}
-                reviewing={reviewing === report.id}
-              />
-            )) : <div className="trip-empty"><Icon name="check" size={25} /><p>当前没有待审批报销</p></div>}
-          </section>
-          {reviewed.length ? (
-            <section className="trip-daily">
-              <div className="trip-section-heading"><div><p className="trip-eyebrow">最近记录</p><h2>已审批</h2></div><span>{reviewed.length} 条</span></div>
-              {reviewed.map((report) => (
-                <ReportItem
-                  key={report.id}
-                  report={report}
-                  canDelete
-                  onDelete={() => deleteReport(report)}
-                  reviewing={reviewing === report.id}
-                />
-              ))}
-            </section>
-          ) : null}
-        </main>
-      </div>
-    );
-  }
 
   return (
     <div className={`trip-app${embedded ? " trip-app--embedded" : ""}`}>

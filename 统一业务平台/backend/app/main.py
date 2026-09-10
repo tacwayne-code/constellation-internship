@@ -77,6 +77,44 @@ class InternalCustomerUpsert(CustomerWriteBody):
     odoo_partner_id: int | None = Field(default=None, alias="odooPartnerId", ge=1)
 
 
+class ExpenseReviewBody(BaseModel):
+    decision: Literal["APPROVED", "REJECTED"]
+    note: str = Field(default="", max_length=1000)
+
+
+def expense_bridge(path="", body=None):
+    base = os.getenv("CRM_EXPENSE_API_URL", "").rstrip("/")
+    key = os.getenv("CRM_EXPENSE_ADMIN_SECRET", "")
+    if not base or not key:
+        raise HTTPException(503, "报销服务尚未连接，请由部署管理员配置")
+    request = urllib.request.Request(base + "/api/internal/expense-reports" + path,
+        data=json.dumps(body).encode() if body is not None else None,
+        headers={"X-Expense-Admin-Key": key, "Content-Type": "application/json"},
+        method="PUT" if body is not None else "GET")
+    try:
+        with urllib.request.urlopen(request, timeout=15) as response:
+            return json.load(response)
+    except urllib.error.HTTPError as error:
+        with error:
+            result = json.load(error)
+        raise HTTPException(error.code, result.get("message", "报销操作失败")) from error
+    except (OSError, ValueError) as error:
+        raise HTTPException(502, "报销服务连接失败，请刷新确认结果后再操作") from error
+
+
+@app.get("/api/admin/expense-reports")
+def admin_expenses(actor: str = Depends(require_admin)):
+    return expense_bridge()
+
+
+@app.put("/api/admin/expense-reports/{report_id}/review")
+def admin_review_expense(report_id: str, body: ExpenseReviewBody, actor: str = Depends(require_admin)):
+    if body.decision == "REJECTED" and not body.note.strip():
+        raise HTTPException(400, "驳回时请填写原因")
+    return expense_bridge("/" + urllib.parse.quote(report_id, safe="") + "/review",
+                          {"decision": body.decision, "note": body.note, "reviewer": actor})
+
+
 @app.middleware("http")
 async def security_headers(request: Request, call_next):
     response = await call_next(request)

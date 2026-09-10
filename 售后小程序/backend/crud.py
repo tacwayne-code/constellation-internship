@@ -1,6 +1,6 @@
 from sqlalchemy.orm import Session, selectinload
 from sqlalchemy import or_
-from models import User, Engineer, WorkOrder, WorkRecord
+from models import User, Engineer, WorkOrder, WorkRecord, WorkOrderEvent
 from datetime import datetime, timedelta
 from passlib.context import CryptContext
 import json
@@ -109,6 +109,14 @@ def generate_order_no(db: Session):
     return f"WO-{today}-{today_count + 1:03d}"
 
 
+def record_event(db, order, action, actor_id=None):
+    db.flush()
+    engineer = db.get(Engineer, order.engineer_id) if order.engineer_id else None
+    db.add(WorkOrderEvent(work_order_id=order.id, status=order.status, action=action,
+                         actor_id=str(actor_id) if actor_id is not None else None,
+                         engineer_name=engineer.name if engineer else None))
+
+
 def create_work_order(db: Session, data, created_by: int):
     order = WorkOrder(
         order_no=generate_order_no(db),
@@ -126,6 +134,7 @@ def create_work_order(db: Session, data, created_by: int):
         status="assigned"
     )
     db.add(order)
+    record_event(db, order, "创建并派单", created_by)
     enqueue_assignment(db, order, created_by)
     db.commit()
     db.refresh(order)
@@ -196,6 +205,7 @@ def update_work_order(db: Session, order_id: int, data, actor_id=None):
     if not order:
         return None
 
+    previous_status = order.status
     previous_engineer_id = order.engineer_id
     for field in ("customer_name", "customer_phone", "device_name", "sn_code", "address", "fault_type", "fault_desc", "engineer_id"):
         setattr(order, field, getattr(data, field))
@@ -209,6 +219,8 @@ def update_work_order(db: Session, order_id: int, data, actor_id=None):
         if order.engineer_id and order.status == "pending":
             order.status = "assigned"
         enqueue_assignment(db, order, actor_id or order.created_by)
+    if previous_engineer_id != order.engineer_id or previous_status != order.status:
+        record_event(db, order, "派单调整" if previous_engineer_id != order.engineer_id else "状态更新", actor_id)
     db.commit()
     db.refresh(order)
     return order
@@ -222,6 +234,7 @@ def delete_work_order(db: Session, order_id: int):
     records = db.query(WorkRecord).filter(WorkRecord.work_order_id == order_id).all()
     for record in records:
         db.delete(record)
+    db.query(WorkOrderEvent).filter(WorkOrderEvent.work_order_id == order_id).delete(synchronize_session=False)
     db.delete(order)
     db.commit()
     return order
@@ -256,7 +269,9 @@ def create_work_record(db: Session, order_id: int, data, engineer_id: int):
         images=json.dumps(data.images or [])
     )
     db.add(record)
-
+    order = db.get(WorkOrder, order_id)
+    db.refresh(order)
+    record_event(db, order, "维修完成并提交记录", engineer_id)
     db.commit()
     db.refresh(record)
     return record
@@ -277,6 +292,8 @@ def update_work_order_status(db: Session, order_id: int, new_status: str, engine
         query = query.filter(WorkOrder.engineer_id == engineer_id)
     if not query.update({"status": new_status, "updated_at": datetime.utcnow()}):
         raise ValueError("工单已变更，请刷新后重试")
+    db.refresh(order)
+    record_event(db, order, "工程师接单" if new_status == "processing" else "工单完成", engineer_id)
     db.commit()
     db.refresh(order)
     return order

@@ -67,6 +67,7 @@ export function createVisit(input, context) {
   const now = context.now || new Date().toISOString();
   return {
     id: input.id || context.numberGenerator.next("visit", now),
+    personalContact: input.personalContact || null,
     customerId: required(input.customerId, "拜访关联客户"),
     occurredAt: required(input.occurredAt || input.arrivedAt, "拜访时间"),
     location: input.location || "",
@@ -82,6 +83,7 @@ export function createOpportunity(input, context) {
   const now = context.now || new Date().toISOString();
   return {
     id: input.id || context.numberGenerator.next("opportunity", now),
+    personalContact: input.personalContact || null,
     customerId: required(input.customerId, "意向关联客户"),
     sourceVisitId: input.sourceVisitId || "",
     status: input.status || OpportunityStatus.INITIAL_CONTACT,
@@ -96,6 +98,7 @@ export function createSale(input, context) {
   const now = context.now || new Date().toISOString();
   return {
     id: input.id || context.numberGenerator.next("sale", now),
+    personalContact: input.personalContact || null,
     customerId: required(input.customerId, "实际销售关联客户"),
     sourceOpportunityId: input.sourceOpportunityId || "",
     status: input.status || SaleStatus.DRAFT,

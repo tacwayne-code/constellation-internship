@@ -38,13 +38,6 @@ export async function submitExpenseReport(report) {
   return payload.item;
 }
 
-export async function reviewExpenseReport(reportId, decision, note = "") {
-  const payload = await expenseRequest(`/${encodeURIComponent(reportId)}/review`, {
-    method: "PUT",
-    body: { decision, note },
-  });
-  return payload.item;
-}
 
 export async function deleteExpenseReport(reportId) {
   const payload = await expenseRequest(`/${encodeURIComponent(reportId)}`, {

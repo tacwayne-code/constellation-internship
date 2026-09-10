@@ -91,6 +91,34 @@ class AmapRouteAdapterTest(unittest.TestCase):
         self.assertEqual(result["formattedAddress"], "广东省中山市东区街道测试路1号")
         self.assertEqual(result["longitude"], 113.39)
 
+    def test_company_search_returns_addresses_without_phone_or_contact(self):
+        captured = {}
+        def fetch(url, timeout):
+            captured["url"] = url
+            return {"status": "1", "pois": [
+                {"id": "P1", "name": "测试企业", "pname": "广东省", "cityname": "深圳市", "adname": "南山区",
+                 "address": "科技路1号", "tel": "18811112222", "contact": "不应返回"},
+                {"id": "P2", "name": "无详细地址", "address": []}]}
+        result = AmapRouteAdapter("test-server-key", fetch_json=fetch).search_places("测试企业")
+        query = parse_qs(urlparse(captured["url"]).query)
+        self.assertEqual(query["keywords"], ["测试企业"])
+        self.assertEqual(query["offset"], ["8"])
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0]["formattedAddress"], "广东省深圳市南山区科技路1号")
+        self.assertNotIn("tel", result[0])
+        self.assertNotIn("contact", result[0])
+        self.assertNotIn("test-server-key", str(result))
+
+    def test_company_search_empty_failure_and_missing_key(self):
+        adapter = AmapRouteAdapter("key", fetch_json=lambda *_: {"status": "1", "pois": []})
+        self.assertEqual(adapter.search_places("不存在"), [])
+        with self.assertRaises(RouteAdapterError):
+            adapter.search_places("")
+        with self.assertRaises(RouteAdapterError):
+            MockRouteAdapter().search_places("企业")
+        with self.assertRaises(RouteAdapterError):
+            AmapRouteAdapter("key", fetch_json=lambda *_: {"status": "0"}).search_places("企业")
+
 
 if __name__ == "__main__":
     unittest.main()

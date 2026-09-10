@@ -131,6 +131,11 @@ test("意向按状态机推进，赢单后转换实际销售且重复转换不�
   );
   assert.equal(sale.id, repeated.id);
   assert.equal(sale.status, SaleStatus.DRAFT);
+  const personalContact = { name: "本人的补充联系人", phone: "18800001111" };
+  const claimed = await app.opportunityService.convertToSale(opportunity.id, { personalContact }, salesperson);
+  assert.equal(claimed.id, sale.id);
+  assert.deepEqual(claimed.personalContact, personalContact);
+  assert.equal(claimed.customerId, sale.customerId);
 });
 
 test("统一员工版可确认客户购买信息，并写入操作时间线", async () => {

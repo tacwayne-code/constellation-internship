@@ -6,12 +6,13 @@ import json
 import os
 import time
 import uuid
-from fastapi import APIRouter, Depends, Header, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from database import get_db
-from models import ServiceRequestReceipt, WorkOrder
+from models import ServiceRequestReceipt, WorkOrder, WorkOrderEvent
+from sqlalchemy import or_
 
 router = APIRouter()
 ROLES = {"engineer", "paidan", "销售人员", "销售经理"}
@@ -83,6 +84,7 @@ def submit(data: Demand, identity=Depends(reporter), db: Session = Depends(get_d
                       fault_type="需求报备", fault_images="[]")
     db.add(order)
     db.flush()
+    db.add(WorkOrderEvent(work_order_id=order.id, status="pending", action="提交需求", actor_id=subject))
     db.add(ServiceRequestReceipt(id=key, reporter=subject, reporter_name=identity["name"],
         source_role=identity["role"], payload_hash=payload_hash, work_order_id=order.id))
     try:
@@ -96,11 +98,41 @@ def submit(data: Demand, identity=Depends(reporter), db: Session = Depends(get_d
     return {"id": order.id, "order_no": order.order_no, "status": "pending"}
 
 
-@router.get("/service-requests")
-def my_requests(identity=Depends(reporter), db: Session = Depends(get_db)):
+def own_orders(db, identity):
     subject = hashlib.sha256(identity["sub"].encode()).hexdigest()
-    rows = db.query(ServiceRequestReceipt, WorkOrder).join(WorkOrder,
-        WorkOrder.id == ServiceRequestReceipt.work_order_id).filter(
-        ServiceRequestReceipt.reporter == subject).order_by(ServiceRequestReceipt.created_at.desc()).limit(50).all()
-    return {"items": [{"order_no": order.order_no, "customer_name": order.customer_name,
-                      "status": order.status} for receipt, order in rows]}
+    own = ServiceRequestReceipt.reporter == subject
+    if identity["sub"].startswith("ass:") and identity["sub"][4:].isdigit():
+        own = or_(own, WorkOrder.created_by == int(identity["sub"][4:]))
+    return db.query(WorkOrder).outerjoin(ServiceRequestReceipt,
+        WorkOrder.id == ServiceRequestReceipt.work_order_id).filter(own)
+
+
+def summary(order):
+    return {"id": order.id, "order_no": order.order_no, "customer_name": order.customer_name,
+            "device_name": order.device_name, "status": order.status,
+            "engineer_name": order.engineer.name if order.engineer else "",
+            "created_at": order.created_at, "updated_at": order.updated_at}
+
+
+@router.get("/service-requests")
+def my_requests(identity=Depends(reporter), db: Session = Depends(get_db),
+                offset: int = Query(default=0, ge=0), limit: int = Query(default=20, ge=1, le=100)):
+    query = own_orders(db, identity)
+    return {"items": [summary(order) for order in query.order_by(WorkOrder.created_at.desc(), WorkOrder.id.desc()).offset(offset).limit(limit)],
+            "total": query.count(), "offset": offset, "limit": limit}
+
+
+@router.get("/service-requests/{order_id}")
+def request_detail(order_id: int, identity=Depends(reporter), db: Session = Depends(get_db)):
+    order = own_orders(db, identity).filter(WorkOrder.id == order_id).first()
+    if not order:
+        raise HTTPException(404, "工单不存在或不属于本人提交")
+    events = db.query(WorkOrderEvent).filter(WorkOrderEvent.work_order_id == order.id).order_by(WorkOrderEvent.created_at, WorkOrderEvent.id).all()
+    timeline = [{"status": e.status, "action": e.action, "at": e.created_at, "engineer_name": e.engineer_name} for e in events]
+    complete = bool(events and events[0].action in ("提交需求", "创建并派单"))
+    if not complete:
+        timeline.insert(0, {"status": "", "action": "工单创建（历史记录）", "at": order.created_at})
+    return {**summary(order), "address": order.address, "fault_desc": order.fault_desc,
+            "sn_code": order.sn_code, "timeline": timeline, "history_complete": complete,
+            "records": [{"submitted_at": r.submitted_at, "start_time": r.start_time,
+                         "end_time": r.end_time, "analysis": r.analysis} for r in order.records]}

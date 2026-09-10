@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="referrer" content="no-referrer"><title>售后需求报备</title><link rel="stylesheet" href="./request.css"></head>
 <body><main><button id="back" type="button">‹ 返回原入口</button><h1>售后需求报备</h1><p>代客户记录需求，提交后由派单员指派。报备不等于已接单。</p>
-<form id="request-form">
+<nav><button id="show-form" type="button">提交售后需求</button> <button id="show-list" type="button">我提交的工单</button></nav><form id="request-form">
 <label>客户名称<input name="customer_name" required maxlength="200" autocomplete="organization"></label>
 <label>客户联系电话<input name="customer_phone" required maxlength="50" type="tel"></label>
 <label>服务地址<input name="address" maxlength="500"></label>
@@ -10,5 +10,5 @@
 <label>客户提出的问题<textarea name="fault_desc" required maxlength="5000" rows="5"></textarea></label>
 <button id="submit" type="submit">提交需求，等待派单</button>
 </form><p id="result" role="status" aria-live="polite"></p>
-<h2>我的最近报备</h2><button id="refresh" type="button">刷新进度</button><p id="list-status"></p><ul id="list"></ul>
+<section id="my-orders"><h2>我提交的工单</h2><button id="refresh" type="button">刷新进度</button><p id="list-status"></p><ul id="list"></ul><button id="more" type="button" hidden>加载更多</button></section><section id="detail" hidden aria-live="polite"></section>
 </main><script src="./request.js"></script></body></html>

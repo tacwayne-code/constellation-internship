@@ -98,3 +98,14 @@ class ServiceRequestReceipt(Base):
     payload_hash = Column(String, nullable=False)
     work_order_id = Column(Integer, ForeignKey("work_orders.id"), unique=True, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+
+class WorkOrderEvent(Base):
+    __tablename__ = "work_order_events"
+    id = Column(Integer, primary_key=True)
+    work_order_id = Column(Integer, ForeignKey("work_orders.id"), nullable=False, index=True)
+    status = Column(String, nullable=False)
+    action = Column(String, nullable=False)
+    actor_id = Column(String)
+    engineer_name = Column(String)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
