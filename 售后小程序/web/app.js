@@ -434,6 +434,9 @@ function setThemeMode(mode) {
 /* ── 表单逐字段校验 ── */
 function fieldErrorFor(name, value) {
   if (name === "customer_name" && !value.trim()) return "请填写企业 / 客户名称";
+  if (name === "customer_contact" && !value.trim()) return "请填写本次报修联系人";
+  if (name === "customer_phone" && !value.trim()) return "请填写本次报修联系电话";
+  if (name === "engineer_id" && (!value || Number(value) <= 0)) return "请选择承派工程师";
   if (name === "device_name" && !value.trim()) return "请填写设备名称";
   if (name === "fault_desc" && !value.trim()) return "请填写故障现象描述";
   if (name === "name" && !value.trim()) return "请填写姓名";
@@ -470,7 +473,7 @@ function bindFieldValidation(form) {
   if (!form) return;
   form.querySelectorAll("[name]").forEach((input) => {
     input.addEventListener("blur", () => {
-      const message = fieldErrorFor(input.name, input.value);
+      const message = input.readOnly ? "" : fieldErrorFor(input.name, input.value);
       if (message) showFieldError(input, message);
       else clearFieldError(input);
     });
@@ -483,7 +486,7 @@ function bindFieldValidation(form) {
 function validateForm(form) {
   let firstInvalid = null;
   form.querySelectorAll("[name]").forEach((input) => {
-    const message = fieldErrorFor(input.name, input.value);
+    const message = input.readOnly ? "" : fieldErrorFor(input.name, input.value);
     if (message) {
       showFieldError(input, message);
       if (!firstInvalid) firstInvalid = input;
@@ -491,7 +494,7 @@ function validateForm(form) {
       clearFieldError(input);
     }
   });
-  if (firstInvalid) firstInvalid.focus();
+  if (firstInvalid) { firstInvalid.scrollIntoView({block:"center",behavior:"smooth"}); firstInvalid.focus({preventScroll:true}); }
   return !firstInvalid;
 }
 
@@ -667,7 +670,7 @@ function renderCreate() {
         <span>${current ? "编辑工单" : "创建工单"}</span>
         ${current ? `<span class="badge badge-processing">编辑中</span>` : ""}
       </div>
-      <form id="create-order-form">
+      <form id="create-order-form" novalidate>
         <input type="hidden" name="order_id" value="${esc(current?.id || "")}">
         <div class="form-group">
           <label class="form-label">报修企业 / 客户名称</label>
@@ -1543,12 +1546,25 @@ function bindEvents() {
     window.addEventListener("hashchange", resetOdooState);
 
     bindFieldValidation(createOrderForm);
+    let orderSubmitting = false, orderSaved = false;
+    const submitStatus = document.createElement("p");
+    submitStatus.setAttribute("role", "alert");
+    submitStatus.style.cssText = "color:#c0392b;white-space:pre-wrap";
+    createOrderForm.appendChild(submitStatus);
     createOrderForm.addEventListener("submit", async (event) => {
       event.preventDefault();
+      if (orderSubmitting || orderSaved) return;
+      submitStatus.textContent = "";
       if (!validateForm(createOrderForm)) {
-        showToast("请完善必填信息", "warn");
+        const missing = [...createOrderForm.querySelectorAll(".field-error")].map(el => el.textContent);
+        submitStatus.textContent = missing.join("；");
+        showToast(missing[0] || "请完善必填信息", "warn");
         return;
       }
+      const submitButton = createOrderForm.querySelector('[type="submit"]');
+      const originalLabel = submitButton.textContent;
+      orderSubmitting = true; submitButton.disabled = true; submitButton.textContent = "正在提交，请稍候…";
+      try {
       const formData = new FormData(createOrderForm);
       const orderId = formData.get("order_id");
       const current = orderId ? editingOrder() : null;
@@ -1574,9 +1590,18 @@ function bindEvents() {
       } else {
         await api("/workorders", { method: "POST", body: payload });
       }
+      orderSaved = true;
       resetOrderEditing();
       await refreshAll();
       setRoute("orders");
+      } catch (error) {
+        submitStatus.textContent = orderSaved ? "工单已保存，列表刷新失败。请进入工单列表查看，不要重复创建。" : (error.message || "提交失败，请检查网络后重试");
+        showToast(submitStatus.textContent, "warn");
+        submitStatus.scrollIntoView({block:"center",behavior:"smooth"});
+      } finally {
+        orderSubmitting = false; submitButton.disabled = orderSaved; submitButton.textContent = orderSaved ? "已保存" : originalLabel;
+      }
+
     });
   }
 
