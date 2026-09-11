@@ -38,7 +38,7 @@ class RequestsTest(unittest.TestCase):
         order = self.db.get(WorkOrder, order_id)
         self.assertIsNone(order.engineer_id)
         self.assertEqual(order.status, 'pending')
-        self.assertEqual(self.db.query(Notification).count(), 0)
+        self.assertEqual(self.db.query(Notification).filter_by(event_type="SERVICE_REQUEST").count(), 1)
         self.assertEqual(len(self.client.get('/service-requests', headers=self.headers).json()['items']), 1)
         other = {'X-Request-Ticket': issue_ticket('ass:2', '工程师', 'engineer')}
         self.assertEqual(self.client.get('/service-requests', headers=other).json()['items'], [])
@@ -50,7 +50,7 @@ class RequestsTest(unittest.TestCase):
         self.assertEqual(assigned.status_code, 200)
         self.assertEqual(assigned.json()['status'], 'assigned')
         self.db.expire_all()
-        self.assertEqual(self.db.query(Notification).count(), 1)
+        self.assertEqual(self.db.query(Notification).filter_by(event_type="ASSIGNMENT").count(), 1)
         self.assertEqual(self.client.get('/service-requests', headers=self.headers).json()['items'][0]['status'], 'assigned')
 
     def test_submitter_can_track_full_lifecycle_but_not_other_orders(self):
@@ -115,6 +115,37 @@ class RequestsTest(unittest.TestCase):
         self.assertFalse(detail['history_complete'])
         self.assertEqual(len(detail['timeline']), 1)
         self.assertEqual(detail['timeline'][0]['status'], '')
+
+    def test_dispatcher_notification_is_bound_and_idempotent(self):
+        from unittest.mock import Mock, patch
+        from wecom_notifications import process_one
+        with patch.dict(os.environ, {"WECOM_DISPATCHER_USER_ID":"1", "WECOM_USER_BINDINGS":'{"1":"Yang"}'}):
+            self.client.post('/service-requests',headers=self.headers,json=self.body)
+            self.client.post('/service-requests',headers=self.headers,json=self.body)
+            self.assertEqual(self.db.query(Notification).count(),1)
+            sender=Mock();sender.send.return_value='test-message'
+            self.assertTrue(process_one(sender))
+            sender.send.assert_called_once()
+            self.assertEqual(sender.send.call_args.args[0],'Yang')
+            self.assertNotIn('李采购',sender.send.call_args.args[1])
+            self.assertFalse(process_one(sender))
+            self.db.expire_all()
+            self.assertEqual(self.db.query(Notification).one().status,'SENT')
+
+    def test_dispatcher_notice_stops_after_role_revocation_or_dispatch(self):
+        from unittest.mock import Mock, patch
+        from wecom_notifications import process_one
+        with patch.dict(os.environ, {"WECOM_DISPATCHER_USER_ID":"1", "WECOM_USER_BINDINGS":'{"1":"Yang"}'}):
+            self.client.post('/service-requests',headers=self.headers,json=self.body)
+            target=self.db.get(User,1);target.role='disabled';self.db.commit()
+            sender=Mock();process_one(sender);sender.send.assert_not_called()
+            self.db.expire_all();self.assertEqual(self.db.query(Notification).one().status,'BLOCKED')
+            target.role='paidan';self.db.commit()
+            result=self.client.post('/service-requests',headers=self.headers,json={**self.body,'request_id':str(uuid.uuid4())})
+            order=self.db.get(WorkOrder,result.json()['id']);order.status='assigned';order.engineer_id=1;self.db.commit()
+            process_one(sender);sender.send.assert_not_called()
+            self.db.expire_all()
+            self.assertEqual(self.db.query(Notification).filter_by(work_order_id=order.id).one().status,'CANCELLED')
 
     def test_idempotency_and_conflict(self):
         first = self.client.post('/service-requests', headers=self.headers, json=self.body)

@@ -125,6 +125,12 @@ def ensure_schema() -> None:
     inspector = inspect(engine)
     if "work_orders" not in inspector.get_table_names():
         return
+    notification_columns = {column["name"] for column in inspector.get_columns("notification_outbox")}
+    with engine.begin() as connection:
+        if "event_type" not in notification_columns:
+            connection.execute(text("ALTER TABLE notification_outbox ADD COLUMN event_type VARCHAR NOT NULL DEFAULT 'ASSIGNMENT'"))
+        if "target_user_id" not in notification_columns:
+            connection.execute(text("ALTER TABLE notification_outbox ADD COLUMN target_user_id INTEGER"))
     columns = {column["name"] for column in inspector.get_columns("work_orders")}
     if "fault_images" not in columns:
         with engine.begin() as connection:

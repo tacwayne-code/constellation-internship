@@ -74,6 +74,8 @@ class Notification(Base):
     __tablename__ = "notification_outbox"
 
     id = Column(String, primary_key=True)
+    event_type = Column(String, nullable=False, default="ASSIGNMENT", server_default="ASSIGNMENT")
+    target_user_id = Column(Integer, nullable=True)
     work_order_id = Column(Integer, index=True, nullable=False)
     engineer_id = Column(Integer, nullable=False)
     actor_id = Column(Integer, nullable=False)

@@ -10,7 +10,7 @@ import uuid
 from datetime import datetime, timedelta
 
 from database import SessionLocal
-from models import Engineer, Notification, WorkOrder
+from models import Engineer, Notification, WorkOrder, User
 
 
 def enabled():
@@ -38,6 +38,7 @@ def enqueue_assignment(db, order, actor_id):
     # Also invalidate A→B→A old events: matching only the current engineer is insufficient.
     db.query(Notification).filter(
         Notification.work_order_id == order.id,
+        Notification.event_type == "ASSIGNMENT",
         Notification.status.in_(["PENDING", "RETRY", "FAILED", "BLOCKED"]),
     ).update({"status": "CANCELLED", "error_code": "SUPERSEDED", "updated_at": datetime.utcnow()})
     event_id = uuid.uuid4().hex
@@ -46,6 +47,20 @@ def enqueue_assignment(db, order, actor_id):
         actor_id=actor_id, status="PENDING" if enabled() else "SKIPPED",
         content=f"售后派单通知\n工单：{order.order_no}\n请打开企业服务小程序 → 售后服务 → 我的任务，查看最新指派。\n通知编号：{event_id}",
     ))
+
+
+def enqueue_service_request(db, order):
+    db.flush()
+    configured = os.getenv("WECOM_DISPATCHER_USER_ID", "").strip()
+    target_id = int(configured) if configured.isdigit() and int(configured) > 0 else None
+    # Deterministic event id: the same saved application can only notify once.
+    event_id = "request-" + str(order.id)
+    if db.get(Notification, event_id):
+        return
+    db.add(Notification(id=event_id, event_type="SERVICE_REQUEST", target_user_id=target_id,
+        work_order_id=order.id, engineer_id=0, actor_id=0,
+        status="PENDING" if enabled() else "SKIPPED",
+        content=f"新售后申请，等待派单\n工单：{order.order_no}\n请打开企业服务小程序 → 售后服务 → 工单 → 待派单，查看申请并安排工程师。\n通知编号：{event_id}"))
 
 
 class SendError(Exception):
@@ -129,7 +144,23 @@ def process_one(client, session_factory=SessionLocal):
         order = db.get(WorkOrder, row.work_order_id)
         engineer = db.get(Engineer, row.engineer_id)
         try:
-            if not order or order.engineer_id != row.engineer_id or order.status not in ("assigned", "pending", "processing"):
+            if row.event_type == "SERVICE_REQUEST":
+                target = db.get(User, row.target_user_id) if row.target_user_id else None
+                if not order or order.status != "pending" or order.engineer_id:
+                    row.status, row.error_code = "CANCELLED", "ALREADY_DISPATCHED"
+                elif not target or target.role != "paidan":
+                    row.status, row.error_code = "BLOCKED", "DISPATCHER_UNAVAILABLE"
+                else:
+                    recipient = bindings().get(str(target.id))
+                    if not recipient:
+                        raise SendError("NOT_BOUND")
+                    if row.recipient and row.recipient != recipient:
+                        raise SendError("BINDING_CHANGED")
+                    row.recipient = recipient
+                    db.commit()
+                    row.message_id = client.send(recipient, row.content)
+                    row.status, row.error_code = "SENT", None
+            elif not order or order.engineer_id != row.engineer_id or order.status not in ("assigned", "pending", "processing"):
                 row.status, row.error_code = "CANCELLED", "ASSIGNMENT_CHANGED"
             elif not engineer or not engineer.user or engineer.user.role != "engineer" or engineer.status != "active":
                 row.status, row.error_code = "BLOCKED", "ENGINEER_UNAVAILABLE"

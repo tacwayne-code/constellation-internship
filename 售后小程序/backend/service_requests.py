@@ -12,6 +12,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from database import get_db
 from models import ServiceRequestReceipt, WorkOrder, WorkOrderEvent
+from wecom_notifications import enqueue_service_request
 from sqlalchemy import or_
 from order_contacts import ContactInput, append_contact, contact_views
 
@@ -91,6 +92,7 @@ def submit(data: Demand, identity=Depends(reporter), db: Session = Depends(get_d
     db.add(WorkOrderEvent(work_order_id=order.id, status="pending", action="提交需求", actor_id=subject))
     db.add(ServiceRequestReceipt(id=key, reporter=subject, reporter_name=identity["name"],
         source_role=identity["role"], payload_hash=payload_hash, work_order_id=order.id))
+    enqueue_service_request(db, order)
     try:
         db.commit()
     except IntegrityError:
