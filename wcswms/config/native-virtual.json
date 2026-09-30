@@ -1,0 +1,115 @@
+{
+  "schema": 1,
+  "simulation_only": true,
+  "instance": "WCSWMS_Original_0922",
+  "network": "Softbus",
+  "description": "Virtual commissioning assumptions, not calibrated machine settings. No task dispatch or alarm forcing.",
+  "units": "Assumed mm / mm/s / mm/s2; native engineering scaling not calibrated",
+  "entries": [
+    {
+      "symbol": "HMI保持.行走轴参数.工作速度",
+      "type": "Float",
+      "value": 500
+    },
+    {
+      "symbol": "HMI保持.行走轴参数.加速度",
+      "type": "Float",
+      "value": 500
+    },
+    {
+      "symbol": "HMI保持.行走轴参数.减速度",
+      "type": "Float",
+      "value": 500
+    },
+    {
+      "symbol": "HMI保持.行走轴参数.行程最大值",
+      "type": "Float",
+      "value": 20000
+    },
+    {
+      "symbol": "HMI保持.行走轴参数.行走最小值",
+      "type": "Float",
+      "value": -100
+    },
+    {
+      "symbol": "HMI保持.升降轴参数.工作速度",
+      "type": "Float",
+      "value": 200
+    },
+    {
+      "symbol": "HMI保持.升降轴参数.加速度",
+      "type": "Float",
+      "value": 300
+    },
+    {
+      "symbol": "HMI保持.升降轴参数.减速度",
+      "type": "Float",
+      "value": 300
+    },
+    {
+      "symbol": "HMI保持.升降轴参数.行程最大值",
+      "type": "Float",
+      "value": 8000
+    },
+    {
+      "symbol": "HMI保持.升降轴参数.行程最小值",
+      "type": "Float",
+      "value": -100
+    },
+    {
+      "symbol": "HMI保持.升降轴参数.提升高度",
+      "type": "Float",
+      "value": 100
+    },
+    {
+      "symbol": "HMI保持.升降轴参数.提升速度",
+      "type": "Float",
+      "value": 50
+    },
+    {
+      "symbol": "HMI保持.货叉轴参数.工作速度",
+      "type": "Float",
+      "value": 100
+    },
+    {
+      "symbol": "HMI保持.货叉轴参数.加速度",
+      "type": "Float",
+      "value": 200
+    },
+    {
+      "symbol": "HMI保持.货叉轴参数.减速度",
+      "type": "Float",
+      "value": 200
+    },
+    {
+      "symbol": "HMI保持.货叉轴参数.行程最大值",
+      "type": "Float",
+      "value": 1500
+    },
+    {
+      "symbol": "HMI保持.货叉轴参数.行程最小值",
+      "type": "Float",
+      "value": -1500
+    },
+    {
+      "symbol": "急停按钮",
+      "type": "Bool",
+      "value": true
+    },
+    {
+      "symbol": "行走轴前限位开关",
+      "type": "Bool",
+      "value": true
+    },
+    {
+      "symbol": "行走轴后限位开关",
+      "type": "Bool",
+      "value": true
+    },
+    {
+      "symbol": "Tag_2",
+      "type": "Int32",
+      "value": 1000
+    }
+  ]
+}

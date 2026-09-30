@@ -1,0 +1,12 @@
+{
+  "enabled": true,
+  "profile": "SIM_V1",
+  "host": "127.0.0.1",
+  "port": 1102,
+  "web_port": 8766,
+  "scan_interval_ms": 50,
+  "heartbeat_timeout_ms": 2500,
+  "state_file": "data/simulation/plc-state.json",
+  "trace_file": "data/simulation/plc-trace.jsonl",
+  "note": "Independent local Python S7 simulator for the MVP; no physical PLC or Siemens program execution."
+}

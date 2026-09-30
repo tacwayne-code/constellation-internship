@@ -1,0 +1,54 @@
+<?xml version='1.0' encoding='utf-8'?>
+<Document xmlns:ns0="http://www.siemens.com/automation/Openness/SW/Interface/v5">
+  <MemoryLayout>Standard</MemoryLayout>
+  <Number>5</Number>
+  <ns0:Section Name="Static">
+    <ns0:Member Name="左清除修改值" Datatype="Bool" />
+    <ns0:Member Name="行走轴点动正" Datatype="Bool" />
+    <ns0:Member Name="行走轴点动负" Datatype="Bool" />
+    <ns0:Member Name="行走轴回零" Datatype="Bool" />
+    <ns0:Member Name="升降轴点动正" Datatype="Bool" />
+    <ns0:Member Name="升降轴点动负" Datatype="Bool" />
+    <ns0:Member Name="升降轴回零" Datatype="Bool" />
+    <ns0:Member Name="货叉轴点动正" Datatype="Bool" />
+    <ns0:Member Name="货叉轴缩回" Datatype="Bool" />
+    <ns0:Member Name="货叉轴点动负" Datatype="Bool" />
+    <ns0:Member Name="货叉设零" Datatype="Bool" />
+    <ns0:Member Name="行走手动速度" Datatype="Real" />
+    <ns0:Member Name="升降手动速度" Datatype="Real" />
+    <ns0:Member Name="货叉手动速度" Datatype="Real" />
+    <ns0:Member Name="控制模式" Datatype="Int" />
+    <ns0:Member Name="物料超叉屏蔽" Datatype="Bool" />
+    <ns0:Member Name="货叉有无屏蔽" Datatype="Bool" />
+    <ns0:Member Name="货位有无屏蔽" Datatype="Bool" />
+    <ns0:Member Name="故障确认" Datatype="Bool" />
+    <ns0:Member Name="任务执行" Datatype="Bool" />
+    <ns0:Member Name="本地启动" Datatype="Int" />
+    <ns0:Member Name="系统停止" Datatype="Bool" />
+    <ns0:Member Name="行走当前坐标" Datatype="Real" />
+    <ns0:Member Name="升降当前坐标" Datatype="Real" />
+    <ns0:Member Name="货叉当前坐标" Datatype="Real" />
+    <ns0:Member Name="行走定位值" Datatype="Real" />
+    <ns0:Member Name="升降定位值" Datatype="Real" />
+    <ns0:Member Name="货叉定位值" Datatype="Real" />
+    <ns0:Member Name="行走定位按钮" Datatype="Bool" />
+    <ns0:Member Name="升降定位按钮" Datatype="Bool" />
+    <ns0:Member Name="货叉定位按钮" Datatype="Bool" />
+    <ns0:Member Name="报警代码" Datatype="Int" />
+    <ns0:Member Name="自动动步号" Datatype="Int" />
+    <ns0:Member Name="左仓行走定位" Datatype="Bool" />
+    <ns0:Member Name="左仓升降定位" Datatype="Bool" />
+    <ns0:Member Name="左仓伸1定位" Datatype="Bool" />
+    <ns0:Member Name="左仓伸2定位" Datatype="Bool" />
+    <ns0:Member Name="右仓行走定位" Datatype="Bool" />
+    <ns0:Member Name="右仓升降定位" Datatype="Bool" />
+    <ns0:Member Name="右仓伸1定位" Datatype="Bool" />
+    <ns0:Member Name="右仓伸2定位" Datatype="Bool" />
+    <ns0:Member Name="本地模式" Datatype="Bool" />
+    <ns0:Member Name="远程模式" Datatype="Bool" />
+    <ns0:Member Name="消音" Datatype="Bool" />
+    <ns0:Member Name="激光位置" Datatype="Real" />
+    <ns0:Member Name="激光实际位置" Datatype="Real" />
+    <ns0:Member Name="右清除修改值" Datatype="Bool" />
+  </ns0:Section>
+</Document>

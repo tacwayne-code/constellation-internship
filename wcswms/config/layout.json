@@ -1,0 +1,13 @@
+{
+  "name": "单巷道演示库",
+  "columns": 6,
+  "levels": 4,
+  "sides": ["L", "R"],
+  "depth": 1,
+  "column_pitch_m": 1.2,
+  "level_pitch_m": 1.1,
+  "aisle_half_width_m": 1.15,
+  "max_load_kg": 150,
+  "calibrated": false,
+  "note": "参数化仿真布局；层列、间距与方向尚未从 SolidWorks 装配标定。150kg 来自电气清单设备名称，实际额定载荷待确认。"
+}

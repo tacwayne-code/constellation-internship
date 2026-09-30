@@ -1,0 +1,16 @@
+{
+  "version": "1.6.0",
+  "files": {
+    "backend/wms_allocation.py": "2359c3c087de876aaa15b6304ccd2ef6e7243288a9e468f1625f740196feca0d",
+    "backend/wms_orders.py": "0006720183cb516da445bfe003afdab9aa2b0c863f451ef7d0340053f11ad383",
+    "backend/wms_store.py": "8947abcbd1c9107560f496ec5fa8d54ed32e7cbaac34cdac15dfa4770ab79667",
+    "backend/wms_service.py": "e1655b2aa6628d672acc1a759756beb4a6d2afb67fa2ccc5020a51978e74096e",
+    "backend/wms_app.py": "8986563511c619570034acbbf26fdf100fe41854ab8c329a02be7e94957f89f4",
+    "backend/wms_device.py": "c884a3c161c37daf794244da423593a20a69a2cf4dbb67793c9351a782264e34",
+    "run_wms.py": "1706c927b9e67cf7aa0a99048cc3cd9ab5e21fb0865118c03f23de070a69af5b",
+    "web/dist/wms.html": "5b9d6c8e8c2b5d9e7f57b7d0b675064e006b1acbd5c09e4a039788965db549ac",
+    "web/dist/static/wms-C3LjcRHE.js": "8033e858e9aca8a004f44c279b7d1f6384cc13dd9a9dc561427fcf24efa71352",
+    "web/dist/static/x-D8Yjwcmt.js": "947e04e17eb0b4cd6c1d6516f9b6761c5fcf58eab1f47d4eb37e15bdf1abfc9e",
+    "web/dist/static/wms-DE14e7Kl.css": "695e9ec3084286a9b390dd7d11fe8e0e9e142158b002bd52d9fc4f2cf7dd7bb2"
+  }
+}

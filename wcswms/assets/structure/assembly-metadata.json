@@ -1,0 +1,384 @@
+{
+  "source": "样板间总装.SLDASM",
+  "bounds_m": [
+    1.4547421526258706,
+    4.507672361336547,
+    5.6051709445655735,
+    17.394844470001665,
+    7.968650832146865,
+    9.157170946326755
+  ],
+  "top_level_components": [
+    {
+      "name": "货架总总装-2",
+      "path": "C:\\Users\\ALIENWARE\\Desktop\\wcswms\\结构\\货架总总装.SLDASM"
+    },
+    {
+      "name": "LG2-200000-1",
+      "path": "C:\\Users\\ALIENWARE\\Desktop\\wcswms\\结构\\LG2-200000.SLDASM"
+    },
+    {
+      "name": "料箱-91",
+      "path": "C:\\Users\\ALIENWARE\\Desktop\\wcswms\\结构\\料箱.SLDPRT"
+    },
+    {
+      "name": "料箱-93",
+      "path": "C:\\Users\\ALIENWARE\\Desktop\\wcswms\\结构\\料箱.SLDPRT"
+    },
+    {
+      "name": "料箱-95",
+      "path": "C:\\Users\\ALIENWARE\\Desktop\\wcswms\\结构\\料箱.SLDPRT"
+    },
+    {
+      "name": "料箱-98",
+      "path": "C:\\Users\\ALIENWARE\\Desktop\\wcswms\\结构\\料箱.SLDPRT"
+    },
+    {
+      "name": "料箱-94",
+      "path": "C:\\Users\\ALIENWARE\\Desktop\\wcswms\\结构\\料箱.SLDPRT"
+    },
+    {
+      "name": "料箱-92",
+      "path": "C:\\Users\\ALIENWARE\\Desktop\\wcswms\\结构\\料箱.SLDPRT"
+    },
+    {
+      "name": "料箱-96",
+      "path": "C:\\Users\\ALIENWARE\\Desktop\\wcswms\\结构\\料箱.SLDPRT"
+    },
+    {
+      "name": "料箱-97",
+      "path": "C:\\Users\\ALIENWARE\\Desktop\\wcswms\\结构\\料箱.SLDPRT"
+    },
+    {
+      "name": "料箱-101",
+      "path": "C:\\Users\\ALIENWARE\\Desktop\\wcswms\\结构\\料箱.SLDPRT"
+    },
+    {
+      "name": "料箱-100",
+      "path": "C:\\Users\\ALIENWARE\\Desktop\\wcswms\\结构\\料箱.SLDPRT"
+    },
+    {
+      "name": "料箱-99",
+      "path": "C:\\Users\\ALIENWARE\\Desktop\\wcswms\\结构\\料箱.SLDPRT"
+    },
+    {
+      "name": "料箱-103",
+      "path": "C:\\Users\\ALIENWARE\\Desktop\\wcswms\\结构\\料箱.SLDPRT"
+    },
+    {
+      "name": "料箱-109",
+      "path": "C:\\Users\\ALIENWARE\\Desktop\\wcswms\\结构\\料箱.SLDPRT"
+    },
+    {
+      "name": "料箱-106",
+      "path": "C:\\Users\\ALIENWARE\\Desktop\\wcswms\\结构\\料箱.SLDPRT"
+    },
+    {
+      "name": "料箱-113",
+      "path": "C:\\Users\\ALIENWARE\\Desktop\\wcswms\\结构\\料箱.SLDPRT"
+    },
+    {
+      "name": "料箱-111",
+      "path": "C:\\Users\\ALIENWARE\\Desktop\\wcswms\\结构\\料箱.SLDPRT"
+    },
+    {
+      "name": "料箱-114",
+      "path": "C:\\Users\\ALIENWARE\\Desktop\\wcswms\\结构\\料箱.SLDPRT"
+    },
+    {
+      "name": "料箱-105",
+      "path": "C:\\Users\\ALIENWARE\\Desktop\\wcswms\\结构\\料箱.SLDPRT"
+    },
+    {
+      "name": "料箱-108",
+      "path": "C:\\Users\\ALIENWARE\\Desktop\\wcswms\\结构\\料箱.SLDPRT"
+    },
+    {
+      "name": "料箱-107",
+      "path": "C:\\Users\\ALIENWARE\\Desktop\\wcswms\\结构\\料箱.SLDPRT"
+    },
+    {
+      "name": "料箱-112",
+      "path": "C:\\Users\\ALIENWARE\\Desktop\\wcswms\\结构\\料箱.SLDPRT"
+    },
+    {
+      "name": "料箱-102",
+      "path": "C:\\Users\\ALIENWARE\\Desktop\\wcswms\\结构\\料箱.SLDPRT"
+    },
+    {
+      "name": "料箱-104",
+      "path": "C:\\Users\\ALIENWARE\\Desktop\\wcswms\\结构\\料箱.SLDPRT"
+    },
+    {
+      "name": "料箱-110",
+      "path": "C:\\Users\\ALIENWARE\\Desktop\\wcswms\\结构\\料箱.SLDPRT"
+    },
+    {
+      "name": "料箱-117",
+      "path": "C:\\Users\\ALIENWARE\\Desktop\\wcswms\\结构\\料箱.SLDPRT"
+    },
+    {
+      "name": "料箱-123",
+      "path": "C:\\Users\\ALIENWARE\\Desktop\\wcswms\\结构\\料箱.SLDPRT"
+    },
+    {
+      "name": "料箱-125",
+      "path": "C:\\Users\\ALIENWARE\\Desktop\\wcswms\\结构\\料箱.SLDPRT"
+    },
+    {
+      "name": "料箱-118",
+      "path": "C:\\Users\\ALIENWARE\\Desktop\\wcswms\\结构\\料箱.SLDPRT"
+    },
+    {
+      "name": "料箱-121",
+      "path": "C:\\Users\\ALIENWARE\\Desktop\\wcswms\\结构\\料箱.SLDPRT"
+    },
+    {
+      "name": "料箱-119",
+      "path": "C:\\Users\\ALIENWARE\\Desktop\\wcswms\\结构\\料箱.SLDPRT"
+    },
+    {
+      "name": "料箱-122",
+      "path": "C:\\Users\\ALIENWARE\\Desktop\\wcswms\\结构\\料箱.SLDPRT"
+    },
+    {
+      "name": "料箱-116",
+      "path": "C:\\Users\\ALIENWARE\\Desktop\\wcswms\\结构\\料箱.SLDPRT"
+    },
+    {
+      "name": "料箱-120",
+      "path": "C:\\Users\\ALIENWARE\\Desktop\\wcswms\\结构\\料箱.SLDPRT"
+    },
+    {
+      "name": "料箱-124",
+      "path": "C:\\Users\\ALIENWARE\\Desktop\\wcswms\\结构\\料箱.SLDPRT"
+    },
+    {
+      "name": "料箱-115",
+      "path": "C:\\Users\\ALIENWARE\\Desktop\\wcswms\\结构\\料箱.SLDPRT"
+    },
+    {
+      "name": "料箱-127",
+      "path": "C:\\Users\\ALIENWARE\\Desktop\\wcswms\\结构\\料箱.SLDPRT"
+    },
+    {
+      "name": "料箱-129",
+      "path": "C:\\Users\\ALIENWARE\\Desktop\\wcswms\\结构\\料箱.SLDPRT"
+    },
+    {
+      "name": "料箱-136",
+      "path": "C:\\Users\\ALIENWARE\\Desktop\\wcswms\\结构\\料箱.SLDPRT"
+    },
+    {
+      "name": "料箱-137",
+      "path": "C:\\Users\\ALIENWARE\\Desktop\\wcswms\\结构\\料箱.SLDPRT"
+    },
+    {
+      "name": "料箱-140",
+      "path": "C:\\Users\\ALIENWARE\\Desktop\\wcswms\\结构\\料箱.SLDPRT"
+    },
+    {
+      "name": "料箱-133",
+      "path": "C:\\Users\\ALIENWARE\\Desktop\\wcswms\\结构\\料箱.SLDPRT"
+    },
+    {
+      "name": "料箱-128",
+      "path": "C:\\Users\\ALIENWARE\\Desktop\\wcswms\\结构\\料箱.SLDPRT"
+    },
+    {
+      "name": "料箱-130",
+      "path": "C:\\Users\\ALIENWARE\\Desktop\\wcswms\\结构\\料箱.SLDPRT"
+    },
+    {
+      "name": "料箱-126",
+      "path": "C:\\Users\\ALIENWARE\\Desktop\\wcswms\\结构\\料箱.SLDPRT"
+    },
+    {
+      "name": "料箱-132",
+      "path": "C:\\Users\\ALIENWARE\\Desktop\\wcswms\\结构\\料箱.SLDPRT"
+    },
+    {
+      "name": "料箱-135",
+      "path": "C:\\Users\\ALIENWARE\\Desktop\\wcswms\\结构\\料箱.SLDPRT"
+    },
+    {
+      "name": "料箱-134",
+      "path": "C:\\Users\\ALIENWARE\\Desktop\\wcswms\\结构\\料箱.SLDPRT"
+    },
+    {
+      "name": "料箱-131",
+      "path": "C:\\Users\\ALIENWARE\\Desktop\\wcswms\\结构\\料箱.SLDPRT"
+    },
+    {
+      "name": "料箱-138",
+      "path": "C:\\Users\\ALIENWARE\\Desktop\\wcswms\\结构\\料箱.SLDPRT"
+    },
+    {
+      "name": "料箱-139",
+      "path": "C:\\Users\\ALIENWARE\\Desktop\\wcswms\\结构\\料箱.SLDPRT"
+    },
+    {
+      "name": "料箱-148",
+      "path": "C:\\Users\\ALIENWARE\\Desktop\\wcswms\\结构\\料箱.SLDPRT"
+    },
+    {
+      "name": "料箱-150",
+      "path": "C:\\Users\\ALIENWARE\\Desktop\\wcswms\\结构\\料箱.SLDPRT"
+    },
+    {
+      "name": "料箱-143",
+      "path": "C:\\Users\\ALIENWARE\\Desktop\\wcswms\\结构\\料箱.SLDPRT"
+    },
+    {
+      "name": "料箱-141",
+      "path": "C:\\Users\\ALIENWARE\\Desktop\\wcswms\\结构\\料箱.SLDPRT"
+    },
+    {
+      "name": "料箱-155",
+      "path": "C:\\Users\\ALIENWARE\\Desktop\\wcswms\\结构\\料箱.SLDPRT"
+    },
+    {
+      "name": "料箱-142",
+      "path": "C:\\Users\\ALIENWARE\\Desktop\\wcswms\\结构\\料箱.SLDPRT"
+    },
+    {
+      "name": "料箱-147",
+      "path": "C:\\Users\\ALIENWARE\\Desktop\\wcswms\\结构\\料箱.SLDPRT"
+    },
+    {
+      "name": "料箱-154",
+      "path": "C:\\Users\\ALIENWARE\\Desktop\\wcswms\\结构\\料箱.SLDPRT"
+    },
+    {
+      "name": "料箱-144",
+      "path": "C:\\Users\\ALIENWARE\\Desktop\\wcswms\\结构\\料箱.SLDPRT"
+    },
+    {
+      "name": "料箱-146",
+      "path": "C:\\Users\\ALIENWARE\\Desktop\\wcswms\\结构\\料箱.SLDPRT"
+    },
+    {
+      "name": "料箱-145",
+      "path": "C:\\Users\\ALIENWARE\\Desktop\\wcswms\\结构\\料箱.SLDPRT"
+    },
+    {
+      "name": "料箱-149",
+      "path": "C:\\Users\\ALIENWARE\\Desktop\\wcswms\\结构\\料箱.SLDPRT"
+    },
+    {
+      "name": "料箱-151",
+      "path": "C:\\Users\\ALIENWARE\\Desktop\\wcswms\\结构\\料箱.SLDPRT"
+    },
+    {
+      "name": "料箱-152",
+      "path": "C:\\Users\\ALIENWARE\\Desktop\\wcswms\\结构\\料箱.SLDPRT"
+    },
+    {
+      "name": "料箱-153",
+      "path": "C:\\Users\\ALIENWARE\\Desktop\\wcswms\\结构\\料箱.SLDPRT"
+    },
+    {
+      "name": "料箱-156",
+      "path": "C:\\Users\\ALIENWARE\\Desktop\\wcswms\\结构\\料箱.SLDPRT"
+    },
+    {
+      "name": "料箱-158",
+      "path": "C:\\Users\\ALIENWARE\\Desktop\\wcswms\\结构\\料箱.SLDPRT"
+    },
+    {
+      "name": "料箱-161",
+      "path": "C:\\Users\\ALIENWARE\\Desktop\\wcswms\\结构\\料箱.SLDPRT"
+    },
+    {
+      "name": "料箱-159",
+      "path": "C:\\Users\\ALIENWARE\\Desktop\\wcswms\\结构\\料箱.SLDPRT"
+    },
+    {
+      "name": "料箱-162",
+      "path": "C:\\Users\\ALIENWARE\\Desktop\\wcswms\\结构\\料箱.SLDPRT"
+    },
+    {
+      "name": "料箱-168",
+      "path": "C:\\Users\\ALIENWARE\\Desktop\\wcswms\\结构\\料箱.SLDPRT"
+    },
+    {
+      "name": "料箱-164",
+      "path": "C:\\Users\\ALIENWARE\\Desktop\\wcswms\\结构\\料箱.SLDPRT"
+    },
+    {
+      "name": "料箱-160",
+      "path": "C:\\Users\\ALIENWARE\\Desktop\\wcswms\\结构\\料箱.SLDPRT"
+    },
+    {
+      "name": "料箱-165",
+      "path": "C:\\Users\\ALIENWARE\\Desktop\\wcswms\\结构\\料箱.SLDPRT"
+    },
+    {
+      "name": "料箱-157",
+      "path": "C:\\Users\\ALIENWARE\\Desktop\\wcswms\\结构\\料箱.SLDPRT"
+    },
+    {
+      "name": "料箱-163",
+      "path": "C:\\Users\\ALIENWARE\\Desktop\\wcswms\\结构\\料箱.SLDPRT"
+    },
+    {
+      "name": "料箱-171",
+      "path": "C:\\Users\\ALIENWARE\\Desktop\\wcswms\\结构\\料箱.SLDPRT"
+    },
+    {
+      "name": "料箱-166",
+      "path": "C:\\Users\\ALIENWARE\\Desktop\\wcswms\\结构\\料箱.SLDPRT"
+    },
+    {
+      "name": "料箱-169",
+      "path": "C:\\Users\\ALIENWARE\\Desktop\\wcswms\\结构\\料箱.SLDPRT"
+    },
+    {
+      "name": "料箱-167",
+      "path": "C:\\Users\\ALIENWARE\\Desktop\\wcswms\\结构\\料箱.SLDPRT"
+    },
+    {
+      "name": "料箱-170",
+      "path": "C:\\Users\\ALIENWARE\\Desktop\\wcswms\\结构\\料箱.SLDPRT"
+    },
+    {
+      "name": "料箱-172",
+      "path": "C:\\Users\\ALIENWARE\\Desktop\\wcswms\\结构\\料箱.SLDPRT"
+    },
+    {
+      "name": "料箱-175",
+      "path": "C:\\Users\\ALIENWARE\\Desktop\\wcswms\\结构\\料箱.SLDPRT"
+    },
+    {
+      "name": "料箱-176",
+      "path": "C:\\Users\\ALIENWARE\\Desktop\\wcswms\\结构\\料箱.SLDPRT"
+    },
+    {
+      "name": "料箱-177",
+      "path": "C:\\Users\\ALIENWARE\\Desktop\\wcswms\\结构\\料箱.SLDPRT"
+    },
+    {
+      "name": "料箱-178",
+      "path": "C:\\Users\\ALIENWARE\\Desktop\\wcswms\\结构\\料箱.SLDPRT"
+    },
+    {
+      "name": "料箱-173",
+      "path": "C:\\Users\\ALIENWARE\\Desktop\\wcswms\\结构\\料箱.SLDPRT"
+    },
+    {
+      "name": "料箱-174",
+      "path": "C:\\Users\\ALIENWARE\\Desktop\\wcswms\\结构\\料箱.SLDPRT"
+    },
+    {
+      "name": "料箱-179",
+      "path": "C:\\Users\\ALIENWARE\\Desktop\\wcswms\\结构\\料箱.SLDPRT"
+    },
+    {
+      "name": "料箱-180",
+      "path": "C:\\Users\\ALIENWARE\\Desktop\\wcswms\\结构\\料箱.SLDPRT"
+    }
+  ],
+  "open_error": 0,
+  "open_warning": 128,
+  "note": "SolidWorks GetBox approximate assembly bounds; not calibrated warehouse coordinates."
+}

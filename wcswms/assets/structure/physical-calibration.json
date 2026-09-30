@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "mode": "FIXED_ANCHOR",
+  "fully_calibrated": false,
+  "anchor_label": "一层一列",
+  "sampled_at": "2026-09-23T10:56:56.703619+08:00",
+  "plc_endpoint": "192.168.0.100:102",
+  "plc_anchor_mm": {"x": 871.0, "y": -28.0, "z": 0.0},
+  "cad_anchor_m": {"x": 10.236742, "y": 5.259672, "z": 0.0},
+  "axis_sign": {"x": -1, "y": 1, "z": 1},
+  "direction_confirmed": {"x": true, "y": false, "z": false},
+  "fork_mid_ratio": 0.5,
+  "fork_zero_confirmed": true,
+  "anchor_source": "用户确认当前为货架第一层第一列，并确认真机向前时原模型向后；随后确认当前货叉处于中间位置，采样值为 0 mm。",
+  "cad_anchor_basis": "物理第一列从 CAD X 最大端起编号；第一层使用 CAD 最低料箱底面。列距、层高和左右仓编号未作多点校核。",
+  "pending": ["升降和货叉正方向", "多点位置与实际层列间距", "双级货叉联动比例"]
+}

@@ -1,0 +1,634 @@
+{
+  "assemblies": [
+    {
+      "assembly_path": "LG2-200000-1",
+      "source_file": "LG2-200000.SLDASM",
+      "source_sha256": "f68a80fbbbbed253f668a847ff6ed03bb467d30fcc85667a20c30117799a0d74",
+      "source_resolved": true,
+      "descendant_instances": 1447
+    },
+    {
+      "assembly_path": "LG2-200000-1/LG2-210000-1",
+      "source_file": "LG2-210000.SLDASM",
+      "source_sha256": "3b65709a4db5ee6a86f22a5e710e92d3ffa6b7c655ab19af4e963e25f9e66af2",
+      "source_resolved": true,
+      "descendant_instances": 290
+    },
+    {
+      "assembly_path": "LG2-200000-1/LG2-210000-1/LG-214000BJ-1",
+      "source_file": "LG-214000BJ.SLDASM",
+      "source_sha256": "926b0bceaecddeb50e630e9db00f8a11b8cbdf9d70aa694c95896183138074fd",
+      "source_resolved": true,
+      "descendant_instances": 48
+    },
+    {
+      "assembly_path": "LG2-200000-1/LG2-210000-1/LG2-211000-1",
+      "source_file": "LG2-211000.SLDASM",
+      "source_sha256": "98cbd4d209ec0190d30a71b334665839513542e4898c9f53305c0456d37b8b7e",
+      "source_resolved": true,
+      "descendant_instances": 31
+    },
+    {
+      "assembly_path": "LG2-200000-1/LG2-210000-1/LG2-212000-1",
+      "source_file": "LG2-212000.SLDASM",
+      "source_sha256": "4018f501be8a64c1ac0dd51472870e85c0046f94f80ac47087a100cd8e6fe0f5",
+      "source_resolved": true,
+      "descendant_instances": 13
+    },
+    {
+      "assembly_path": "LG2-200000-1/LG2-210000-1/LG2-213000BJ-1",
+      "source_file": "LG2-213000BJ.SLDASM",
+      "source_sha256": "2f7d6cba1c427e7011f59d5ccb4c1a99c13dac161336ea41005594611e935dfa",
+      "source_resolved": true,
+      "descendant_instances": 48
+    },
+    {
+      "assembly_path": "LG2-200000-1/LG2-220000-1",
+      "source_file": "LG2-220000.SLDASM",
+      "source_sha256": "91b52597d05c62f440ba62a8906b2fb7cd862acd7e6edcdb7b329e91f4628025",
+      "source_resolved": true,
+      "descendant_instances": 168
+    },
+    {
+      "assembly_path": "LG2-200000-1/LG2-220000-1/LG-223000-1",
+      "source_file": "LG-223000.SLDASM",
+      "source_sha256": "9e95e3da6b4b1c25a28d665e92f1d4a551e04e8de6bd47d1513c903519a796d3",
+      "source_resolved": true,
+      "descendant_instances": 11
+    },
+    {
+      "assembly_path": "LG2-200000-1/LG2-220000-1/LG2-221000-1",
+      "source_file": "LG2-221000.SLDASM",
+      "source_sha256": "f63c36993e0cf85ff13759cb1556f732d0993cd2538050c9899ff14a1fdaf195",
+      "source_resolved": true,
+      "descendant_instances": 19
+    },
+    {
+      "assembly_path": "LG2-200000-1/LG2-250000-1",
+      "source_file": "LG2-250000.SLDASM",
+      "source_sha256": "dba346d9539945a508c5be327321674528e02bd14ed76f6768e4da1428795998",
+      "source_resolved": true,
+      "descendant_instances": 118
+    },
+    {
+      "assembly_path": "LG2-200000-1/LG2-250000-1/LG2-251000-1",
+      "source_file": "LG2-251000.SLDASM",
+      "source_sha256": "8482289ad3bb3d177e4f80a2e7475f9b2dfc74aa7fc97a9bdbc7199f623f715b",
+      "source_resolved": true,
+      "descendant_instances": 11
+    },
+    {
+      "assembly_path": "LG2-200000-1/LG2-250000-1/LG2-252000-1",
+      "source_file": "LG2-252000.SLDASM",
+      "source_sha256": "b7573a8799e16ac10d098a44910d8e1de8b38d9f7fff954cf9d1c069754926ab",
+      "source_resolved": true,
+      "descendant_instances": 30
+    },
+    {
+      "assembly_path": "LG2-200000-1/LG2-250000-1/LG2-252000-2",
+      "source_file": "LG2-252000.SLDASM",
+      "source_sha256": "b7573a8799e16ac10d098a44910d8e1de8b38d9f7fff954cf9d1c069754926ab",
+      "source_resolved": true,
+      "descendant_instances": 30
+    },
+    {
+      "assembly_path": "LG2-200000-1/LGZY-240000-1",
+      "source_file": "LGZY-240000.SLDASM",
+      "source_sha256": "b847b32dffd61557f9e89f4d9c8e2ce83df281832bd785bc46988533cdf16f26",
+      "source_resolved": true,
+      "descendant_instances": 744
+    },
+    {
+      "assembly_path": "LG2-200000-1/LGZY-240000-1/LG2-244100-1",
+      "source_file": "LG2-244100.SLDASM",
+      "source_sha256": "ba74ac515a98ebfd4b0fd91ed92ca7d638721c7c9620bb1ad63135de71dc379f",
+      "source_resolved": true,
+      "descendant_instances": 21
+    },
+    {
+      "assembly_path": "LG2-200000-1/LGZY-240000-1/LG2-244100-2",
+      "source_file": "LG2-244100.SLDASM",
+      "source_sha256": "ba74ac515a98ebfd4b0fd91ed92ca7d638721c7c9620bb1ad63135de71dc379f",
+      "source_resolved": true,
+      "descendant_instances": 21
+    },
+    {
+      "assembly_path": "LG2-200000-1/LGZY-240000-1/LG2-244100-3",
+      "source_file": "LG2-244100.SLDASM",
+      "source_sha256": "ba74ac515a98ebfd4b0fd91ed92ca7d638721c7c9620bb1ad63135de71dc379f",
+      "source_resolved": true,
+      "descendant_instances": 21
+    },
+    {
+      "assembly_path": "LG2-200000-1/LGZY-240000-1/LG2-244100-4",
+      "source_file": "LG2-244100.SLDASM",
+      "source_sha256": "ba74ac515a98ebfd4b0fd91ed92ca7d638721c7c9620bb1ad63135de71dc379f",
+      "source_resolved": true,
+      "descendant_instances": 21
+    },
+    {
+      "assembly_path": "LG2-200000-1/LGZY-240000-1/LG2-244200-1",
+      "source_file": "LG2-244200.SLDASM",
+      "source_sha256": "8bed96473d6cf9ac45212a909a0d3580307074ce98f712b1ae904f3f9fb453f9",
+      "source_resolved": true,
+      "descendant_instances": 9
+    },
+    {
+      "assembly_path": "LG2-200000-1/LGZY-240000-1/LG2-244200-2",
+      "source_file": "LG2-244200.SLDASM",
+      "source_sha256": "8bed96473d6cf9ac45212a909a0d3580307074ce98f712b1ae904f3f9fb453f9",
+      "source_resolved": true,
+      "descendant_instances": 9
+    },
+    {
+      "assembly_path": "LG2-200000-1/LGZY-240000-1/LG2-244200-3",
+      "source_file": "LG2-244200.SLDASM",
+      "source_sha256": "8bed96473d6cf9ac45212a909a0d3580307074ce98f712b1ae904f3f9fb453f9",
+      "source_resolved": true,
+      "descendant_instances": 9
+    },
+    {
+      "assembly_path": "LG2-200000-1/LGZY-240000-1/LG2-244200-4",
+      "source_file": "LG2-244200.SLDASM",
+      "source_sha256": "8bed96473d6cf9ac45212a909a0d3580307074ce98f712b1ae904f3f9fb453f9",
+      "source_resolved": true,
+      "descendant_instances": 9
+    },
+    {
+      "assembly_path": "LG2-200000-1/LGZY-240000-1/LG2-244300-1",
+      "source_file": "LG2-244300.SLDASM",
+      "source_sha256": "d774ceec69d3dbb8e372d5b0b6b87500cbf26538aebc8ea8a1a241c62bb334bf",
+      "source_resolved": true,
+      "descendant_instances": 9
+    },
+    {
+      "assembly_path": "LG2-200000-1/LGZY-240000-1/LG2-244300-2",
+      "source_file": "LG2-244300.SLDASM",
+      "source_sha256": "d774ceec69d3dbb8e372d5b0b6b87500cbf26538aebc8ea8a1a241c62bb334bf",
+      "source_resolved": true,
+      "descendant_instances": 9
+    },
+    {
+      "assembly_path": "LG2-200000-1/LGZY-240000-1/LG2-244300-3",
+      "source_file": "LG2-244300.SLDASM",
+      "source_sha256": "d774ceec69d3dbb8e372d5b0b6b87500cbf26538aebc8ea8a1a241c62bb334bf",
+      "source_resolved": true,
+      "descendant_instances": 9
+    },
+    {
+      "assembly_path": "LG2-200000-1/LGZY-240000-1/LG2-244300-4",
+      "source_file": "LG2-244300.SLDASM",
+      "source_sha256": "d774ceec69d3dbb8e372d5b0b6b87500cbf26538aebc8ea8a1a241c62bb334bf",
+      "source_resolved": true,
+      "descendant_instances": 9
+    },
+    {
+      "assembly_path": "LG2-200000-1/LGZY-240000-1/LG2-245000-1",
+      "source_file": "LG2-245000.SLDASM",
+      "source_sha256": "bcc525828de92b65a555230b4afcc338dae6bd21bba7975e8e67f71bed214b1f",
+      "source_resolved": true,
+      "descendant_instances": 36
+    },
+    {
+      "assembly_path": "LG2-200000-1/LGZY-240000-1/LGZY-260000-1",
+      "source_file": "LGZY-260000.SLDASM",
+      "source_sha256": "cabcf465ee420b24e73d0478f4c5beee1b424ded326c67651a616a36c2a0edf1",
+      "source_resolved": true,
+      "descendant_instances": 476
+    },
+    {
+      "assembly_path": "LG2-200000-1/LGZY-240000-1/LGZY-260000-1/LGZY-261000-1",
+      "source_file": "LGZY-261000.SLDASM",
+      "source_sha256": "17b8191cf918022abfcda5bbbc8220fbadd00ba521f447721668b22a3c761f6b",
+      "source_resolved": true,
+      "descendant_instances": 41
+    },
+    {
+      "assembly_path": "LG2-200000-1/LGZY-240000-1/LGZY-260000-1/LGZY-262000-1",
+      "source_file": "LGZY-262000.SLDASM",
+      "source_sha256": "f96a51581dde9f54f3391e3b25862838dfe3f26858e488f72027e470a3fc4f17",
+      "source_resolved": true,
+      "descendant_instances": 141
+    },
+    {
+      "assembly_path": "LG2-200000-1/LGZY-240000-1/LGZY-260000-1/LGZY-262000-1/LGZY-262100-1",
+      "source_file": "LGZY-262100.SLDASM",
+      "source_sha256": "bbde97bd2989b5059c3a9fd031bf2f349c886d05e7d08b56ad977c16d082eaa7",
+      "source_resolved": true,
+      "descendant_instances": 43
+    },
+    {
+      "assembly_path": "LG2-200000-1/LGZY-240000-1/LGZY-260000-1/LGZY-262000-1/LGZY-262200-1",
+      "source_file": "LGZY-262200.SLDASM",
+      "source_sha256": "56cd2569dbc70ef23bde7011c44600f20c337655a50e9b349a2a31eb175f9f73",
+      "source_resolved": true,
+      "descendant_instances": 11
+    },
+    {
+      "assembly_path": "LG2-200000-1/LGZY-240000-1/LGZY-260000-1/LGZY-262000-1/LGZY-262200-5",
+      "source_file": "LGZY-262200.SLDASM",
+      "source_sha256": "56cd2569dbc70ef23bde7011c44600f20c337655a50e9b349a2a31eb175f9f73",
+      "source_resolved": true,
+      "descendant_instances": 11
+    },
+    {
+      "assembly_path": "LG2-200000-1/LGZY-240000-1/LGZY-260000-1/LGZY-263000-1",
+      "source_file": "LGZY-263000.SLDASM",
+      "source_sha256": "19826cd6c8d5d738764fcd323c60fc2f6718c3eca4842da6192e13fc98e674ee",
+      "source_resolved": true,
+      "descendant_instances": 42
+    },
+    {
+      "assembly_path": "LG2-200000-1/LGZY-240000-1/LGZY-260000-1/LGZY-264000-1",
+      "source_file": "LGZY-264000.SLDASM",
+      "source_sha256": "d125d02ea7214cfe2f0432f4de49f063d20fa36a0cce5feb8aed72163c9a5e99",
+      "source_resolved": true,
+      "descendant_instances": 83
+    },
+    {
+      "assembly_path": "货架总总装-2",
+      "source_file": "货架总总装.SLDASM",
+      "source_sha256": "3e0bacfb1e7a69f1e45a31f5c788cdab7d133a88be0b20dad643f0a2d8ed10a1",
+      "source_resolved": true,
+      "descendant_instances": 1167
+    },
+    {
+      "assembly_path": "货架总总装-2/单跨装配图一-10",
+      "source_file": "单跨装配图一.SLDASM",
+      "source_sha256": "ff145f1330179fd6370571565ee57f53b5094267657cb84b6fc10ae5b783e713",
+      "source_resolved": true,
+      "descendant_instances": 20
+    },
+    {
+      "assembly_path": "货架总总装-2/单跨装配图一-11",
+      "source_file": "单跨装配图一.SLDASM",
+      "source_sha256": "ff145f1330179fd6370571565ee57f53b5094267657cb84b6fc10ae5b783e713",
+      "source_resolved": true,
+      "descendant_instances": 20
+    },
+    {
+      "assembly_path": "货架总总装-2/单跨装配图一-12",
+      "source_file": "单跨装配图一.SLDASM",
+      "source_sha256": "ff145f1330179fd6370571565ee57f53b5094267657cb84b6fc10ae5b783e713",
+      "source_resolved": true,
+      "descendant_instances": 20
+    },
+    {
+      "assembly_path": "货架总总装-2/单跨装配图一-13",
+      "source_file": "单跨装配图一.SLDASM",
+      "source_sha256": "ff145f1330179fd6370571565ee57f53b5094267657cb84b6fc10ae5b783e713",
+      "source_resolved": true,
+      "descendant_instances": 20
+    },
+    {
+      "assembly_path": "货架总总装-2/单跨装配图一-14",
+      "source_file": "单跨装配图一.SLDASM",
+      "source_sha256": "ff145f1330179fd6370571565ee57f53b5094267657cb84b6fc10ae5b783e713",
+      "source_resolved": true,
+      "descendant_instances": 20
+    },
+    {
+      "assembly_path": "货架总总装-2/单跨装配图一-15",
+      "source_file": "单跨装配图一.SLDASM",
+      "source_sha256": "ff145f1330179fd6370571565ee57f53b5094267657cb84b6fc10ae5b783e713",
+      "source_resolved": true,
+      "descendant_instances": 20
+    },
+    {
+      "assembly_path": "货架总总装-2/单跨装配图一-16",
+      "source_file": "单跨装配图一.SLDASM",
+      "source_sha256": "ff145f1330179fd6370571565ee57f53b5094267657cb84b6fc10ae5b783e713",
+      "source_resolved": true,
+      "descendant_instances": 20
+    },
+    {
+      "assembly_path": "货架总总装-2/单跨装配图一-17",
+      "source_file": "单跨装配图一.SLDASM",
+      "source_sha256": "ff145f1330179fd6370571565ee57f53b5094267657cb84b6fc10ae5b783e713",
+      "source_resolved": true,
+      "descendant_instances": 20
+    },
+    {
+      "assembly_path": "货架总总装-2/单跨装配图一-18",
+      "source_file": "单跨装配图一.SLDASM",
+      "source_sha256": "ff145f1330179fd6370571565ee57f53b5094267657cb84b6fc10ae5b783e713",
+      "source_resolved": true,
+      "descendant_instances": 20
+    },
+    {
+      "assembly_path": "货架总总装-2/单跨装配图一-19",
+      "source_file": "单跨装配图一.SLDASM",
+      "source_sha256": "ff145f1330179fd6370571565ee57f53b5094267657cb84b6fc10ae5b783e713",
+      "source_resolved": true,
+      "descendant_instances": 20
+    },
+    {
+      "assembly_path": "货架总总装-2/单跨装配图一-2",
+      "source_file": "单跨装配图一.SLDASM",
+      "source_sha256": "ff145f1330179fd6370571565ee57f53b5094267657cb84b6fc10ae5b783e713",
+      "source_resolved": true,
+      "descendant_instances": 20
+    },
+    {
+      "assembly_path": "货架总总装-2/单跨装配图一-20",
+      "source_file": "单跨装配图一.SLDASM",
+      "source_sha256": "ff145f1330179fd6370571565ee57f53b5094267657cb84b6fc10ae5b783e713",
+      "source_resolved": true,
+      "descendant_instances": 20
+    },
+    {
+      "assembly_path": "货架总总装-2/单跨装配图一-21",
+      "source_file": "单跨装配图一.SLDASM",
+      "source_sha256": "ff145f1330179fd6370571565ee57f53b5094267657cb84b6fc10ae5b783e713",
+      "source_resolved": true,
+      "descendant_instances": 20
+    },
+    {
+      "assembly_path": "货架总总装-2/单跨装配图一-22",
+      "source_file": "单跨装配图一.SLDASM",
+      "source_sha256": "ff145f1330179fd6370571565ee57f53b5094267657cb84b6fc10ae5b783e713",
+      "source_resolved": true,
+      "descendant_instances": 20
+    },
+    {
+      "assembly_path": "货架总总装-2/单跨装配图一-23",
+      "source_file": "单跨装配图一.SLDASM",
+      "source_sha256": "ff145f1330179fd6370571565ee57f53b5094267657cb84b6fc10ae5b783e713",
+      "source_resolved": true,
+      "descendant_instances": 20
+    },
+    {
+      "assembly_path": "货架总总装-2/单跨装配图一-24",
+      "source_file": "单跨装配图一.SLDASM",
+      "source_sha256": "ff145f1330179fd6370571565ee57f53b5094267657cb84b6fc10ae5b783e713",
+      "source_resolved": true,
+      "descendant_instances": 20
+    },
+    {
+      "assembly_path": "货架总总装-2/单跨装配图一-25",
+      "source_file": "单跨装配图一.SLDASM",
+      "source_sha256": "ff145f1330179fd6370571565ee57f53b5094267657cb84b6fc10ae5b783e713",
+      "source_resolved": true,
+      "descendant_instances": 20
+    },
+    {
+      "assembly_path": "货架总总装-2/单跨装配图一-26",
+      "source_file": "单跨装配图一.SLDASM",
+      "source_sha256": "ff145f1330179fd6370571565ee57f53b5094267657cb84b6fc10ae5b783e713",
+      "source_resolved": true,
+      "descendant_instances": 20
+    },
+    {
+      "assembly_path": "货架总总装-2/单跨装配图一-27",
+      "source_file": "单跨装配图一.SLDASM",
+      "source_sha256": "ff145f1330179fd6370571565ee57f53b5094267657cb84b6fc10ae5b783e713",
+      "source_resolved": true,
+      "descendant_instances": 20
+    },
+    {
+      "assembly_path": "货架总总装-2/单跨装配图一-28",
+      "source_file": "单跨装配图一.SLDASM",
+      "source_sha256": "ff145f1330179fd6370571565ee57f53b5094267657cb84b6fc10ae5b783e713",
+      "source_resolved": true,
+      "descendant_instances": 20
+    },
+    {
+      "assembly_path": "货架总总装-2/单跨装配图一-29",
+      "source_file": "单跨装配图一.SLDASM",
+      "source_sha256": "ff145f1330179fd6370571565ee57f53b5094267657cb84b6fc10ae5b783e713",
+      "source_resolved": true,
+      "descendant_instances": 20
+    },
+    {
+      "assembly_path": "货架总总装-2/单跨装配图一-3",
+      "source_file": "单跨装配图一.SLDASM",
+      "source_sha256": "ff145f1330179fd6370571565ee57f53b5094267657cb84b6fc10ae5b783e713",
+      "source_resolved": true,
+      "descendant_instances": 20
+    },
+    {
+      "assembly_path": "货架总总装-2/单跨装配图一-4",
+      "source_file": "单跨装配图一.SLDASM",
+      "source_sha256": "ff145f1330179fd6370571565ee57f53b5094267657cb84b6fc10ae5b783e713",
+      "source_resolved": true,
+      "descendant_instances": 20
+    },
+    {
+      "assembly_path": "货架总总装-2/单跨装配图一-5",
+      "source_file": "单跨装配图一.SLDASM",
+      "source_sha256": "ff145f1330179fd6370571565ee57f53b5094267657cb84b6fc10ae5b783e713",
+      "source_resolved": true,
+      "descendant_instances": 20
+    },
+    {
+      "assembly_path": "货架总总装-2/单跨装配图一-6",
+      "source_file": "单跨装配图一.SLDASM",
+      "source_sha256": "ff145f1330179fd6370571565ee57f53b5094267657cb84b6fc10ae5b783e713",
+      "source_resolved": true,
+      "descendant_instances": 20
+    },
+    {
+      "assembly_path": "货架总总装-2/单跨装配图一-7",
+      "source_file": "单跨装配图一.SLDASM",
+      "source_sha256": "ff145f1330179fd6370571565ee57f53b5094267657cb84b6fc10ae5b783e713",
+      "source_resolved": true,
+      "descendant_instances": 20
+    },
+    {
+      "assembly_path": "货架总总装-2/单跨装配图一-8",
+      "source_file": "单跨装配图一.SLDASM",
+      "source_sha256": "ff145f1330179fd6370571565ee57f53b5094267657cb84b6fc10ae5b783e713",
+      "source_resolved": true,
+      "descendant_instances": 20
+    },
+    {
+      "assembly_path": "货架总总装-2/单跨装配图一-9",
+      "source_file": "单跨装配图一.SLDASM",
+      "source_sha256": "ff145f1330179fd6370571565ee57f53b5094267657cb84b6fc10ae5b783e713",
+      "source_resolved": true,
+      "descendant_instances": 20
+    },
+    {
+      "assembly_path": "货架总总装-2/单跨装配图三-1",
+      "source_file": "单跨装配图三.SLDASM",
+      "source_sha256": "b01f13128ff1c160a19728e00c8c4d1cfa079a1fae6898d2e42bf9d4b22cc2f6",
+      "source_resolved": true,
+      "descendant_instances": 14
+    },
+    {
+      "assembly_path": "货架总总装-2/单跨装配图三-2",
+      "source_file": "单跨装配图三.SLDASM",
+      "source_sha256": "b01f13128ff1c160a19728e00c8c4d1cfa079a1fae6898d2e42bf9d4b22cc2f6",
+      "source_resolved": true,
+      "descendant_instances": 14
+    },
+    {
+      "assembly_path": "货架总总装-2/单跨装配图二-1",
+      "source_file": "单跨装配图二.SLDASM",
+      "source_sha256": "b773ff1538d0d15682ecb48fedac151d0ad2f7e2415c3bf573bea62483d2712f",
+      "source_resolved": true,
+      "descendant_instances": 14
+    },
+    {
+      "assembly_path": "货架总总装-2/单跨装配图二-3",
+      "source_file": "单跨装配图二.SLDASM",
+      "source_sha256": "b773ff1538d0d15682ecb48fedac151d0ad2f7e2415c3bf573bea62483d2712f",
+      "source_resolved": true,
+      "descendant_instances": 14
+    },
+    {
+      "assembly_path": "货架总总装-2/地轨装配图-1",
+      "source_file": "地轨装配图.SLDASM",
+      "source_sha256": "242624a0a778b911df778046cb88246c090ead6a32e159bdb64572b5e951ac89",
+      "source_resolved": true,
+      "descendant_instances": 348
+    },
+    {
+      "assembly_path": "货架总总装-2/地轨装配图-1/地轨固定组件-1",
+      "source_file": "地轨固定组件.SLDASM",
+      "source_sha256": "4a2669db3d7e994e4eaffa9c3de268c0bb4d1a59c61e0a0097fd3c093e1d2029",
+      "source_resolved": true,
+      "descendant_instances": 16
+    },
+    {
+      "assembly_path": "货架总总装-2/地轨装配图-1/地轨固定组件-19",
+      "source_file": "地轨固定组件.SLDASM",
+      "source_sha256": "4a2669db3d7e994e4eaffa9c3de268c0bb4d1a59c61e0a0097fd3c093e1d2029",
+      "source_resolved": true,
+      "descendant_instances": 16
+    },
+    {
+      "assembly_path": "货架总总装-2/地轨装配图-1/地轨固定组件-2",
+      "source_file": "地轨固定组件.SLDASM",
+      "source_sha256": "4a2669db3d7e994e4eaffa9c3de268c0bb4d1a59c61e0a0097fd3c093e1d2029",
+      "source_resolved": true,
+      "descendant_instances": 16
+    },
+    {
+      "assembly_path": "货架总总装-2/地轨装配图-1/地轨固定组件-20",
+      "source_file": "地轨固定组件.SLDASM",
+      "source_sha256": "4a2669db3d7e994e4eaffa9c3de268c0bb4d1a59c61e0a0097fd3c093e1d2029",
+      "source_resolved": true,
+      "descendant_instances": 16
+    },
+    {
+      "assembly_path": "货架总总装-2/地轨装配图-1/地轨固定组件-21",
+      "source_file": "地轨固定组件.SLDASM",
+      "source_sha256": "4a2669db3d7e994e4eaffa9c3de268c0bb4d1a59c61e0a0097fd3c093e1d2029",
+      "source_resolved": true,
+      "descendant_instances": 16
+    },
+    {
+      "assembly_path": "货架总总装-2/地轨装配图-1/地轨固定组件-22",
+      "source_file": "地轨固定组件.SLDASM",
+      "source_sha256": "4a2669db3d7e994e4eaffa9c3de268c0bb4d1a59c61e0a0097fd3c093e1d2029",
+      "source_resolved": true,
+      "descendant_instances": 16
+    },
+    {
+      "assembly_path": "货架总总装-2/地轨装配图-1/地轨固定组件-23",
+      "source_file": "地轨固定组件.SLDASM",
+      "source_sha256": "4a2669db3d7e994e4eaffa9c3de268c0bb4d1a59c61e0a0097fd3c093e1d2029",
+      "source_resolved": true,
+      "descendant_instances": 16
+    },
+    {
+      "assembly_path": "货架总总装-2/地轨装配图-1/地轨固定组件-24",
+      "source_file": "地轨固定组件.SLDASM",
+      "source_sha256": "4a2669db3d7e994e4eaffa9c3de268c0bb4d1a59c61e0a0097fd3c093e1d2029",
+      "source_resolved": true,
+      "descendant_instances": 16
+    },
+    {
+      "assembly_path": "货架总总装-2/地轨装配图-1/地轨固定组件-25",
+      "source_file": "地轨固定组件.SLDASM",
+      "source_sha256": "4a2669db3d7e994e4eaffa9c3de268c0bb4d1a59c61e0a0097fd3c093e1d2029",
+      "source_resolved": true,
+      "descendant_instances": 16
+    },
+    {
+      "assembly_path": "货架总总装-2/地轨装配图-1/地轨固定组件-26",
+      "source_file": "地轨固定组件.SLDASM",
+      "source_sha256": "4a2669db3d7e994e4eaffa9c3de268c0bb4d1a59c61e0a0097fd3c093e1d2029",
+      "source_resolved": true,
+      "descendant_instances": 16
+    },
+    {
+      "assembly_path": "货架总总装-2/地轨装配图-1/地轨固定组件-27",
+      "source_file": "地轨固定组件.SLDASM",
+      "source_sha256": "4a2669db3d7e994e4eaffa9c3de268c0bb4d1a59c61e0a0097fd3c093e1d2029",
+      "source_resolved": true,
+      "descendant_instances": 16
+    },
+    {
+      "assembly_path": "货架总总装-2/地轨装配图-1/地轨固定组件-28",
+      "source_file": "地轨固定组件.SLDASM",
+      "source_sha256": "4a2669db3d7e994e4eaffa9c3de268c0bb4d1a59c61e0a0097fd3c093e1d2029",
+      "source_resolved": true,
+      "descendant_instances": 16
+    },
+    {
+      "assembly_path": "货架总总装-2/地轨装配图-1/地轨固定组件-29",
+      "source_file": "地轨固定组件.SLDASM",
+      "source_sha256": "4a2669db3d7e994e4eaffa9c3de268c0bb4d1a59c61e0a0097fd3c093e1d2029",
+      "source_resolved": true,
+      "descendant_instances": 16
+    },
+    {
+      "assembly_path": "货架总总装-2/地轨装配图-1/地轨固定组件-3",
+      "source_file": "地轨固定组件.SLDASM",
+      "source_sha256": "4a2669db3d7e994e4eaffa9c3de268c0bb4d1a59c61e0a0097fd3c093e1d2029",
+      "source_resolved": true,
+      "descendant_instances": 16
+    },
+    {
+      "assembly_path": "货架总总装-2/地轨装配图-1/地轨固定组件-30",
+      "source_file": "地轨固定组件.SLDASM",
+      "source_sha256": "4a2669db3d7e994e4eaffa9c3de268c0bb4d1a59c61e0a0097fd3c093e1d2029",
+      "source_resolved": true,
+      "descendant_instances": 16
+    },
+    {
+      "assembly_path": "货架总总装-2/地轨装配图-1/地轨固定组件-4",
+      "source_file": "地轨固定组件.SLDASM",
+      "source_sha256": "4a2669db3d7e994e4eaffa9c3de268c0bb4d1a59c61e0a0097fd3c093e1d2029",
+      "source_resolved": true,
+      "descendant_instances": 16
+    },
+    {
+      "assembly_path": "货架总总装-2/地轨装配图-1/地轨固定组件-5",
+      "source_file": "地轨固定组件.SLDASM",
+      "source_sha256": "4a2669db3d7e994e4eaffa9c3de268c0bb4d1a59c61e0a0097fd3c093e1d2029",
+      "source_resolved": true,
+      "descendant_instances": 16
+    },
+    {
+      "assembly_path": "货架总总装-2/地轨装配图-1/地轨固定组件-6",
+      "source_file": "地轨固定组件.SLDASM",
+      "source_sha256": "4a2669db3d7e994e4eaffa9c3de268c0bb4d1a59c61e0a0097fd3c093e1d2029",
+      "source_resolved": true,
+      "descendant_instances": 16
+    },
+    {
+      "assembly_path": "货架总总装-2/地轨装配图-1/地轨固定组件-7",
+      "source_file": "地轨固定组件.SLDASM",
+      "source_sha256": "4a2669db3d7e994e4eaffa9c3de268c0bb4d1a59c61e0a0097fd3c093e1d2029",
+      "source_resolved": true,
+      "descendant_instances": 16
+    },
+    {
+      "assembly_path": "货架总总装-2/地轨装配图-1/行程开关触发机构装配图-1",
+      "source_file": "行程开关触发机构装配图.SLDASM",
+      "source_sha256": "1329116287831a25a24530c4801a3891387c9681a8258aa54602c4748d40751f",
+      "source_resolved": true,
+      "descendant_instances": 14
+    },
+    {
+      "assembly_path": "货架总总装-2/地轨装配图-1/行程开关触发机构装配图-2",
+      "source_file": "行程开关触发机构装配图.SLDASM",
+      "source_sha256": "1329116287831a25a24530c4801a3891387c9681a8258aa54602c4748d40751f",
+      "source_resolved": true,
+      "descendant_instances": 14
+    }
+  ]
+}

@@ -1,0 +1,13 @@
+{
+  "enabled": true,
+  "profile": "PHYSICAL_READONLY",
+  "host": "192.168.0.100",
+  "port": 102,
+  "rack": 0,
+  "slot": 1,
+  "note": "Physical PLC read-only monitoring. All control commands disabled by user request.",
+  "listen_host": "127.0.0.1",
+  "control_enabled": false,
+  "web_view": "twin",
+  "axis_feedback": "DB5_CURRENT_POSITION"
+}

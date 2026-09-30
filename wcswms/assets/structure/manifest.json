@@ -1,0 +1,2493 @@
+{
+  "assembly_count": 32,
+  "part_count": 315,
+  "files": [
+    {
+      "name": "0.4KW 60N-14 V7E-L06A-R4030-□1.SLDPRT",
+      "type": "零件",
+      "bytes": 7916785,
+      "sha256": "d063dce8f2346f5d17dde0b8e5f13e508fa593f14055f2cf39abf83d7e3b6934"
+    },
+    {
+      "name": "06B链条...SLDPRT",
+      "type": "零件",
+      "bytes": 1367524,
+      "sha256": "4ee47b53af54dca5e2e5d8a808814f56d5efd2c7ecd12326b1d159013f67c82c"
+    },
+    {
+      "name": "12B双排长1050mm链条.SLDPRT",
+      "type": "零件",
+      "bytes": 3215179,
+      "sha256": "b1b1e2d6f277c0fb87e4e4b9543fd6edc6b470bbdbebc2ce09d6b68f21e6e8e5"
+    },
+    {
+      "name": "12B双排长5.9米链条.SLDPRT",
+      "type": "零件",
+      "bytes": 15144047,
+      "sha256": "14e0ab81dc91d345c65475aca2f0a2b6c710630e1802b92b80e0e9d477bb167a"
+    },
+    {
+      "name": "12X10X68圆头键.SLDPRT",
+      "type": "零件",
+      "bytes": 81420,
+      "sha256": "aa56d2cee803b998496bdfecad8431c29c35622319c7cf478ef6a3947dea073b"
+    },
+    {
+      "name": "12X8X120圆头键.SLDPRT",
+      "type": "零件",
+      "bytes": 81680,
+      "sha256": "1a49eb0661d7011128b85578195e2cfc70ef9350dc221e4705ccbe6f07fcf37c"
+    },
+    {
+      "name": "3.0KW 130N-22 V7E-M13D-3R020-□1.SLDPRT",
+      "type": "零件",
+      "bytes": 7869511,
+      "sha256": "7d6d6eb83320eeaf3cf7ae218f0e966c9cb9441dc1684c34ec919710bf1556d7"
+    },
+    {
+      "name": "3DCAD_AMS300.SLDPRT",
+      "type": "零件",
+      "bytes": 13483272,
+      "sha256": "6eea0258285243545aaff004c12cd3dbf8a21992d23c80aefeeaf3f66a32340f"
+    },
+    {
+      "name": "4.4KW 180N-35 V7E-M18D-4R415-□2刹车.SLDPRT",
+      "type": "零件",
+      "bytes": 9474921,
+      "sha256": "dde691cf97261e42aeaccb01fd3f26e29d7da2eeeb5c27286481d149dd7d0592"
+    },
+    {
+      "name": "CA61BH-d6-D16..SLDPRT",
+      "type": "零件",
+      "bytes": 166568,
+      "sha256": "6952a3ab589bf5eecd21fa5de290627d7832dc0d915706914e2b52c90ba83313"
+    },
+    {
+      "name": "D4MC_5020.SLDPRT",
+      "type": "零件",
+      "bytes": 155343,
+      "sha256": "f83ae0922d3a728ace19f91552cbdd88ebca6967894a482d225ae861c26bb661"
+    },
+    {
+      "name": "E3Z_D62...SLDPRT",
+      "type": "零件",
+      "bytes": 96681,
+      "sha256": "bdb6ebe4de39f367a7138cdebb0296333862d12bdc5cc5005b0004d103d6f45a"
+    },
+    {
+      "name": "E3Z_T61A_D.SLDPRT",
+      "type": "零件",
+      "bytes": 100656,
+      "sha256": "5c6c67424b882f63893adbebfc800387cb63560b2675bc5e52dee52db83e1c4c"
+    },
+    {
+      "name": "EK-T600-262106.SLDPRT",
+      "type": "零件",
+      "bytes": 386425,
+      "sha256": "6ffe6d0447b98f305d1b4cc51c81dede1bcadc49fe2bf42185083bacc68f445b"
+    },
+    {
+      "name": "EK-T600-263002.SLDPRT",
+      "type": "零件",
+      "bytes": 209082,
+      "sha256": "3b94b1ef0a30d0af3248156a3620baf7ee2d4e768ce571f53abcd7ea5ca7bba3"
+    },
+    {
+      "name": "FGA060D-L2-14-50-70-M4-34..SLDPRT",
+      "type": "零件",
+      "bytes": 2607861,
+      "sha256": "073718564ea5768d4db2ce7e297adabbfc963199be1069b4d45729b8c7f1b68c"
+    },
+    {
+      "name": "HBZ-260008.SLDPRT",
+      "type": "零件",
+      "bytes": 164276,
+      "sha256": "91a8d5fa6eea8e709227ecbaa186a5b508504834f812d78bb47d11bd093e906a"
+    },
+    {
+      "name": "HBZ-260012.SLDPRT",
+      "type": "零件",
+      "bytes": 215546,
+      "sha256": "f419bfb02dae379b2db21325b97cfd71afffd16a77e2ea458c110ad6a7be0b86"
+    },
+    {
+      "name": "HBZ-264001.SLDPRT",
+      "type": "零件",
+      "bytes": 112098,
+      "sha256": "12601a4c4c0280a00b83833dc1d5b563825a63b6a7d50f67c15cbcf66ccbe3ae"
+    },
+    {
+      "name": "HCX-零件1-.SLDPRT",
+      "type": "零件",
+      "bytes": 989693,
+      "sha256": "4c8ca03aa3bc065e5fdac0f09fc6acb4f2f7c162b53d78113b01c24f53a94789"
+    },
+    {
+      "name": "K67-180方法兰.SLDPRT",
+      "type": "零件",
+      "bytes": 839820,
+      "sha256": "25922a8d9d2480d3dde89b14fb7fe4000f03e2db81a989db4ef16dbec910fd15"
+    },
+    {
+      "name": "LED报警灯.SLDPRT",
+      "type": "零件",
+      "bytes": 134795,
+      "sha256": "647438ff03e5f29506b48967ddb173ca22cc65e7d96a7815cc31dd6c77aa66d4"
+    },
+    {
+      "name": "LG-200017.SLDPRT",
+      "type": "零件",
+      "bytes": 103856,
+      "sha256": "2c7af3885f28d096507291368582cd88d0c3f573891d971a16434389d3cb4b61"
+    },
+    {
+      "name": "LG-210001.SLDPRT",
+      "type": "零件",
+      "bytes": 82795,
+      "sha256": "87778550c3dc06341edd538c4d1507778527960f819f771e2f9f53178c6810a8"
+    },
+    {
+      "name": "LG-210002.SLDPRT",
+      "type": "零件",
+      "bytes": 94249,
+      "sha256": "efa3ef828cdad900903fe2cc29896b1bb64f6e306973ac250d78287e13c27433"
+    },
+    {
+      "name": "LG-210003.SLDPRT",
+      "type": "零件",
+      "bytes": 126985,
+      "sha256": "d886331fcdf6e42d947601154043a550d6bc46b06eec2fd96b33aa45cdb70e6e"
+    },
+    {
+      "name": "LG-210004.SLDPRT",
+      "type": "零件",
+      "bytes": 114519,
+      "sha256": "6778f4b501ef5f00974fadde495fc42259163c360939d89b0e709561e7cebf29"
+    },
+    {
+      "name": "LG-210005.SLDPRT",
+      "type": "零件",
+      "bytes": 161597,
+      "sha256": "665c5921ef3a0c948df73b32dfd54a05516b53bf3133fc097bab144c96cfcedb"
+    },
+    {
+      "name": "LG-210006.SLDPRT",
+      "type": "零件",
+      "bytes": 82326,
+      "sha256": "12a6ab67b3a7be33681a93169612104b453daa2d37550196300b7760edbadd10"
+    },
+    {
+      "name": "LG-210007.SLDPRT",
+      "type": "零件",
+      "bytes": 98279,
+      "sha256": "2fcadc3c76adf3d81259d74844082ea48820b573fd9756bb3bcd6baf1077434a"
+    },
+    {
+      "name": "LG-211003.SLDPRT",
+      "type": "零件",
+      "bytes": 84976,
+      "sha256": "3ad560755fd39a51b6a1960520cfe2db49776605f3aa3e0621d517d9af2a948d"
+    },
+    {
+      "name": "LG-211004.SLDPRT",
+      "type": "零件",
+      "bytes": 141154,
+      "sha256": "1f331e905b059e9641c0d63eccac4d08e5f8e43978bdf07dc734f94d9bfa9030"
+    },
+    {
+      "name": "LG-211005.SLDPRT",
+      "type": "零件",
+      "bytes": 104542,
+      "sha256": "cd69bc4d9298991f691bf3984192f5e9b29bd1dd3c27b1f71bcc3f18bece3b29"
+    },
+    {
+      "name": "LG-211007.SLDPRT",
+      "type": "零件",
+      "bytes": 116154,
+      "sha256": "f12b8acf3c6770257dff6581079a4e4bb7f83f8111247b2a4381536b9e522009"
+    },
+    {
+      "name": "LG-211009.SLDPRT",
+      "type": "零件",
+      "bytes": 86096,
+      "sha256": "348bf09b6ac0d0da0840b62c1ebf5611ef26164f1c3458c25d9a60e3816bdaa5"
+    },
+    {
+      "name": "LG-211010.SLDPRT",
+      "type": "零件",
+      "bytes": 78744,
+      "sha256": "d04bc4334441829beb6ca28135d959a2f8aa53ba0febebc79211c8633da6e81e"
+    },
+    {
+      "name": "LG-211011.SLDPRT",
+      "type": "零件",
+      "bytes": 105141,
+      "sha256": "84bff3c691767a997c54ac2ccf58ae7854b995bd753962ee9da1dab5db841245"
+    },
+    {
+      "name": "LG-213001BJ.SLDPRT",
+      "type": "零件",
+      "bytes": 1711378,
+      "sha256": "46f6613ad03f580f74b95f2c8c7e790d8cd981b83c60af194cef0719364e7fb9"
+    },
+    {
+      "name": "LG-213002BJ.SLDPRT",
+      "type": "零件",
+      "bytes": 219894,
+      "sha256": "48bc8dfde0435c7b6d693d4595f8cf1c264f7b58a2742282ba0618a815bfedea"
+    },
+    {
+      "name": "LG-213003BJ.SLDPRT",
+      "type": "零件",
+      "bytes": 2988213,
+      "sha256": "3f80a3d061e7aaa4b34df09a7c878ac439c2adadd551d2b9575a5568be83e4e1"
+    },
+    {
+      "name": "LG-213004BJ.SLDPRT",
+      "type": "零件",
+      "bytes": 145797,
+      "sha256": "bc791dbe5e697096b3d3dd358d5506f3fcb0ed9e82b190373e762773f86d7e44"
+    },
+    {
+      "name": "LG-213005BJ.SLDPRT",
+      "type": "零件",
+      "bytes": 530462,
+      "sha256": "d394f67bafbd815ee44b78f17f4d9cf4da65af8559213e43718e9ce729e2e0b3"
+    },
+    {
+      "name": "LG-213006BJ.SLDPRT",
+      "type": "零件",
+      "bytes": 411983,
+      "sha256": "063d2146ffc98f85f11257950656428396eabd7d0ec7c404cd2842ec91c6298d"
+    },
+    {
+      "name": "LG-214000BJ.SLDASM",
+      "type": "装配体",
+      "bytes": 1104763,
+      "sha256": "926b0bceaecddeb50e630e9db00f8a11b8cbdf9d70aa694c95896183138074fd"
+    },
+    {
+      "name": "LG-214001BJ.SLDPRT",
+      "type": "零件",
+      "bytes": 3135471,
+      "sha256": "0e521fd4abfccee16ffdccc06ecfcd6864daf94b62d0a9491719d5507241015f"
+    },
+    {
+      "name": "LG-223000.SLDASM",
+      "type": "装配体",
+      "bytes": 752533,
+      "sha256": "9e95e3da6b4b1c25a28d665e92f1d4a551e04e8de6bd47d1513c903519a796d3"
+    },
+    {
+      "name": "LG-223001.SLDPRT",
+      "type": "零件",
+      "bytes": 140849,
+      "sha256": "536bb04739ce718a8e90bd9df381bd8f656d9f6d50079df49b4f1dcaa7207e5f"
+    },
+    {
+      "name": "LG-223002.SLDPRT",
+      "type": "零件",
+      "bytes": 237150,
+      "sha256": "c1113b45cdeabb5e5180a9c2fe290dbd93601c00d5620ebfdfcae8bcf7d437d2"
+    },
+    {
+      "name": "LG-223003.SLDPRT",
+      "type": "零件",
+      "bytes": 149123,
+      "sha256": "2864288cfffd02c1674aaf84a6fb919bf7126415c82a2580ac2ff7ee285c5686"
+    },
+    {
+      "name": "LG-251003.SLDPRT",
+      "type": "零件",
+      "bytes": 117216,
+      "sha256": "91c4c5bb24e4bf42a94d8bd25a9e824717eef8f23879fe4156b7c6f58d5b20ae"
+    },
+    {
+      "name": "LG-252001BJ.SLDPRT",
+      "type": "零件",
+      "bytes": 221622,
+      "sha256": "adfdf3909f8c04db02adc0d64c42e1f98554325eeb750616084cd3f2237cc51d"
+    },
+    {
+      "name": "LG2-200000.SLDASM",
+      "type": "装配体",
+      "bytes": 53443501,
+      "sha256": "f68a80fbbbbed253f668a847ff6ed03bb467d30fcc85667a20c30117799a0d74"
+    },
+    {
+      "name": "LG2-200001.SLDPRT",
+      "type": "零件",
+      "bytes": 252209,
+      "sha256": "2027005be1980f895b6718268bd876d8e49c60f4ba464f90c103a4099151cb94"
+    },
+    {
+      "name": "LG2-200002.SLDPRT",
+      "type": "零件",
+      "bytes": 169881,
+      "sha256": "ea51ccd0e6fb8f811a703085c27c2d5e7ef1b24c89f9bae15c9dc2820f98259f"
+    },
+    {
+      "name": "LG2-200003.SLDPRT",
+      "type": "零件",
+      "bytes": 135332,
+      "sha256": "74ef28f7ac629eec52e9d784e2ddb0b6133fe278bb5a54559216997a47538d7e"
+    },
+    {
+      "name": "LG2-200004.SLDPRT",
+      "type": "零件",
+      "bytes": 132360,
+      "sha256": "917b593b23fdd1e2b751e3d0b067d4fc73439c526d7802c8e9600b629d47ac19"
+    },
+    {
+      "name": "LG2-200005.SLDPRT",
+      "type": "零件",
+      "bytes": 233921,
+      "sha256": "50f9fc63f931db553546bd11d39ff9e5484f098294583d975e9a23d1d9be2e7c"
+    },
+    {
+      "name": "LG2-210000.SLDASM",
+      "type": "装配体",
+      "bytes": 7347691,
+      "sha256": "3b65709a4db5ee6a86f22a5e710e92d3ffa6b7c655ab19af4e963e25f9e66af2"
+    },
+    {
+      "name": "LG2-210008.SLDPRT",
+      "type": "零件",
+      "bytes": 184681,
+      "sha256": "0542b0c33414e3d70815e708711151ee25dd4e57faf431a839d5bcb2dd67a625"
+    },
+    {
+      "name": "LG2-210009.SLDPRT",
+      "type": "零件",
+      "bytes": 320742,
+      "sha256": "d1835c263bef68a6b62de53d53d3d486d229fb6c31a98c8d33ac2ab5f854cde5"
+    },
+    {
+      "name": "LG2-211000.SLDASM",
+      "type": "装配体",
+      "bytes": 600042,
+      "sha256": "98cbd4d209ec0190d30a71b334665839513542e4898c9f53305c0456d37b8b7e"
+    },
+    {
+      "name": "LG2-211001.SLDPRT",
+      "type": "零件",
+      "bytes": 95201,
+      "sha256": "9aa5c6b0c83f63e8cbf18bb5f277177cafa78643390a2d6eb35e69c603447ea9"
+    },
+    {
+      "name": "LG2-211002.SLDPRT",
+      "type": "零件",
+      "bytes": 187199,
+      "sha256": "f5d838b33b145372ed56c34617ddf7e7af2f7550d0cd25fd1b5a7f61549b2c4d"
+    },
+    {
+      "name": "LG2-211006.SLDPRT",
+      "type": "零件",
+      "bytes": 86514,
+      "sha256": "99cef56ced6b9c5da2678f22edab97125bbf2f20198c2d9a6874ad021d918999"
+    },
+    {
+      "name": "LG2-211008.SLDPRT",
+      "type": "零件",
+      "bytes": 156203,
+      "sha256": "d31a4719e02f2ffe1bbc58d7de17032742cbb03f416ebc14e1fb78003bfc6c7b"
+    },
+    {
+      "name": "LG2-212000.SLDASM",
+      "type": "装配体",
+      "bytes": 553370,
+      "sha256": "4018f501be8a64c1ac0dd51472870e85c0046f94f80ac47087a100cd8e6fe0f5"
+    },
+    {
+      "name": "LG2-212001（12B25T).SLDPRT",
+      "type": "零件",
+      "bytes": 1182440,
+      "sha256": "e9c139414e7d6ea1ce63bb9aef27d674db6e7cb43d1eaca681a40b1d821d2d8f"
+    },
+    {
+      "name": "LG2-212002.SLDPRT",
+      "type": "零件",
+      "bytes": 88197,
+      "sha256": "56887a3fb635436a17e9bbe9bb32317d27b64385076f861caf83b129e01d00be"
+    },
+    {
+      "name": "LG2-212003.SLDPRT",
+      "type": "零件",
+      "bytes": 97957,
+      "sha256": "db00b39a9ee9de0d7eea973632c6180d7003a76340ac898702a599f765010bad"
+    },
+    {
+      "name": "LG2-212004.SLDPRT",
+      "type": "零件",
+      "bytes": 97728,
+      "sha256": "829469ed8e0d317b843ca09f80fb1359aa348e07896ea30973e62fd7840a6bca"
+    },
+    {
+      "name": "LG2-213000BJ.SLDASM",
+      "type": "装配体",
+      "bytes": 1272293,
+      "sha256": "2f7d6cba1c427e7011f59d5ccb4c1a99c13dac161336ea41005594611e935dfa"
+    },
+    {
+      "name": "LG2-220000.SLDASM",
+      "type": "装配体",
+      "bytes": 21893598,
+      "sha256": "91b52597d05c62f440ba62a8906b2fb7cd862acd7e6edcdb7b329e91f4628025"
+    },
+    {
+      "name": "LG2-220002.SLDPRT",
+      "type": "零件",
+      "bytes": 136046,
+      "sha256": "0d6ea0674d5fd36d8440f4b573abde92e53b14223e5a4b8e19b2a601727496b1"
+    },
+    {
+      "name": "LG2-220003（12B25T).SLDPRT",
+      "type": "零件",
+      "bytes": 1289626,
+      "sha256": "37c3bb19512463e920a9f301699234d920f24c33ab5fd147dd650019a05333db"
+    },
+    {
+      "name": "LG2-220004.SLDPRT",
+      "type": "零件",
+      "bytes": 441915,
+      "sha256": "b7c23481759515b1b4a9dfbfb9e5a4fd2708fbca7fe55efb3a0914274be86e16"
+    },
+    {
+      "name": "LG2-220005.SLDPRT",
+      "type": "零件",
+      "bytes": 76851,
+      "sha256": "6ddbf0e375685646d41877e271124244fcb13a2f4ed319b9d5d7cbdc05c1c956"
+    },
+    {
+      "name": "LG2-220006(12B17T).SLDPRT",
+      "type": "零件",
+      "bytes": 1004466,
+      "sha256": "529eabf9efc2d751a69ecc7aef28678773820f96e22e21471eec9e1a37db6344"
+    },
+    {
+      "name": "LG2-220007.SLDPRT",
+      "type": "零件",
+      "bytes": 96495,
+      "sha256": "877dba605dae10447835e3ad6334e3ba431484c7c74a590bf6e909f688f0d54c"
+    },
+    {
+      "name": "LG2-220008(12B17T).SLDPRT",
+      "type": "零件",
+      "bytes": 1026778,
+      "sha256": "be82b734b1ded5dd537df0f20d5d83e85d324bb76b7cc3d4b66b9737d84b25bc"
+    },
+    {
+      "name": "LG2-220009.SLDPRT",
+      "type": "零件",
+      "bytes": 322455,
+      "sha256": "b8fa275f79366373d64a3bd40c8533fe05ea939d339f47d34141b78dd1095f93"
+    },
+    {
+      "name": "LG2-220010.SLDPRT",
+      "type": "零件",
+      "bytes": 117132,
+      "sha256": "545fa74a3bfd1552cbdf8bfc6feda099c096aab6286897e206572a38f6a56104"
+    },
+    {
+      "name": "LG2-220011.SLDPRT",
+      "type": "零件",
+      "bytes": 118950,
+      "sha256": "29b2986bcf15518396c0cf6ee5868ea10d505ca5eeafb83e891232455da0cbb8"
+    },
+    {
+      "name": "LG2-220012.SLDPRT",
+      "type": "零件",
+      "bytes": 429031,
+      "sha256": "384e6050b103ae3bdfdb7f39cccd0d86ab288dc68b84dff2781588375739cf68"
+    },
+    {
+      "name": "LG2-220013.SLDPRT",
+      "type": "零件",
+      "bytes": 135108,
+      "sha256": "f734e49c863732a5bbfd0ae4e5bfd24ea7866c642d2da0742516e8966fbb1138"
+    },
+    {
+      "name": "LG2-221000.SLDASM",
+      "type": "装配体",
+      "bytes": 504970,
+      "sha256": "f63c36993e0cf85ff13759cb1556f732d0993cd2538050c9899ff14a1fdaf195"
+    },
+    {
+      "name": "LG2-221001.SLDPRT",
+      "type": "零件",
+      "bytes": 256074,
+      "sha256": "290dab392343125b4a989dd88a6b6374d64e498ae7c5b05270efe16ba38c2a4b"
+    },
+    {
+      "name": "LG2-221003.SLDPRT",
+      "type": "零件",
+      "bytes": 79923,
+      "sha256": "7b8187ed0a95b97de76fe25c73bcf314761b80f5c11931fe175f370ebf1846a7"
+    },
+    {
+      "name": "LG2-221004.SLDPRT",
+      "type": "零件",
+      "bytes": 153661,
+      "sha256": "f0ebde58be6f6d021bcfe3622704dd44f083ff554afa9f5a884dc7bc7e510c51"
+    },
+    {
+      "name": "LG2-221005.SLDPRT",
+      "type": "零件",
+      "bytes": 83124,
+      "sha256": "4046bbe92a13bfb02526bf37951a3a866cb61cae3b575ea96ee7ab28d2caee41"
+    },
+    {
+      "name": "LG2-221006.SLDPRT",
+      "type": "零件",
+      "bytes": 119547,
+      "sha256": "7310e9f342b04cfc969f04799c75e2176d0cc66a6f82168a7115ea66794fc17f"
+    },
+    {
+      "name": "LG2-221007.SLDPRT",
+      "type": "零件",
+      "bytes": 171772,
+      "sha256": "9d0b33e0660e3cfba548c7aa1d0d5acb96271fe816b7805876fca1e3dd750ad3"
+    },
+    {
+      "name": "LG2-221009.SLDPRT",
+      "type": "零件",
+      "bytes": 162509,
+      "sha256": "771a2ae71423d9bb2d958f345ffb83dc9aa18c0a7fc58b38baf65ffa7a21c216"
+    },
+    {
+      "name": "LG2-221010.SLDPRT",
+      "type": "零件",
+      "bytes": 86747,
+      "sha256": "3fbd2debbf5f436d905d8712d037003adf9146a050b537cbb9b194a91c170e97"
+    },
+    {
+      "name": "LG2-244100.SLDASM",
+      "type": "装配体",
+      "bytes": 425860,
+      "sha256": "ba74ac515a98ebfd4b0fd91ed92ca7d638721c7c9620bb1ad63135de71dc379f"
+    },
+    {
+      "name": "LG2-244101.SLDPRT",
+      "type": "零件",
+      "bytes": 156621,
+      "sha256": "8b736363045fa19f53d386997a454278878cc800d812fd1f6bf542c3a857a59d"
+    },
+    {
+      "name": "LG2-244102.SLDPRT",
+      "type": "零件",
+      "bytes": 87955,
+      "sha256": "113cf14ba3829770a4ee40237d89d1551f004e3a980569be79e586c412f7dee6"
+    },
+    {
+      "name": "LG2-244103.SLDPRT",
+      "type": "零件",
+      "bytes": 130113,
+      "sha256": "3d2576c5e8a9efcb0072296c747278de4ffbd9ee82aaf7843a53ac6fa760eb67"
+    },
+    {
+      "name": "LG2-244200.SLDASM",
+      "type": "装配体",
+      "bytes": 572659,
+      "sha256": "8bed96473d6cf9ac45212a909a0d3580307074ce98f712b1ae904f3f9fb453f9"
+    },
+    {
+      "name": "LG2-244201.SLDPRT",
+      "type": "零件",
+      "bytes": 343240,
+      "sha256": "0abb49c995ee792aabc1277067afc6f46921c1efd6ee5122c4b3cac062f132f4"
+    },
+    {
+      "name": "LG2-244202.SLDPRT",
+      "type": "零件",
+      "bytes": 74640,
+      "sha256": "8d7904338c7c448708def645a5300a99e9dbb63feea4cc020f70faba7ecc01e8"
+    },
+    {
+      "name": "LG2-244300.SLDASM",
+      "type": "装配体",
+      "bytes": 695691,
+      "sha256": "d774ceec69d3dbb8e372d5b0b6b87500cbf26538aebc8ea8a1a241c62bb334bf"
+    },
+    {
+      "name": "LG2-244301.SLDPRT",
+      "type": "零件",
+      "bytes": 546576,
+      "sha256": "c02d66c41414f210bc09c3a32481c9282ac127273bc8ad8dae719cc02072919c"
+    },
+    {
+      "name": "LG2-245000.SLDASM",
+      "type": "装配体",
+      "bytes": 2627328,
+      "sha256": "bcc525828de92b65a555230b4afcc338dae6bd21bba7975e8e67f71bed214b1f"
+    },
+    {
+      "name": "LG2-245001.SLDPRT",
+      "type": "零件",
+      "bytes": 2716660,
+      "sha256": "a875901e6dae51debd7ec6bbaa2dd07020cd378741465a96853c8f37dde548ee"
+    },
+    {
+      "name": "LG2-245002.SLDPRT",
+      "type": "零件",
+      "bytes": 666705,
+      "sha256": "efcc25f5640fcd48b655560dc845c7aaaeb290beb62cbfeecf3c0f50a57ea0bb"
+    },
+    {
+      "name": "LG2-245003.SLDPRT",
+      "type": "零件",
+      "bytes": 125633,
+      "sha256": "dc534ef9c5c9991b8b176bc50635061fb78b4eab0a62c2ce100f12ac34aa8e6e"
+    },
+    {
+      "name": "LG2-245004.SLDPRT",
+      "type": "零件",
+      "bytes": 120459,
+      "sha256": "a1c333f848bf5bfc34e3a20c13ed61bfbd81538aafa22cde6f28eec4b318c158"
+    },
+    {
+      "name": "LG2-245005.SLDPRT",
+      "type": "零件",
+      "bytes": 1963302,
+      "sha256": "f55320531e248e8d1beda09f0e14fda1e4dcb4c8a53a0d011f4ae5b576f07926"
+    },
+    {
+      "name": "LG2-245006.SLDPRT",
+      "type": "零件",
+      "bytes": 119135,
+      "sha256": "41cf7f37945b72edf456020dbd43a5a0b227df38735b5d611b1d155b43dc2b22"
+    },
+    {
+      "name": "LG2-245007.SLDPRT",
+      "type": "零件",
+      "bytes": 82789,
+      "sha256": "e77d786b24579cc0f1fb35c0e609086e701c906b5cdaaa62ad8f3fd868537d2f"
+    },
+    {
+      "name": "LG2-245008.SLDPRT",
+      "type": "零件",
+      "bytes": 94632,
+      "sha256": "4144eba80b67bd35990af178a33656844621d9ed2accfa143fe2285b676496b1"
+    },
+    {
+      "name": "LG2-245009.SLDPRT",
+      "type": "零件",
+      "bytes": 110025,
+      "sha256": "b845d8b9f31df36d2f38e1c68edb855af7b8f95f625b16423d151f3631a62d73"
+    },
+    {
+      "name": "LG2-250000.SLDASM",
+      "type": "装配体",
+      "bytes": 1709015,
+      "sha256": "dba346d9539945a508c5be327321674528e02bd14ed76f6768e4da1428795998"
+    },
+    {
+      "name": "LG2-251000.SLDASM",
+      "type": "装配体",
+      "bytes": 182007,
+      "sha256": "8482289ad3bb3d177e4f80a2e7475f9b2dfc74aa7fc97a9bdbc7199f623f715b"
+    },
+    {
+      "name": "LG2-251001.SLDPRT",
+      "type": "零件",
+      "bytes": 132505,
+      "sha256": "31747fbd6d99196a2370cd38dd52531cdca591862f8e231a85e8dceef76c51a9"
+    },
+    {
+      "name": "LG2-251002.SLDPRT",
+      "type": "零件",
+      "bytes": 75150,
+      "sha256": "d82b8a70ae5dcb471b5e38053429930c5b24c2b15137598856c3f4a4fd576d3b"
+    },
+    {
+      "name": "LG2-251004.SLDPRT",
+      "type": "零件",
+      "bytes": 167064,
+      "sha256": "79e5be713b75a43ab49fc25507402d2b844fbed67ecb2cf91b10d0cb0f9fa1a2"
+    },
+    {
+      "name": "LG2-251005.SLDPRT",
+      "type": "零件",
+      "bytes": 83459,
+      "sha256": "fe1fe34a34a3645abcc71b51f3396c7bdd95a7acebfb03a43c51e335410efee5"
+    },
+    {
+      "name": "LG2-251006.SLDPRT",
+      "type": "零件",
+      "bytes": 83488,
+      "sha256": "9b52db5226797a31ff8d44b55da3d94039f3059520e83f74f52bd4c17c77e121"
+    },
+    {
+      "name": "LG2-251007.SLDPRT",
+      "type": "零件",
+      "bytes": 86432,
+      "sha256": "94928ba4f1b3b7479244b61c6b4dd343c50875e81be8b8358b693d0eb84c89ff"
+    },
+    {
+      "name": "LG2-251008.SLDPRT",
+      "type": "零件",
+      "bytes": 68566,
+      "sha256": "2cf7ae53abdaef6e38a1c3bd5d1a86b36b820d50ac29ec6da951604ad5453cf5"
+    },
+    {
+      "name": "LG2-252000.SLDASM",
+      "type": "装配体",
+      "bytes": 786616,
+      "sha256": "b7573a8799e16ac10d098a44910d8e1de8b38d9f7fff954cf9d1c069754926ab"
+    },
+    {
+      "name": "LG2-252001.SLDPRT",
+      "type": "零件",
+      "bytes": 153441,
+      "sha256": "dd53d422100fe9e30d5fd5c5a8730a7ff89bca027e8127ea4c9f3825a277b8e6"
+    },
+    {
+      "name": "LG2-252002.SLDPRT",
+      "type": "零件",
+      "bytes": 410293,
+      "sha256": "0d3dfb0e22545a5990a55a75b67bcdb17489ee7e96d688ea71dd28b0bc010093"
+    },
+    {
+      "name": "LG2-252003.SLDPRT",
+      "type": "零件",
+      "bytes": 241281,
+      "sha256": "b3aa56aae1440236ff02117c7895684811a572a84ef8ed72272d95fd7dc530d0"
+    },
+    {
+      "name": "LG2-252004.SLDPRT",
+      "type": "零件",
+      "bytes": 129604,
+      "sha256": "2a079240c0740f044e498c2a1ad9760e7ce36fcf3fc73a117682d7f4cc77918c"
+    },
+    {
+      "name": "LG2-252005.SLDPRT",
+      "type": "零件",
+      "bytes": 99462,
+      "sha256": "c0c0fb6f3327a07e4e7b0043b79767ff2b7abb9d07e4dc7e968f6860f2ce818e"
+    },
+    {
+      "name": "LG2-252006.SLDPRT",
+      "type": "零件",
+      "bytes": 97917,
+      "sha256": "e74a57cac3af0e39af07e2ffd79277e6a46b729f9e86f9332a3da6cd2f30ccf1"
+    },
+    {
+      "name": "LG2-252007.SLDPRT",
+      "type": "零件",
+      "bytes": 96988,
+      "sha256": "d69b3dd7bb00adb40ef2610a5e52cf9913948eaf231dcd1b0205e5038f4670a9"
+    },
+    {
+      "name": "LG2-252008.SLDPRT",
+      "type": "零件",
+      "bytes": 101875,
+      "sha256": "0ddd92b064b760aece8b44bd38360e28f522df901f0ded7c4faad5a3a9dc44e1"
+    },
+    {
+      "name": "LGZY-200002.SLDPRT",
+      "type": "零件",
+      "bytes": 750420,
+      "sha256": "289683e7b8d8390afb08f22fa4568ed184bb8f91c7c008e9b55a24e0d41065a4"
+    },
+    {
+      "name": "LGZY-200006.SLDPRT",
+      "type": "零件",
+      "bytes": 351942,
+      "sha256": "0da568b985f8936a5a32dad64bf70a02af88ce4c40cb11869d80828b321c9459"
+    },
+    {
+      "name": "LGZY-240000.SLDASM",
+      "type": "装配体",
+      "bytes": 4486980,
+      "sha256": "b847b32dffd61557f9e89f4d9c8e2ce83df281832bd785bc46988533cdf16f26"
+    },
+    {
+      "name": "LGZY-240006.SLDPRT",
+      "type": "零件",
+      "bytes": 118677,
+      "sha256": "70e177393a4265fc9898b5cdf6afe0d358762a6b6c429b91ae213ef6a2ecba83"
+    },
+    {
+      "name": "LGZY-240007.SLDPRT",
+      "type": "零件",
+      "bytes": 315948,
+      "sha256": "e0fb5e809afb7315d7a7348d6aeb333da7e272d7d273ac50966ef3624b7625fd"
+    },
+    {
+      "name": "LGZY-260000.SLDASM",
+      "type": "装配体",
+      "bytes": 8094053,
+      "sha256": "cabcf465ee420b24e73d0478f4c5beee1b424ded326c67651a616a36c2a0edf1"
+    },
+    {
+      "name": "LGZY-260001.SLDPRT",
+      "type": "零件",
+      "bytes": 253689,
+      "sha256": "4cb628ca4c856e384ae02fd974ed39e9a4414512bd4b40162310743fa58d3947"
+    },
+    {
+      "name": "LGZY-260002.SLDPRT",
+      "type": "零件",
+      "bytes": 1159773,
+      "sha256": "bf3da4df32dbff9fa30b025546278590bbc46d387c1ce23435a4e9b9f2b86869"
+    },
+    {
+      "name": "LGZY-260003.SLDPRT",
+      "type": "零件",
+      "bytes": 338611,
+      "sha256": "8436aaad69917d1d3361c77840c7a991ed98682789c62d4036fbf46318d7795b"
+    },
+    {
+      "name": "LGZY-260004.SLDPRT",
+      "type": "零件",
+      "bytes": 299388,
+      "sha256": "f7084a4ac153017b53a23dfb8a4337331768f08cc48e7360c8472bd27a4c6b4d"
+    },
+    {
+      "name": "LGZY-260005.SLDPRT",
+      "type": "零件",
+      "bytes": 147374,
+      "sha256": "150fb738436a288c0ff443487a1dc3918d4921b0a8f30be3c23ed4a232dbe3d4"
+    },
+    {
+      "name": "LGZY-260006.SLDPRT",
+      "type": "零件",
+      "bytes": 366058,
+      "sha256": "77f803ffe04f39c26bf788fcfb7f61d906c6db3b60659b69af7f257ac26f8fc9"
+    },
+    {
+      "name": "LGZY-260007.SLDPRT",
+      "type": "零件",
+      "bytes": 373914,
+      "sha256": "cc74280463c857f16dd5389a483d179eb802e75645913856fd12368a1855eb56"
+    },
+    {
+      "name": "LGZY-260008.SLDPRT",
+      "type": "零件",
+      "bytes": 148319,
+      "sha256": "fedf658e26a88447d8f82bb7f08a13f3638351802404d39a1985c819d49bb684"
+    },
+    {
+      "name": "LGZY-260009.SLDPRT",
+      "type": "零件",
+      "bytes": 110341,
+      "sha256": "516438a3c400868051ca599fa886eb6d598f976ce556d1078b8ba2b234488217"
+    },
+    {
+      "name": "LGZY-260010.SLDPRT",
+      "type": "零件",
+      "bytes": 128398,
+      "sha256": "0b19cfe5fbaedef02b929014f6f4bcf67a70a6839260449804198cfa7c973818"
+    },
+    {
+      "name": "LGZY-260011.SLDPRT",
+      "type": "零件",
+      "bytes": 268319,
+      "sha256": "df3d44a1e0c30eb41fdc1c80d0fcdb4145718144e7f4f95d1a56ad1a75cf6f50"
+    },
+    {
+      "name": "LGZY-260012.SLDPRT",
+      "type": "零件",
+      "bytes": 460055,
+      "sha256": "1b053733e6026e0347a0bd196110788cb52902bf0ea456b6c6693ecd6804ec24"
+    },
+    {
+      "name": "LGZY-260013.SLDPRT",
+      "type": "零件",
+      "bytes": 497405,
+      "sha256": "2d3bb59306341d450911dbe563a48cd7e612d58e3f333d9bd904b06f0d5325d6"
+    },
+    {
+      "name": "LGZY-261000.SLDASM",
+      "type": "装配体",
+      "bytes": 5969038,
+      "sha256": "17b8191cf918022abfcda5bbbc8220fbadd00ba521f447721668b22a3c761f6b"
+    },
+    {
+      "name": "LGZY-261001.SLDPRT",
+      "type": "零件",
+      "bytes": 169949,
+      "sha256": "6c7195366c1d5ff87255b13de4e1edabe9cd84a72194fb52565fbf8bd696840e"
+    },
+    {
+      "name": "LGZY-261002.SLDPRT",
+      "type": "零件",
+      "bytes": 435085,
+      "sha256": "e6cc3b888079067c56ee876552e91e0ed50fc43b3e481cfb48b6bbe7ab310916"
+    },
+    {
+      "name": "LGZY-261003.SLDPRT",
+      "type": "零件",
+      "bytes": 95371,
+      "sha256": "e1f3adf92a688117b9ea4f5144ff9c42fda2262b29929fff049849196a06d310"
+    },
+    {
+      "name": "LGZY-261004.SLDPRT",
+      "type": "零件",
+      "bytes": 102712,
+      "sha256": "429d7740185cf164dc0ce9cd227e5ab8fb8066697e4faa7170d169c5621a63a9"
+    },
+    {
+      "name": "LGZY-261005.SLDPRT",
+      "type": "零件",
+      "bytes": 102995,
+      "sha256": "91bc04363543cd4f2d8564a362e592be1a8e82238bd121d0a8a1e235bdaa50c4"
+    },
+    {
+      "name": "LGZY-262000.SLDASM",
+      "type": "装配体",
+      "bytes": 941062,
+      "sha256": "f96a51581dde9f54f3391e3b25862838dfe3f26858e488f72027e470a3fc4f17"
+    },
+    {
+      "name": "LGZY-262002.SLDPRT",
+      "type": "零件",
+      "bytes": 127717,
+      "sha256": "06d7fca80998f236c27176ef42ae85f2cb7e3f80fd7e1b3b7e7256fb9d9e3db4"
+    },
+    {
+      "name": "LGZY-262003.SLDPRT",
+      "type": "零件",
+      "bytes": 121411,
+      "sha256": "a8818e4a377cd010f53b295e594f038c6730bc0fc5afefeb90fa1683b8d3dafb"
+    },
+    {
+      "name": "LGZY-262004.SLDPRT",
+      "type": "零件",
+      "bytes": 100511,
+      "sha256": "07e0e4258c260a9d17ff34c20ed603a60f81c44c8ef2cfc41ebee4cffefaf3ca"
+    },
+    {
+      "name": "LGZY-262005.SLDPRT",
+      "type": "零件",
+      "bytes": 204985,
+      "sha256": "f18be442a5119ca4c885715f3a6f372b482b9896586c243d22465dbeb1caefea"
+    },
+    {
+      "name": "LGZY-262100.SLDASM",
+      "type": "装配体",
+      "bytes": 369771,
+      "sha256": "bbde97bd2989b5059c3a9fd031bf2f349c886d05e7d08b56ad977c16d082eaa7"
+    },
+    {
+      "name": "LGZY-262101.SLDPRT",
+      "type": "零件",
+      "bytes": 377738,
+      "sha256": "f3930a70c2af22d5cc0cb9006ea29cc8cb39b14ebe29a891eb60ae95b6c1ec24"
+    },
+    {
+      "name": "LGZY-262103.SLDPRT",
+      "type": "零件",
+      "bytes": 182015,
+      "sha256": "370510114bdeb347c24e9667008112c3119d55778a963a19fc43ddd92d34ea5f"
+    },
+    {
+      "name": "LGZY-262104.SLDPRT",
+      "type": "零件",
+      "bytes": 352383,
+      "sha256": "866a0861e9b707d399aa7a49bff89f39c57fdaa9711e0a18ed325e13ef95811f"
+    },
+    {
+      "name": "LGZY-262105.SLDPRT",
+      "type": "零件",
+      "bytes": 177154,
+      "sha256": "c4266ba11d9460b1009e38436d93b3f883460f01ace61ab60f1799699e632a09"
+    },
+    {
+      "name": "LGZY-262106.SLDPRT",
+      "type": "零件",
+      "bytes": 167680,
+      "sha256": "9754f1a8c5a05c9b3263e651844afb8131f7bef5330bd0a8eb5c1001c95b4830"
+    },
+    {
+      "name": "LGZY-262200.SLDASM",
+      "type": "装配体",
+      "bytes": 423966,
+      "sha256": "56cd2569dbc70ef23bde7011c44600f20c337655a50e9b349a2a31eb175f9f73"
+    },
+    {
+      "name": "LGZY-262201.SLDPRT",
+      "type": "零件",
+      "bytes": 439267,
+      "sha256": "312ea7e9e585fcfe14c68ada33ed677612db6efeb8fe84222002adc0d6623c3c"
+    },
+    {
+      "name": "LGZY-263000.SLDASM",
+      "type": "装配体",
+      "bytes": 1137791,
+      "sha256": "19826cd6c8d5d738764fcd323c60fc2f6718c3eca4842da6192e13fc98e674ee"
+    },
+    {
+      "name": "LGZY-263001.SLDPRT",
+      "type": "零件",
+      "bytes": 428124,
+      "sha256": "2591b1d33c86a374111cf701f25e1b7feda403634e1e46e90c686b2b374d585b"
+    },
+    {
+      "name": "LGZY-263002.SLDPRT",
+      "type": "零件",
+      "bytes": 111697,
+      "sha256": "f4cd791a1e9384db151bca2ebcd4faf870ae5a70b8ec6f0dcf6631b58702f9b2"
+    },
+    {
+      "name": "LGZY-263003.SLDPRT",
+      "type": "零件",
+      "bytes": 85533,
+      "sha256": "414f9ffd1f3370226829309f51c5ea9a45d5d8610ad1bc95dfb7fd5d5d7dc96d"
+    },
+    {
+      "name": "LGZY-263004.SLDPRT",
+      "type": "零件",
+      "bytes": 471586,
+      "sha256": "ef9de08cece612da7338d7ccfbfdbe2f30313c8321e8a8972effdbcbc353a12c"
+    },
+    {
+      "name": "LGZY-263006.SLDPRT",
+      "type": "零件",
+      "bytes": 445349,
+      "sha256": "ebcf41f9ac2e49ba420801c2c6fe4e88810d86f20b65e659ed5caab117e422df"
+    },
+    {
+      "name": "LGZY-264000.SLDASM",
+      "type": "装配体",
+      "bytes": 419807,
+      "sha256": "d125d02ea7214cfe2f0432f4de49f063d20fa36a0cce5feb8aed72163c9a5e99"
+    },
+    {
+      "name": "LGZY-264001.SLDPRT",
+      "type": "零件",
+      "bytes": 460169,
+      "sha256": "3de8d1d8477ac03b64e3b72ab592d6dc95d82f6d843680cb3d8d389db26287b2"
+    },
+    {
+      "name": "LGZY-264002.SLDPRT",
+      "type": "零件",
+      "bytes": 263991,
+      "sha256": "fac7691ec2cf93f0549c4c3d4dff251d4fd43f727613d3a3cd09c33c842e8cc6"
+    },
+    {
+      "name": "LGZY-264004.SLDPRT",
+      "type": "零件",
+      "bytes": 163724,
+      "sha256": "196acce5a3c34af26e4b191e0d7f04983d667433de954bad713cdce40fe4ebec"
+    },
+    {
+      "name": "LGZY-264006.SLDPRT",
+      "type": "零件",
+      "bytes": 119720,
+      "sha256": "1648ffdc0c83624d28e7672db800c6b8ea7742c7d9e04ef91a491320526ba941"
+    },
+    {
+      "name": "M12X100爆炸螺丝.SLDPRT",
+      "type": "零件",
+      "bytes": 117194,
+      "sha256": "ee8b6fa3aad573d9531367f7fa4daa23f636fbae7651223b875d4b1962b8ff21"
+    },
+    {
+      "name": "TL_Q5MC1.SLDPRT",
+      "type": "零件",
+      "bytes": 134773,
+      "sha256": "fdd063e96ffe13dd7837c5d815e32a468921ff13aaecf01daf57db2ecb7fafa8"
+    },
+    {
+      "name": "VBP31-F38-R55-N38.SLDPRT",
+      "type": "零件",
+      "bytes": 10988054,
+      "sha256": "9599acb1691712d6ce7e5f4cf46045a6b89a020b063de8eb2ac30caa6564339a"
+    },
+    {
+      "name": "ZPTK170单级.带8MM键（22-58-110-4-4-9-145）(改新).STEP.step (1).SLDPRT",
+      "type": "零件",
+      "bytes": 1026557,
+      "sha256": "24898bdca2bbe3820581dc12361a48244a0018b0a200f6ff1937ee1a1c792054"
+    },
+    {
+      "name": "中按钮-红.SLDPRT",
+      "type": "零件",
+      "bytes": 126299,
+      "sha256": "417f78b9fb17c55321f592325942eb613e0978b69cfee40c6c8367be31226edb"
+    },
+    {
+      "name": "中按钮-绿.SLDPRT",
+      "type": "零件",
+      "bytes": 132723,
+      "sha256": "aeb49514ec1795d94c810b1244ab421b18a5fbdbf1dd5ec170505c99afa34bf0"
+    },
+    {
+      "name": "六角薄螺母M16..SLDPRT",
+      "type": "零件",
+      "bytes": 118249,
+      "sha256": "9750c9afbf3e97533cc588d18dbcebe0e0cd9121747f5b2b7afd27fedd8f4c40"
+    },
+    {
+      "name": "六角螺母M12.SLDPRT",
+      "type": "零件",
+      "bytes": 104072,
+      "sha256": "545089c5c0545763faf52f39408e1eb8ed34c4f2b6762f7f1e230b415f1e2aa9"
+    },
+    {
+      "name": "六角螺母M16..SLDPRT",
+      "type": "零件",
+      "bytes": 108409,
+      "sha256": "e29baebf8ac32aae755794c0cf71245201cc845f3ab1e519fbe3b2397f4c6b18"
+    },
+    {
+      "name": "六角螺母M16.SLDPRT",
+      "type": "零件",
+      "bytes": 105861,
+      "sha256": "124e043d8efe83046e72716fb78677141425e491ad10ecf57fcb1e7790064ebe"
+    },
+    {
+      "name": "六角螺母M18.SLDPRT",
+      "type": "零件",
+      "bytes": 106628,
+      "sha256": "49e8d88c8ea0b17605dad6166017fd76d9620012a3025b887ffdff693a6f0bd8"
+    },
+    {
+      "name": "六角螺母M18反牙.SLDPRT",
+      "type": "零件",
+      "bytes": 108823,
+      "sha256": "f18a5afb23012c1d5e38a92e44e8db11c1cd70bbf4c5369dd14c84038f1995b4"
+    },
+    {
+      "name": "六角螺母M20.SLDPRT",
+      "type": "零件",
+      "bytes": 103647,
+      "sha256": "024553163804250750ea285f2f28e1d515b2d68a2b2830f35e906bc2b75d5d8d"
+    },
+    {
+      "name": "六角螺母M24.SLDPRT",
+      "type": "零件",
+      "bytes": 107068,
+      "sha256": "300c73c655750aca90da3a704c8aadde127ee07a6931504e9ef527575cfc6ac3"
+    },
+    {
+      "name": "六角螺母M3B.SLDPRT",
+      "type": "零件",
+      "bytes": 114652,
+      "sha256": "6d0a8ab80148c2622b53fc2a770400767e89092a36adba35feaa2e7bb1aa0669"
+    },
+    {
+      "name": "六角螺母M5B.SLDPRT",
+      "type": "零件",
+      "bytes": 103430,
+      "sha256": "4ab713787143f4e17a4eb42f2c6fa1fcfebbf540a406882576553cadbc839474"
+    },
+    {
+      "name": "六角螺母M8.SLDPRT",
+      "type": "零件",
+      "bytes": 114806,
+      "sha256": "68cd0d1af7448053cedc991e4e2d50680483e6245da69d6ee6893d758fc7e0a0"
+    },
+    {
+      "name": "六角螺母M8B.SLDPRT",
+      "type": "零件",
+      "bytes": 135782,
+      "sha256": "a39b5d441b82f18dabc06e173598cf869a9208cb825eb90514dde5c6c1a5535d"
+    },
+    {
+      "name": "六角螺母级M14.SLDPRT",
+      "type": "零件",
+      "bytes": 104440,
+      "sha256": "d79d7cf96ee91af08fe74a3b71176fe164c143350c59eba3ee7867e1530b4078"
+    },
+    {
+      "name": "内六机米螺钉M5×10A.SLDPRT",
+      "type": "零件",
+      "bytes": 103512,
+      "sha256": "6e2ee3478d88ade01575db0185ec0556cf3caf11a256b9fb0effa819989e6c76"
+    },
+    {
+      "name": "内六角圆头螺钉M3×16B.SLDPRT",
+      "type": "零件",
+      "bytes": 130999,
+      "sha256": "194d5d5433d93356862ab53aa9337fee70d1e1df59f7a1ad0fe9adac2bc266da"
+    },
+    {
+      "name": "内六角圆头螺钉M3×20.SLDPRT",
+      "type": "零件",
+      "bytes": 148618,
+      "sha256": "3e348e5309f2315acfb701fd9602de46a58f93bf9bc21e7ed82471532511f822"
+    },
+    {
+      "name": "内六角圆头螺钉M3×6B.SLDPRT",
+      "type": "零件",
+      "bytes": 134949,
+      "sha256": "469781a8d082f0938b4e44e298d1d43dc88d21c34892f6dac534761ef67e2df9"
+    },
+    {
+      "name": "内六角圆头螺钉M3×8.SLDPRT",
+      "type": "零件",
+      "bytes": 137051,
+      "sha256": "ca6b3cb14eb0027564b5677ebbab239a40e14b67022d4483f0c2aa5e4857be27"
+    },
+    {
+      "name": "内六角圆头螺钉M4×8B.SLDPRT",
+      "type": "零件",
+      "bytes": 146255,
+      "sha256": "6a749aef0d6030ec3b2b1b48743504a1fe513eb3cfc66d5dd40ae89e61380ca5"
+    },
+    {
+      "name": "内六角圆头螺钉M5×10.SLDPRT",
+      "type": "零件",
+      "bytes": 142709,
+      "sha256": "b09ded328906e11b2d139d0bbd4efda4f7dc1050605d8ae8444ee6b3d2b8db44"
+    },
+    {
+      "name": "内六角圆头螺钉M5×10B.SLDPRT",
+      "type": "零件",
+      "bytes": 142738,
+      "sha256": "e7b8c4dca261e04c57578cefd340b7111fb536b353fbe2c0155b421baaca6821"
+    },
+    {
+      "name": "内六角圆柱头螺钉M10×30.SLDPRT",
+      "type": "零件",
+      "bytes": 112072,
+      "sha256": "142ac6bf6d14f46aaae444c2755768ab5c0222de3deadfb5342a17d17d9afe5c"
+    },
+    {
+      "name": "内六角圆柱头螺钉M10×40.SLDPRT",
+      "type": "零件",
+      "bytes": 115132,
+      "sha256": "065a323b46f5f9422488bd5a0c350028d6b4b0c7caac508bf3877d4c0d56e441"
+    },
+    {
+      "name": "内六角圆柱头螺钉M12×25.SLDPRT",
+      "type": "零件",
+      "bytes": 115878,
+      "sha256": "066ad87de651a3eee1498c6b65333438affaa8293f25c6d6f13ee477c00802f2"
+    },
+    {
+      "name": "内六角圆柱头螺钉M12×50.SLDPRT",
+      "type": "零件",
+      "bytes": 114564,
+      "sha256": "33bd6110b32b36e98ec4df0c3750d950708feb9290e219df5a20698c4c545089"
+    },
+    {
+      "name": "内六角圆柱头螺钉M16×40.SLDPRT",
+      "type": "零件",
+      "bytes": 114099,
+      "sha256": "8fb188fc2ea079bf43463f806d9553c730c887448da73f791eb985766ce7b830"
+    },
+    {
+      "name": "内六角圆柱头螺钉M16×55.SLDPRT",
+      "type": "零件",
+      "bytes": 116400,
+      "sha256": "27c7b402926bd90f5dd8c81f247b08fca26dd7f5ab47f608993f6998588e9a1a"
+    },
+    {
+      "name": "内六角圆柱头螺钉M3×25.SLDPRT",
+      "type": "零件",
+      "bytes": 109137,
+      "sha256": "21da282a282241e4d4ab243d6e45d756011d3eff616e9871452dd05a1a1f5ba3"
+    },
+    {
+      "name": "内六角圆柱头螺钉M3×6B.SLDPRT",
+      "type": "零件",
+      "bytes": 120954,
+      "sha256": "f8b3e2ee8cb9e90f904a9d6e9fb29d936f5e46742cfe1336d636edd77edd5862"
+    },
+    {
+      "name": "内六角圆柱头螺钉M4×10.SLDPRT",
+      "type": "零件",
+      "bytes": 115382,
+      "sha256": "9a69b6a6b4690c83fe08128f1563678662cb3335cb0a9f5d268bb1d50ea8dc10"
+    },
+    {
+      "name": "内六角圆柱头螺钉M4×16...SLDPRT",
+      "type": "零件",
+      "bytes": 111167,
+      "sha256": "4aa83eb454ef96eeba88908c9ed36c4f38ad5fd7e0776962529790d004ceb790"
+    },
+    {
+      "name": "内六角圆柱头螺钉M4×30.SLDPRT",
+      "type": "零件",
+      "bytes": 108515,
+      "sha256": "6e53a64536e4f0b45af8f807b18231cb13b9c3afd411108c679d895c7e8eff97"
+    },
+    {
+      "name": "内六角圆柱头螺钉M5×10B.SLDPRT",
+      "type": "零件",
+      "bytes": 112452,
+      "sha256": "7dea13179b0ff60a5887417e4822b62b0d92210a9c93119c8ebda66697949c19"
+    },
+    {
+      "name": "内六角圆柱头螺钉M5×12.SLDPRT",
+      "type": "零件",
+      "bytes": 115390,
+      "sha256": "f335b4878d3fbc316c47abf02e20c1467d1e11b166e022b182b6a5792812e970"
+    },
+    {
+      "name": "内六角圆柱头螺钉M5×12B.SLDPRT",
+      "type": "零件",
+      "bytes": 119169,
+      "sha256": "751e763a136ede242ae9decc538b227690d1db096dfb5292b603b3791c83bbff"
+    },
+    {
+      "name": "内六角圆柱头螺钉M5×16A.SLDPRT",
+      "type": "零件",
+      "bytes": 130761,
+      "sha256": "c5b51a730a57fdd8eb95f7aff7b9fd7557612f3862555d97c412f7cc83d5dc48"
+    },
+    {
+      "name": "内六角圆柱头螺钉M5×16B.SLDPRT",
+      "type": "零件",
+      "bytes": 115688,
+      "sha256": "3d8d0ac85e75f489cc142e0aa7c58293eb3ff4ccc0b254a804ca5d359fc7df2d"
+    },
+    {
+      "name": "内六角圆柱头螺钉M5×20.SLDPRT",
+      "type": "零件",
+      "bytes": 114618,
+      "sha256": "ea8fd9640ee0b0d4510c950099923d746c422710c5639a041ce0974d43cfcb09"
+    },
+    {
+      "name": "内六角圆柱头螺钉M5×30.SLDPRT",
+      "type": "零件",
+      "bytes": 110483,
+      "sha256": "3b2dc5869184e0b965032d36a0e4cf1389a9cce5d6863285844e6cc55a068263"
+    },
+    {
+      "name": "内六角圆柱头螺钉M6×16B.SLDPRT",
+      "type": "零件",
+      "bytes": 134640,
+      "sha256": "f83f958065f1fd56fbd0975b7c69dc17439527bc2b58b5928fc6887f0e91159c"
+    },
+    {
+      "name": "内六角圆柱头螺钉M6×20.SLDPRT",
+      "type": "零件",
+      "bytes": 116050,
+      "sha256": "bf3e3b415a730c18aad925e134a7564bd54e7ce6800d235ac02fa3072b9b57dc"
+    },
+    {
+      "name": "内六角圆柱头螺钉M6×20A.SLDPRT",
+      "type": "零件",
+      "bytes": 116894,
+      "sha256": "3831983302c91e1a8dd8b79a462724031b5334eea3950226989e0226a0c7a6a5"
+    },
+    {
+      "name": "内六角圆柱头螺钉M6×20B.SLDPRT",
+      "type": "零件",
+      "bytes": 116728,
+      "sha256": "d6742c03a80525cdcb871fae8f06440d81b83e6bde56de11a4f93896dc5abb6d"
+    },
+    {
+      "name": "内六角圆柱头螺钉M6×25.SLDPRT",
+      "type": "零件",
+      "bytes": 111375,
+      "sha256": "e0033c75f28b1437953a2999cb4cb09a585093acbc928e2ca6eeeef9cb753f01"
+    },
+    {
+      "name": "内六角圆柱头螺钉M6×60.SLDPRT",
+      "type": "零件",
+      "bytes": 104706,
+      "sha256": "0aedeb2b3b6c5ee49b0c4d4d2d6e5d2a98dc276e313fb883116debd3a2b09317"
+    },
+    {
+      "name": "内六角圆柱头螺钉M8×20B.SLDPRT",
+      "type": "零件",
+      "bytes": 122407,
+      "sha256": "d8c32cb6570f6fa020f2806ff56592a47a7f1728d2c28fb27be3f1232881b469"
+    },
+    {
+      "name": "内六角圆柱头螺钉M8×25.SLDPRT",
+      "type": "零件",
+      "bytes": 116574,
+      "sha256": "1d0b19536a2454465db20bf4a5d5f18c604bee4928885a3269d439808fc19482"
+    },
+    {
+      "name": "内六角圆柱头螺钉M8×30.SLDPRT",
+      "type": "零件",
+      "bytes": 112935,
+      "sha256": "bee1c92d2022db09a537868a040f4b06fda4c211be2c20b5ba2c537fb82b4c2e"
+    },
+    {
+      "name": "内六角圆柱头螺钉M8×30B.SLDPRT",
+      "type": "零件",
+      "bytes": 121207,
+      "sha256": "7bb635798f606edf9c763b17af7c6f62924b3ab36e0c98208c8c14b486dd6781"
+    },
+    {
+      "name": "内六角平圆头螺钉M4×6A.SLDPRT",
+      "type": "零件",
+      "bytes": 143813,
+      "sha256": "0db937736ec100718dcfb4d48efdb639ae1d2db83eb470dd07a14e93473801f4"
+    },
+    {
+      "name": "内六角平头螺钉M4×16B.SLDPRT",
+      "type": "零件",
+      "bytes": 135275,
+      "sha256": "c58ad2bd57ccbfc9806ccdd8290e3502f0bfb271bc85bb7130751fd2ab618f4d"
+    },
+    {
+      "name": "内六角平头螺钉M5×12.SLDPRT",
+      "type": "零件",
+      "bytes": 161726,
+      "sha256": "a1fe84527ef33803ed2c1805364e1b99c2eb12179a743186faa5ce1344c5d522"
+    },
+    {
+      "name": "内六角平头螺钉M5×12A.SLDPRT",
+      "type": "零件",
+      "bytes": 143407,
+      "sha256": "291045e1f2e565a0b7adf4b46e65880657ecbdba142b44f4e2ff1ed026292357"
+    },
+    {
+      "name": "内六角平头螺钉M5×20B.SLDPRT",
+      "type": "零件",
+      "bytes": 127859,
+      "sha256": "a573fc8f1bfcc587ce20bd106e52489e8e39c92129a5ad075e00046c2fc542b6"
+    },
+    {
+      "name": "内六角平头螺钉M6×20B.SLDPRT",
+      "type": "零件",
+      "bytes": 147355,
+      "sha256": "6379b6b9f7b4582761daa76c75da229df4d83af9bdfb5335d2ee01107327f9cb"
+    },
+    {
+      "name": "内六角平头螺钉M8×16.SLDPRT",
+      "type": "零件",
+      "bytes": 147625,
+      "sha256": "a2e633987314d754947f0ed8e9e3247030e2967d1448e438c0a2590545880362"
+    },
+    {
+      "name": "内六角平端紧定螺钉M6×12.SLDPRT",
+      "type": "零件",
+      "bytes": 107499,
+      "sha256": "537f96d30ec30b3040f6f4286736b27c0d7edee453fd58a2ceb5deaa88d2ec3a"
+    },
+    {
+      "name": "内六角机米螺钉M14×65.SLDPRT",
+      "type": "零件",
+      "bytes": 109026,
+      "sha256": "953f916477075704ba93374b0874a7ceb30adeea574686e34d03eaf50f51e862"
+    },
+    {
+      "name": "内六角机米螺钉M4×8B.SLDPRT",
+      "type": "零件",
+      "bytes": 113637,
+      "sha256": "5ea06eec503c0ab41af4000f8fedbd420120e4dcc4b247572e6655114d61db37"
+    },
+    {
+      "name": "内六角机米螺钉M5×16B.SLDPRT",
+      "type": "零件",
+      "bytes": 101161,
+      "sha256": "d94e7fd05ad6ee4a8cc386fd00966549bf3c9ada8d543632c4dc8c8e1d8042c1"
+    },
+    {
+      "name": "内六角机米螺钉M8×35.SLDPRT",
+      "type": "零件",
+      "bytes": 112443,
+      "sha256": "690ef5ba58619a3964319ad3c6c8db55d354f6202c9d905a2d7f22656bb19089"
+    },
+    {
+      "name": "内六角机米螺钉M8×8.SLDPRT",
+      "type": "零件",
+      "bytes": 111606,
+      "sha256": "8caa063acdec5d82ea146e1552ec61ba48c8d427f0e718dc12d73bcbdc4cd45a"
+    },
+    {
+      "name": "内六角沉头螺钉M6×12B.SLDPRT",
+      "type": "零件",
+      "bytes": 153638,
+      "sha256": "0d5fcaf2b849b17e0c6e5b699aa59a382ca9ea23842b61ae93aca572132a761e"
+    },
+    {
+      "name": "单跨斜拉.SLDPRT",
+      "type": "零件",
+      "bytes": 74372,
+      "sha256": "ba71516ae1b46505c89f239bb81ec64be6c2ff516315e6f0121c16ad353eb7af"
+    },
+    {
+      "name": "单跨横拉.SLDPRT",
+      "type": "零件",
+      "bytes": 75270,
+      "sha256": "1cfc3cb55a2ca183e155ebe4304fe9b11c599693893f0cbcc1db8cdf0d6ecffc"
+    },
+    {
+      "name": "单跨装配图一.SLDASM",
+      "type": "装配体",
+      "bytes": 444222,
+      "sha256": "ff145f1330179fd6370571565ee57f53b5094267657cb84b6fc10ae5b783e713"
+    },
+    {
+      "name": "单跨装配图三.SLDASM",
+      "type": "装配体",
+      "bytes": 714846,
+      "sha256": "b01f13128ff1c160a19728e00c8c4d1cfa079a1fae6898d2e42bf9d4b22cc2f6"
+    },
+    {
+      "name": "单跨装配图二.SLDASM",
+      "type": "装配体",
+      "bytes": 706049,
+      "sha256": "b773ff1538d0d15682ecb48fedac151d0ad2f7e2415c3bf573bea62483d2712f"
+    },
+    {
+      "name": "压块.SLDPRT",
+      "type": "零件",
+      "bytes": 194888,
+      "sha256": "15c2aac098e3c26921e8af7b12293576ad5834de9f534375535bed4c884a6300"
+    },
+    {
+      "name": "反光板.SLDPRT",
+      "type": "零件",
+      "bytes": 260555,
+      "sha256": "39fb10af4ae68c0187c532c8dea592ddd23e48da51a5787156cb6fc636ab3a09"
+    },
+    {
+      "name": "四极集电器.SLDPRT",
+      "type": "零件",
+      "bytes": 1162993,
+      "sha256": "b4b4ef7453b10d7b55e8cfd6ebf32103e8fb27b831a44e163ad7bcc171a40e20"
+    },
+    {
+      "name": "圆头键10X8X40.SLDPRT",
+      "type": "零件",
+      "bytes": 75689,
+      "sha256": "5503902882c4152d638fffbd0076554013993c0160c3c85b34a89bcc2d02d487"
+    },
+    {
+      "name": "圆螺母M40×1．5.SLDPRT",
+      "type": "零件",
+      "bytes": 118740,
+      "sha256": "e103c2bc8d3dcba5c0f86f29f904112defbc6bde34ca2555a1468f0b1be4a0a5"
+    },
+    {
+      "name": "地轨固定底板.SLDPRT",
+      "type": "零件",
+      "bytes": 123026,
+      "sha256": "c88e71e3d8ac0cda19438a4e01a23fa1a45270b5c927034bfe23ad5e427843ab"
+    },
+    {
+      "name": "地轨固定组件.SLDASM",
+      "type": "装配体",
+      "bytes": 221242,
+      "sha256": "4a2669db3d7e994e4eaffa9c3de268c0bb4d1a59c61e0a0097fd3c093e1d2029"
+    },
+    {
+      "name": "地轨装配图.SLDASM",
+      "type": "装配体",
+      "bytes": 402069,
+      "sha256": "242624a0a778b911df778046cb88246c090ead6a32e159bdb64572b5e951ac89"
+    },
+    {
+      "name": "地轨调节板.SLDPRT",
+      "type": "零件",
+      "bytes": 84555,
+      "sha256": "32b44df07c099c43ed2138cee937b3668d3e58abeff490da3d9b82c0b039790e"
+    },
+    {
+      "name": "垂直斜拉.SLDPRT",
+      "type": "零件",
+      "bytes": 85000,
+      "sha256": "c3408af18836c75dbb552383ddc5377708064ffaf24b3cf1e89e5de69c3a64a8"
+    },
+    {
+      "name": "外六角螺丝M12×45.SLDPRT",
+      "type": "零件",
+      "bytes": 148808,
+      "sha256": "a67f90cb30bdc3a408cfc51422feb500a75dacb84fdbf9cf505be7a380765d2a"
+    },
+    {
+      "name": "外六角螺丝M12×65.SLDPRT",
+      "type": "零件",
+      "bytes": 147734,
+      "sha256": "4d2200087815878556e1746acc1d73451338e36dceaebf09dd3af304913e92ca"
+    },
+    {
+      "name": "外六角螺丝M12×75.SLDPRT",
+      "type": "零件",
+      "bytes": 147547,
+      "sha256": "15b5df15b1a3713ad8ca5f9237d772ca913b647ae39dc452942fd898114d2730"
+    },
+    {
+      "name": "外六角螺丝M14×35.SLDPRT",
+      "type": "零件",
+      "bytes": 150601,
+      "sha256": "4486444700d0755e48248ad02b92c08bc5e714fe29d735088789a925cdcb0c4e"
+    },
+    {
+      "name": "外六角螺丝M14×40.SLDPRT",
+      "type": "零件",
+      "bytes": 156839,
+      "sha256": "f29a043ca582061b10c3f12b99b9f5d27cd34080c8f234e01d3232fc15df29ca"
+    },
+    {
+      "name": "外六角螺丝M16×40.SLDPRT",
+      "type": "零件",
+      "bytes": 149245,
+      "sha256": "645a7ec6c031c7aa319445b0480332258079e1a7d8ae660a52a49786177f2230"
+    },
+    {
+      "name": "外六角螺丝M6×16.SLDPRT",
+      "type": "零件",
+      "bytes": 147253,
+      "sha256": "78f7dc30ada0524425e1cd4a2cbe847ea36cbb7d28b05a552fc501d82eafed7e"
+    },
+    {
+      "name": "外六角螺丝M8×16.SLDPRT",
+      "type": "零件",
+      "bytes": 143482,
+      "sha256": "7b98aa8bc4f98cf96538fccb4fb8132523512ecfff20b1ca583fdbb80f1f9252"
+    },
+    {
+      "name": "外六角螺丝M8×25.SLDPRT",
+      "type": "零件",
+      "bytes": 145558,
+      "sha256": "0f3d4337467f9369838ecd19b68f3de91a28bd00de340415b0f562d36d1b4fdc"
+    },
+    {
+      "name": "外六角螺丝M8×30.SLDPRT",
+      "type": "零件",
+      "bytes": 141583,
+      "sha256": "9a4c5f8bb639769988fed2f05dbefcbb50ea3c51defa630c829780c0aa0e4bcb"
+    },
+    {
+      "name": "天轨.SLDPRT",
+      "type": "零件",
+      "bytes": 149087,
+      "sha256": "6025b04f2e79d43a6feb9745c26fca2ccbcb911de5269a981c003b87aa81976f"
+    },
+    {
+      "name": "孔用卡簧16...SLDPRT",
+      "type": "零件",
+      "bytes": 96002,
+      "sha256": "98b98b7d26269d508448b0c7267dc7561104873957b2f0ed119674c9db3d440d"
+    },
+    {
+      "name": "孔用卡簧47.SLDPRT",
+      "type": "零件",
+      "bytes": 82839,
+      "sha256": "fbb86f0e4d33e811c66a6e55fcb48da7cd2689a046a8becd48b97976a863153a"
+    },
+    {
+      "name": "孔用卡簧80.SLDPRT",
+      "type": "零件",
+      "bytes": 82340,
+      "sha256": "012ced5dee333b83360183c28b822834e514b9e10a0bcd6be24833ba4559cd31"
+    },
+    {
+      "name": "孔用挡圈47.SLDPRT",
+      "type": "零件",
+      "bytes": 83047,
+      "sha256": "1377160c1d24210d69a42e4a155f4b5c7384cf1acfe354c597d0d31670788516"
+    },
+    {
+      "name": "富士急停按钮AR22V0R.SLDPRT",
+      "type": "零件",
+      "bytes": 196779,
+      "sha256": "dc551438760fedf63e9650dfd4f05640f4aecd518715fd00eaf9807e819e261e"
+    },
+    {
+      "name": "平垫圈10×2.SLDPRT",
+      "type": "零件",
+      "bytes": 71100,
+      "sha256": "fc4736e1a47a7c52f3334e34ec6653cdadbf5d01e89228a0d341539c24033427"
+    },
+    {
+      "name": "平垫圈12×2．5.SLDPRT",
+      "type": "零件",
+      "bytes": 65837,
+      "sha256": "c1ec6003f8092c931313cca91c95b1a51246326bbe934091e08b31f0eb960349"
+    },
+    {
+      "name": "平垫圈14×2．5.SLDPRT",
+      "type": "零件",
+      "bytes": 66748,
+      "sha256": "8025e71d25c5ffcbae589ecf8d602f3c7bb109977359ea433c3a6b19a9d2dedd"
+    },
+    {
+      "name": "平垫圈16×3..SLDPRT",
+      "type": "零件",
+      "bytes": 72723,
+      "sha256": "3e6afba72afb8c57a01680e38d11ec305d0f4e43ecc46719b494d08f0a892fb4"
+    },
+    {
+      "name": "平垫圈16×3.SLDPRT",
+      "type": "零件",
+      "bytes": 67401,
+      "sha256": "4bfdb7aa12fa1686ca418101dcba672f9902210a51e6e0a38cedd2fa32bf84d1"
+    },
+    {
+      "name": "平垫圈20×3.SLDPRT",
+      "type": "零件",
+      "bytes": 64247,
+      "sha256": "d095226a1201c0d0006c1238829a49a552a9bc62c57eb718b48d579c0b6e6abd"
+    },
+    {
+      "name": "平垫圈24×4.SLDPRT",
+      "type": "零件",
+      "bytes": 67272,
+      "sha256": "f17df7c172b3d2b718def98cd85e60ef5ea5e8a4323aec5ce8bce357b65fd7ca"
+    },
+    {
+      "name": "平垫圈4×0．8.SLDPRT",
+      "type": "零件",
+      "bytes": 54089,
+      "sha256": "773642028b9e4c760ecbb26fa16cafb3cef90e719f65f3027d2392627f3982fa"
+    },
+    {
+      "name": "平垫圈5×1.SLDPRT",
+      "type": "零件",
+      "bytes": 60285,
+      "sha256": "8ab7b4eb93fa35fb5812f44f65d756036f02d4f7308e349050a264f2567055b1"
+    },
+    {
+      "name": "平垫圈5×1A.SLDPRT",
+      "type": "零件",
+      "bytes": 70024,
+      "sha256": "3c0407ca71d699eb157e43e5c6450849e903bc84474db5dac7eba303ff456d33"
+    },
+    {
+      "name": "平垫圈6×1．6.SLDPRT",
+      "type": "零件",
+      "bytes": 62839,
+      "sha256": "e4b1320167e73f3ddd82b452609b432a18ea064ebf092ca7178c49ce51c5d774"
+    },
+    {
+      "name": "平垫圈6×1．6A.SLDPRT",
+      "type": "零件",
+      "bytes": 62316,
+      "sha256": "223caf141e7c9f590f3eb286e8d3d84acddd7e06af2d492a3049c9b85fc73913"
+    },
+    {
+      "name": "平垫圈6×1．6B.SLDPRT",
+      "type": "零件",
+      "bytes": 62635,
+      "sha256": "6aa3947dd123681ff3cdcfa13b4aeb419b2b39de63a76702514ecde3b91dee2b"
+    },
+    {
+      "name": "平垫圈8×1．6.SLDPRT",
+      "type": "零件",
+      "bytes": 63704,
+      "sha256": "53b57d279e47704542233f88de2441f65122f3109c022e32020be17adf31c5b2"
+    },
+    {
+      "name": "平垫圈8×1．6B.SLDPRT",
+      "type": "零件",
+      "bytes": 68128,
+      "sha256": "329c8a14f404e7bfdbdeff04614a2465eb3f2861afe411800c27f343db469a8f"
+    },
+    {
+      "name": "延申梁一.SLDPRT",
+      "type": "零件",
+      "bytes": 328384,
+      "sha256": "7e86a5fa25f4425e44f183223c33c11da279b07d22bc5df848f0cff76dabb81d"
+    },
+    {
+      "name": "延申水平斜拉座.SLDPRT",
+      "type": "零件",
+      "bytes": 544823,
+      "sha256": "fa678221e5af508866cb15b8dd814baa4eded8807f290fca289b9cccb33374c5"
+    },
+    {
+      "name": "弹性垫圈)6×1．6B.SLDPRT",
+      "type": "零件",
+      "bytes": 79708,
+      "sha256": "59cf2f9d7c592ee3f1b699766ddc960fe395ebeac0c1d51ee37e8858f6163e2d"
+    },
+    {
+      "name": "弹性垫圈10×2．6.SLDPRT",
+      "type": "零件",
+      "bytes": 80981,
+      "sha256": "4d00b8154269537a70d7ac33d884e6c7360e7b7f9d0849d79ab598c3ea509dfb"
+    },
+    {
+      "name": "弹性垫圈12×3．1.SLDPRT",
+      "type": "零件",
+      "bytes": 81807,
+      "sha256": "9ac7994c9dd4b248dcc9599717e2a9ddf0d5e6ad6d2a3c2ef42f945d410e70de"
+    },
+    {
+      "name": "弹性垫圈14×3．6.SLDPRT",
+      "type": "零件",
+      "bytes": 81093,
+      "sha256": "831250b1ee27daf236d9c50c8b04cbf1f8193cfc93d35f6ff83fb5db9367208b"
+    },
+    {
+      "name": "弹性垫圈16×4．1..SLDPRT",
+      "type": "零件",
+      "bytes": 86275,
+      "sha256": "d7d155acb604a883f65ef492cf1d95bd11efca4fed9901387cebf3ea98a037ea"
+    },
+    {
+      "name": "弹性垫圈16×4．1.SLDPRT",
+      "type": "零件",
+      "bytes": 82494,
+      "sha256": "7eb26991469169d29b21662b80c5f3893b20fc2540ddcf87f8102d7f897889a8"
+    },
+    {
+      "name": "弹性垫圈20×5.SLDPRT",
+      "type": "零件",
+      "bytes": 76845,
+      "sha256": "1cff3f09f67b7fc2ed54c361201a8e636611cf89c3346d9dcbb8fa5bfc116a84"
+    },
+    {
+      "name": "弹性垫圈24×6.SLDPRT",
+      "type": "零件",
+      "bytes": 82060,
+      "sha256": "da3d1baad415f9cfdeacef73e60220b1c1fc22f558272af204c3258e08aa0c62"
+    },
+    {
+      "name": "弹性垫圈4×1．1.SLDPRT",
+      "type": "零件",
+      "bytes": 81511,
+      "sha256": "8bdb4d9d2b7ddfddef89be8561f936d47b15e48d3cc4cfcb842fc9562883c787"
+    },
+    {
+      "name": "弹性垫圈5×1．3.SLDPRT",
+      "type": "零件",
+      "bytes": 79245,
+      "sha256": "6520adf2eb6683523400045210daa2668916dce07047e16e7b3915732a8b77a1"
+    },
+    {
+      "name": "弹性垫圈5×1．3A.SLDPRT",
+      "type": "零件",
+      "bytes": 79430,
+      "sha256": "013a523f2a80fe0f42845aa693d9985b02d8e0dc73956c9abc3a409b747f6ec5"
+    },
+    {
+      "name": "弹性垫圈6×1．6.SLDPRT",
+      "type": "零件",
+      "bytes": 80496,
+      "sha256": "cad837ddbfc746a238d80f9ca64c71980768b2e32cab350aa1bb23ce1c5418bc"
+    },
+    {
+      "name": "弹性垫圈6×1．6A.SLDPRT",
+      "type": "零件",
+      "bytes": 79027,
+      "sha256": "9bac853f3f7b13c6a906a7b1758ecdaf729ecbc52e95b3f36c1dd3702c527d24"
+    },
+    {
+      "name": "弹性垫圈8×2．1.SLDPRT",
+      "type": "零件",
+      "bytes": 81449,
+      "sha256": "072921699282c955d2c0c14fc8678bcd091345319b582fffc7344bec386e3f21"
+    },
+    {
+      "name": "弹性垫圈8×2．1B.SLDPRT",
+      "type": "零件",
+      "bytes": 89639,
+      "sha256": "bec31f52c262d8fcd0defe583ce8c38ce0dab1145b093ace95cd8aa6c6caf27a"
+    },
+    {
+      "name": "托架.SLDPRT",
+      "type": "零件",
+      "bytes": 91091,
+      "sha256": "e463ead6ea7e6d625a0d31987f7751b4e6ab5ea90e50037fcc77d548ce0b4fd4"
+    },
+    {
+      "name": "接近开关...SLDPRT",
+      "type": "零件",
+      "bytes": 169847,
+      "sha256": "7b3b1e962f36a9399e870186f3c647fb60601d4e25432feba3e3fb94d2630f7a"
+    },
+    {
+      "name": "料箱.SLDPRT",
+      "type": "零件",
+      "bytes": 1166761,
+      "sha256": "0e3ebcd26971a571bf63f3a2115a5ddc6a21ca28ee55d6e8fe162bda7b694fb8"
+    },
+    {
+      "name": "样板间总装.SLDASM",
+      "type": "装配体",
+      "bytes": 55213577,
+      "sha256": "4e47741373cb06aae1dac6bc186ef6140793c536f7379a13dfd04a3267403950"
+    },
+    {
+      "name": "横梁.SLDPRT",
+      "type": "零件",
+      "bytes": 239326,
+      "sha256": "11cfe204fefb0ea4951507904b885b972e4f6ec7ed6dab845ef51a36c3fc4053"
+    },
+    {
+      "name": "欧姆龙 TL-W5MC1.SLDPRT",
+      "type": "零件",
+      "bytes": 94794,
+      "sha256": "43c8240fc3b6a010ebefc5e251a9181b5734f0370e27f11cea96cbd239d2ccb1"
+    },
+    {
+      "name": "水平斜拉.SLDPRT",
+      "type": "零件",
+      "bytes": 84887,
+      "sha256": "90ec94b1b36fc8f5167ead98fdc0c2cd4ec598a3148e45732a7a103b5978d9c1"
+    },
+    {
+      "name": "深沟球轴承16018.SLDPRT",
+      "type": "零件",
+      "bytes": 830350,
+      "sha256": "8ae93f6a76594d34df219019a1ea28b68678c41d00eebad29b2d058343f292fc"
+    },
+    {
+      "name": "深沟球轴承6002-2Z..SLDPRT",
+      "type": "零件",
+      "bytes": 640321,
+      "sha256": "a53f4ee1a7f39c67cfdbcc18718ec9fe289f87eb81deb98ccb819250fd2d2b6f"
+    },
+    {
+      "name": "深沟球轴承6005-2RZ.SLDPRT",
+      "type": "零件",
+      "bytes": 923900,
+      "sha256": "3404842aedd5f4cdbaee12bea4d23a1f91524392ea8e0c33e86b3151dd9d0198"
+    },
+    {
+      "name": "深沟球轴承6005-2Z.SLDPRT",
+      "type": "零件",
+      "bytes": 675985,
+      "sha256": "99c16ed95cadbca46b4a12c7854549d1e85d51c04129ddd76493de894689c0e7"
+    },
+    {
+      "name": "深沟球轴承6208-2Z.SLDPRT",
+      "type": "零件",
+      "bytes": 656792,
+      "sha256": "f5c0858182e981890793122071459ee11ef2885bf5eb528f2df4b29cd0603f61"
+    },
+    {
+      "name": "深沟球轴承628-8...SLDPRT",
+      "type": "零件",
+      "bytes": 171419,
+      "sha256": "e12877613049f7ffa536fa5734f1f508542de84cc6a216928ee7aa52590fa598"
+    },
+    {
+      "name": "滑触线夹.SLDPRT",
+      "type": "零件",
+      "bytes": 290569,
+      "sha256": "baed7365e4617dffe8d3c20a108e5489f5fe6adc68414dc82959073fad54b8f6"
+    },
+    {
+      "name": "滑触线拉筋器固定件.SLDPRT",
+      "type": "零件",
+      "bytes": 142611,
+      "sha256": "2ec7f45db908c57d24092ef8b361a7bb9343ada4972a501ce9c1fae9011bfcd7"
+    },
+    {
+      "name": "滑触线长9740.SLDPRT",
+      "type": "零件",
+      "bytes": 164600,
+      "sha256": "abff80a6d2491023d2fdd4e19bd0273b38d56f8c535ad61b4b012a767a2733a9"
+    },
+    {
+      "name": "牛腿立柱.SLDPRT",
+      "type": "零件",
+      "bytes": 945021,
+      "sha256": "9c084656fc49ff0d92dae7b606e948fdd2057af92a2096d5d31488d07637068a"
+    },
+    {
+      "name": "百叶窗滤网风扇.SLDPRT",
+      "type": "零件",
+      "bytes": 486063,
+      "sha256": "be4d4c21741e262926dae8fc5ed8e06c0411e85bf7ef9568998fb8fb2bcef63a"
+    },
+    {
+      "name": "短100X100铝地轨.SLDPRT",
+      "type": "零件",
+      "bytes": 193630,
+      "sha256": "3cbd86a7f8511b0e8404457f93f84f3561de30568198d1a157312e41c7356128"
+    },
+    {
+      "name": "矮牛腿立柱.SLDPRT",
+      "type": "零件",
+      "bytes": 937897,
+      "sha256": "0ab7565a6e1817535746e8db003ff835f1b8aa941e424e3fd7389a24cc13f29f"
+    },
+    {
+      "name": "端头阻挡件.SLDPRT",
+      "type": "零件",
+      "bytes": 130919,
+      "sha256": "9002e49d08849e8c94844691836a9b07b8f0e688fa9385250a22efc9c9a587f2"
+    },
+    {
+      "name": "线径2.5外径30节距10长150弹簧.SLDPRT",
+      "type": "零件",
+      "bytes": 1962507,
+      "sha256": "2d634d1a9139a790f5c5a1305b4cd705b56092f070d11b9cc13e3b4356d59e28"
+    },
+    {
+      "name": "缓冲器JHQ-A1.SLDPRT",
+      "type": "零件",
+      "bytes": 164382,
+      "sha256": "f43240f772f8bee072441fedbde799517d52ced849abc240ee0803c5d480ee06"
+    },
+    {
+      "name": "行程开关触发件.SLDPRT",
+      "type": "零件",
+      "bytes": 120333,
+      "sha256": "504b86b954a5056c7828ffabec76761ae3bf39cbd94719ce6087d899cd402a6c"
+    },
+    {
+      "name": "行程开关触发机构装配图.SLDASM",
+      "type": "装配体",
+      "bytes": 181762,
+      "sha256": "1329116287831a25a24530c4801a3891387c9681a8258aa54602c4748d40751f"
+    },
+    {
+      "name": "触发件链接块.SLDPRT",
+      "type": "零件",
+      "bytes": 100460,
+      "sha256": "154f3e9e082ce7d26daf30fc7099925ab47b58b7bcf3981280eab17776c6085d"
+    },
+    {
+      "name": "触摸屏  5-MT6070IH.SLDPRT",
+      "type": "零件",
+      "bytes": 898615,
+      "sha256": "0c1178e65fa55b2715a295392edb41ef3bbb5191129353177604725110ec4f78"
+    },
+    {
+      "name": "货架总总装.SLDASM",
+      "type": "装配体",
+      "bytes": 2193762,
+      "sha256": "3e0bacfb1e7a69f1e45a31f5c788cdab7d133a88be0b20dad643f0a2d8ed10a1"
+    },
+    {
+      "name": "轨道连接板.SLDPRT",
+      "type": "零件",
+      "bytes": 89446,
+      "sha256": "08696002b6f2fed71e5fcd6d4645b89aa4290b2b1aeed0ac6bfb7e89858d50c8"
+    },
+    {
+      "name": "轴用卡簧25.SLDPRT",
+      "type": "零件",
+      "bytes": 81641,
+      "sha256": "a807783c2eb9791c0a65facba510ad03e01c97cb5a5b5895a05a74f55eb42714"
+    },
+    {
+      "name": "轴用弹性挡圈40.SLDPRT",
+      "type": "零件",
+      "bytes": 80618,
+      "sha256": "881061e19d4031ce088e0cc15f1d28d4d84765190af591d5a13a2c462f44afcc"
+    },
+    {
+      "name": "轴用挡圈25.SLDPRT",
+      "type": "零件",
+      "bytes": 81348,
+      "sha256": "dce571be1cbee25b1f780534f8d5184016436023bedb84e3648539a038d2dbc8"
+    },
+    {
+      "name": "长100X100铝地轨.SLDPRT",
+      "type": "零件",
+      "bytes": 195498,
+      "sha256": "8094b197fd62565bd2a8ab3f0d857c1f2ccc6d92b486f1a7f3472a4ad614924a"
+    },
+    {
+      "name": "顶部斜拉.SLDPRT",
+      "type": "零件",
+      "bytes": 169469,
+      "sha256": "3cde9ad4537bf8752e29e85c6a3a4d0aa4fbcec6838abbba328876f038b7ed4d"
+    },
+    {
+      "name": "顶部斜拉二.SLDPRT",
+      "type": "零件",
+      "bytes": 168518,
+      "sha256": "80ba42a05327e1c143d44b7557a4bcb8f48d36ceb958c49f503f250e4373f6ce"
+    },
+    {
+      "name": "顶部纵梁.SLDPRT",
+      "type": "零件",
+      "bytes": 137029,
+      "sha256": "4e7cb5cd259bcb595aafd691036f9c8f479ce59812709c627a0c182b83d099af"
+    }
+  ],
+  "previews": [],
+  "note": "原始 SolidWorks 文件已建立校验索引。完整真实装配已建立逐实例映射和候选运动绑定；坐标比例和现场库位仍待校准。",
+  "cad_url": "/assets/structure/sample-room.glb",
+  "metadata": {
+    "source": "样板间总装.SLDASM",
+    "bounds_m": [
+      1.4547421526258706,
+      4.507672361336547,
+      5.6051709445655735,
+      17.394844470001665,
+      7.968650832146865,
+      9.157170946326755
+    ],
+    "top_level_components": [
+      {
+        "name": "货架总总装-2",
+        "path": "C:\\Users\\ALIENWARE\\Desktop\\wcswms\\结构\\货架总总装.SLDASM"
+      },
+      {
+        "name": "LG2-200000-1",
+        "path": "C:\\Users\\ALIENWARE\\Desktop\\wcswms\\结构\\LG2-200000.SLDASM"
+      },
+      {
+        "name": "料箱-91",
+        "path": "C:\\Users\\ALIENWARE\\Desktop\\wcswms\\结构\\料箱.SLDPRT"
+      },
+      {
+        "name": "料箱-93",
+        "path": "C:\\Users\\ALIENWARE\\Desktop\\wcswms\\结构\\料箱.SLDPRT"
+      },
+      {
+        "name": "料箱-95",
+        "path": "C:\\Users\\ALIENWARE\\Desktop\\wcswms\\结构\\料箱.SLDPRT"
+      },
+      {
+        "name": "料箱-98",
+        "path": "C:\\Users\\ALIENWARE\\Desktop\\wcswms\\结构\\料箱.SLDPRT"
+      },
+      {
+        "name": "料箱-94",
+        "path": "C:\\Users\\ALIENWARE\\Desktop\\wcswms\\结构\\料箱.SLDPRT"
+      },
+      {
+        "name": "料箱-92",
+        "path": "C:\\Users\\ALIENWARE\\Desktop\\wcswms\\结构\\料箱.SLDPRT"
+      },
+      {
+        "name": "料箱-96",
+        "path": "C:\\Users\\ALIENWARE\\Desktop\\wcswms\\结构\\料箱.SLDPRT"
+      },
+      {
+        "name": "料箱-97",
+        "path": "C:\\Users\\ALIENWARE\\Desktop\\wcswms\\结构\\料箱.SLDPRT"
+      },
+      {
+        "name": "料箱-101",
+        "path": "C:\\Users\\ALIENWARE\\Desktop\\wcswms\\结构\\料箱.SLDPRT"
+      },
+      {
+        "name": "料箱-100",
+        "path": "C:\\Users\\ALIENWARE\\Desktop\\wcswms\\结构\\料箱.SLDPRT"
+      },
+      {
+        "name": "料箱-99",
+        "path": "C:\\Users\\ALIENWARE\\Desktop\\wcswms\\结构\\料箱.SLDPRT"
+      },
+      {
+        "name": "料箱-103",
+        "path": "C:\\Users\\ALIENWARE\\Desktop\\wcswms\\结构\\料箱.SLDPRT"
+      },
+      {
+        "name": "料箱-109",
+        "path": "C:\\Users\\ALIENWARE\\Desktop\\wcswms\\结构\\料箱.SLDPRT"
+      },
+      {
+        "name": "料箱-106",
+        "path": "C:\\Users\\ALIENWARE\\Desktop\\wcswms\\结构\\料箱.SLDPRT"
+      },
+      {
+        "name": "料箱-113",
+        "path": "C:\\Users\\ALIENWARE\\Desktop\\wcswms\\结构\\料箱.SLDPRT"
+      },
+      {
+        "name": "料箱-111",
+        "path": "C:\\Users\\ALIENWARE\\Desktop\\wcswms\\结构\\料箱.SLDPRT"
+      },
+      {
+        "name": "料箱-114",
+        "path": "C:\\Users\\ALIENWARE\\Desktop\\wcswms\\结构\\料箱.SLDPRT"
+      },
+      {
+        "name": "料箱-105",
+        "path": "C:\\Users\\ALIENWARE\\Desktop\\wcswms\\结构\\料箱.SLDPRT"
+      },
+      {
+        "name": "料箱-108",
+        "path": "C:\\Users\\ALIENWARE\\Desktop\\wcswms\\结构\\料箱.SLDPRT"
+      },
+      {
+        "name": "料箱-107",
+        "path": "C:\\Users\\ALIENWARE\\Desktop\\wcswms\\结构\\料箱.SLDPRT"
+      },
+      {
+        "name": "料箱-112",
+        "path": "C:\\Users\\ALIENWARE\\Desktop\\wcswms\\结构\\料箱.SLDPRT"
+      },
+      {
+        "name": "料箱-102",
+        "path": "C:\\Users\\ALIENWARE\\Desktop\\wcswms\\结构\\料箱.SLDPRT"
+      },
+      {
+        "name": "料箱-104",
+        "path": "C:\\Users\\ALIENWARE\\Desktop\\wcswms\\结构\\料箱.SLDPRT"
+      },
+      {
+        "name": "料箱-110",
+        "path": "C:\\Users\\ALIENWARE\\Desktop\\wcswms\\结构\\料箱.SLDPRT"
+      },
+      {
+        "name": "料箱-117",
+        "path": "C:\\Users\\ALIENWARE\\Desktop\\wcswms\\结构\\料箱.SLDPRT"
+      },
+      {
+        "name": "料箱-123",
+        "path": "C:\\Users\\ALIENWARE\\Desktop\\wcswms\\结构\\料箱.SLDPRT"
+      },
+      {
+        "name": "料箱-125",
+        "path": "C:\\Users\\ALIENWARE\\Desktop\\wcswms\\结构\\料箱.SLDPRT"
+      },
+      {
+        "name": "料箱-118",
+        "path": "C:\\Users\\ALIENWARE\\Desktop\\wcswms\\结构\\料箱.SLDPRT"
+      },
+      {
+        "name": "料箱-121",
+        "path": "C:\\Users\\ALIENWARE\\Desktop\\wcswms\\结构\\料箱.SLDPRT"
+      },
+      {
+        "name": "料箱-119",
+        "path": "C:\\Users\\ALIENWARE\\Desktop\\wcswms\\结构\\料箱.SLDPRT"
+      },
+      {
+        "name": "料箱-122",
+        "path": "C:\\Users\\ALIENWARE\\Desktop\\wcswms\\结构\\料箱.SLDPRT"
+      },
+      {
+        "name": "料箱-116",
+        "path": "C:\\Users\\ALIENWARE\\Desktop\\wcswms\\结构\\料箱.SLDPRT"
+      },
+      {
+        "name": "料箱-120",
+        "path": "C:\\Users\\ALIENWARE\\Desktop\\wcswms\\结构\\料箱.SLDPRT"
+      },
+      {
+        "name": "料箱-124",
+        "path": "C:\\Users\\ALIENWARE\\Desktop\\wcswms\\结构\\料箱.SLDPRT"
+      },
+      {
+        "name": "料箱-115",
+        "path": "C:\\Users\\ALIENWARE\\Desktop\\wcswms\\结构\\料箱.SLDPRT"
+      },
+      {
+        "name": "料箱-127",
+        "path": "C:\\Users\\ALIENWARE\\Desktop\\wcswms\\结构\\料箱.SLDPRT"
+      },
+      {
+        "name": "料箱-129",
+        "path": "C:\\Users\\ALIENWARE\\Desktop\\wcswms\\结构\\料箱.SLDPRT"
+      },
+      {
+        "name": "料箱-136",
+        "path": "C:\\Users\\ALIENWARE\\Desktop\\wcswms\\结构\\料箱.SLDPRT"
+      },
+      {
+        "name": "料箱-137",
+        "path": "C:\\Users\\ALIENWARE\\Desktop\\wcswms\\结构\\料箱.SLDPRT"
+      },
+      {
+        "name": "料箱-140",
+        "path": "C:\\Users\\ALIENWARE\\Desktop\\wcswms\\结构\\料箱.SLDPRT"
+      },
+      {
+        "name": "料箱-133",
+        "path": "C:\\Users\\ALIENWARE\\Desktop\\wcswms\\结构\\料箱.SLDPRT"
+      },
+      {
+        "name": "料箱-128",
+        "path": "C:\\Users\\ALIENWARE\\Desktop\\wcswms\\结构\\料箱.SLDPRT"
+      },
+      {
+        "name": "料箱-130",
+        "path": "C:\\Users\\ALIENWARE\\Desktop\\wcswms\\结构\\料箱.SLDPRT"
+      },
+      {
+        "name": "料箱-126",
+        "path": "C:\\Users\\ALIENWARE\\Desktop\\wcswms\\结构\\料箱.SLDPRT"
+      },
+      {
+        "name": "料箱-132",
+        "path": "C:\\Users\\ALIENWARE\\Desktop\\wcswms\\结构\\料箱.SLDPRT"
+      },
+      {
+        "name": "料箱-135",
+        "path": "C:\\Users\\ALIENWARE\\Desktop\\wcswms\\结构\\料箱.SLDPRT"
+      },
+      {
+        "name": "料箱-134",
+        "path": "C:\\Users\\ALIENWARE\\Desktop\\wcswms\\结构\\料箱.SLDPRT"
+      },
+      {
+        "name": "料箱-131",
+        "path": "C:\\Users\\ALIENWARE\\Desktop\\wcswms\\结构\\料箱.SLDPRT"
+      },
+      {
+        "name": "料箱-138",
+        "path": "C:\\Users\\ALIENWARE\\Desktop\\wcswms\\结构\\料箱.SLDPRT"
+      },
+      {
+        "name": "料箱-139",
+        "path": "C:\\Users\\ALIENWARE\\Desktop\\wcswms\\结构\\料箱.SLDPRT"
+      },
+      {
+        "name": "料箱-148",
+        "path": "C:\\Users\\ALIENWARE\\Desktop\\wcswms\\结构\\料箱.SLDPRT"
+      },
+      {
+        "name": "料箱-150",
+        "path": "C:\\Users\\ALIENWARE\\Desktop\\wcswms\\结构\\料箱.SLDPRT"
+      },
+      {
+        "name": "料箱-143",
+        "path": "C:\\Users\\ALIENWARE\\Desktop\\wcswms\\结构\\料箱.SLDPRT"
+      },
+      {
+        "name": "料箱-141",
+        "path": "C:\\Users\\ALIENWARE\\Desktop\\wcswms\\结构\\料箱.SLDPRT"
+      },
+      {
+        "name": "料箱-155",
+        "path": "C:\\Users\\ALIENWARE\\Desktop\\wcswms\\结构\\料箱.SLDPRT"
+      },
+      {
+        "name": "料箱-142",
+        "path": "C:\\Users\\ALIENWARE\\Desktop\\wcswms\\结构\\料箱.SLDPRT"
+      },
+      {
+        "name": "料箱-147",
+        "path": "C:\\Users\\ALIENWARE\\Desktop\\wcswms\\结构\\料箱.SLDPRT"
+      },
+      {
+        "name": "料箱-154",
+        "path": "C:\\Users\\ALIENWARE\\Desktop\\wcswms\\结构\\料箱.SLDPRT"
+      },
+      {
+        "name": "料箱-144",
+        "path": "C:\\Users\\ALIENWARE\\Desktop\\wcswms\\结构\\料箱.SLDPRT"
+      },
+      {
+        "name": "料箱-146",
+        "path": "C:\\Users\\ALIENWARE\\Desktop\\wcswms\\结构\\料箱.SLDPRT"
+      },
+      {
+        "name": "料箱-145",
+        "path": "C:\\Users\\ALIENWARE\\Desktop\\wcswms\\结构\\料箱.SLDPRT"
+      },
+      {
+        "name": "料箱-149",
+        "path": "C:\\Users\\ALIENWARE\\Desktop\\wcswms\\结构\\料箱.SLDPRT"
+      },
+      {
+        "name": "料箱-151",
+        "path": "C:\\Users\\ALIENWARE\\Desktop\\wcswms\\结构\\料箱.SLDPRT"
+      },
+      {
+        "name": "料箱-152",
+        "path": "C:\\Users\\ALIENWARE\\Desktop\\wcswms\\结构\\料箱.SLDPRT"
+      },
+      {
+        "name": "料箱-153",
+        "path": "C:\\Users\\ALIENWARE\\Desktop\\wcswms\\结构\\料箱.SLDPRT"
+      },
+      {
+        "name": "料箱-156",
+        "path": "C:\\Users\\ALIENWARE\\Desktop\\wcswms\\结构\\料箱.SLDPRT"
+      },
+      {
+        "name": "料箱-158",
+        "path": "C:\\Users\\ALIENWARE\\Desktop\\wcswms\\结构\\料箱.SLDPRT"
+      },
+      {
+        "name": "料箱-161",
+        "path": "C:\\Users\\ALIENWARE\\Desktop\\wcswms\\结构\\料箱.SLDPRT"
+      },
+      {
+        "name": "料箱-159",
+        "path": "C:\\Users\\ALIENWARE\\Desktop\\wcswms\\结构\\料箱.SLDPRT"
+      },
+      {
+        "name": "料箱-162",
+        "path": "C:\\Users\\ALIENWARE\\Desktop\\wcswms\\结构\\料箱.SLDPRT"
+      },
+      {
+        "name": "料箱-168",
+        "path": "C:\\Users\\ALIENWARE\\Desktop\\wcswms\\结构\\料箱.SLDPRT"
+      },
+      {
+        "name": "料箱-164",
+        "path": "C:\\Users\\ALIENWARE\\Desktop\\wcswms\\结构\\料箱.SLDPRT"
+      },
+      {
+        "name": "料箱-160",
+        "path": "C:\\Users\\ALIENWARE\\Desktop\\wcswms\\结构\\料箱.SLDPRT"
+      },
+      {
+        "name": "料箱-165",
+        "path": "C:\\Users\\ALIENWARE\\Desktop\\wcswms\\结构\\料箱.SLDPRT"
+      },
+      {
+        "name": "料箱-157",
+        "path": "C:\\Users\\ALIENWARE\\Desktop\\wcswms\\结构\\料箱.SLDPRT"
+      },
+      {
+        "name": "料箱-163",
+        "path": "C:\\Users\\ALIENWARE\\Desktop\\wcswms\\结构\\料箱.SLDPRT"
+      },
+      {
+        "name": "料箱-171",
+        "path": "C:\\Users\\ALIENWARE\\Desktop\\wcswms\\结构\\料箱.SLDPRT"
+      },
+      {
+        "name": "料箱-166",
+        "path": "C:\\Users\\ALIENWARE\\Desktop\\wcswms\\结构\\料箱.SLDPRT"
+      },
+      {
+        "name": "料箱-169",
+        "path": "C:\\Users\\ALIENWARE\\Desktop\\wcswms\\结构\\料箱.SLDPRT"
+      },
+      {
+        "name": "料箱-167",
+        "path": "C:\\Users\\ALIENWARE\\Desktop\\wcswms\\结构\\料箱.SLDPRT"
+      },
+      {
+        "name": "料箱-170",
+        "path": "C:\\Users\\ALIENWARE\\Desktop\\wcswms\\结构\\料箱.SLDPRT"
+      },
+      {
+        "name": "料箱-172",
+        "path": "C:\\Users\\ALIENWARE\\Desktop\\wcswms\\结构\\料箱.SLDPRT"
+      },
+      {
+        "name": "料箱-175",
+        "path": "C:\\Users\\ALIENWARE\\Desktop\\wcswms\\结构\\料箱.SLDPRT"
+      },
+      {
+        "name": "料箱-176",
+        "path": "C:\\Users\\ALIENWARE\\Desktop\\wcswms\\结构\\料箱.SLDPRT"
+      },
+      {
+        "name": "料箱-177",
+        "path": "C:\\Users\\ALIENWARE\\Desktop\\wcswms\\结构\\料箱.SLDPRT"
+      },
+      {
+        "name": "料箱-178",
+        "path": "C:\\Users\\ALIENWARE\\Desktop\\wcswms\\结构\\料箱.SLDPRT"
+      },
+      {
+        "name": "料箱-173",
+        "path": "C:\\Users\\ALIENWARE\\Desktop\\wcswms\\结构\\料箱.SLDPRT"
+      },
+      {
+        "name": "料箱-174",
+        "path": "C:\\Users\\ALIENWARE\\Desktop\\wcswms\\结构\\料箱.SLDPRT"
+      },
+      {
+        "name": "料箱-179",
+        "path": "C:\\Users\\ALIENWARE\\Desktop\\wcswms\\结构\\料箱.SLDPRT"
+      },
+      {
+        "name": "料箱-180",
+        "path": "C:\\Users\\ALIENWARE\\Desktop\\wcswms\\结构\\料箱.SLDPRT"
+      }
+    ],
+    "open_error": 0,
+    "open_warning": 128,
+    "note": "SolidWorks GetBox approximate assembly bounds; not calibrated warehouse coordinates."
+  },
+  "twin_mapping_url": "/assets/structure/twin-map.json",
+  "instance_mapping_url": "/assets/structure/instance-map.json",
+  "assembly_mapping_url": "/assets/structure/assembly-map.json",
+  "mesh_report": {
+    "source": "样板间总装.SLDASM",
+    "exported_instances": 2704,
+    "extracted_instances": 2704,
+    "omitted_hardware_instances": 0,
+    "missing_components": [
+      "LG2-200000-1/LG2-210000-1/LG-214000BJ-1/100X100铝地轨-1"
+    ],
+    "mesh_count": 315,
+    "triangle_instances": 11353422,
+    "glb_bytes": 65791528,
+    "units": "metres",
+    "mapping_url": "/assets/structure/twin-map.json",
+    "note": "全部已提取实例均导出，含紧固件/轴承/链条；面网格保持原尺寸与装配变换。运动组接收实时状态，映射尚未现场校准。"
+  }
+}

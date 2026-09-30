@@ -1,0 +1,2798 @@
+{
+  "version": 1,
+  "calibrated": false,
+  "units": "metres",
+  "source_assembly": "样板间总装.SLDASM",
+  "source_scene_sha256": "28099db880c7cc1a2af6534615c5f965015ae5e7190c51ccabb29ddef04af829",
+  "model_url": "/assets/structure/sample-room.glb",
+  "instances_url": "/assets/structure/instance-map.json",
+  "note": "原始CAD面网格完整映射。运动分组由装配层级与几何推断，库位与轴零点尚未现场校准；不得直接作为真实PLC定位参数。",
+  "coverage": {
+    "source_files": 347,
+    "part_files": 315,
+    "assembly_instances": 90,
+    "sensor_candidates": 20,
+    "rendered_instances": 2704,
+    "extracted_instances": 2704,
+    "missing_references": 1,
+    "hardware_instances": 1322,
+    "group_counts": {
+      "static": 1155,
+      "design_load": 102,
+      "travel": 703,
+      "lift": 619,
+      "fork_mid": 42,
+      "fork_tip": 83
+    },
+    "observed_load_instances": 102,
+    "observed_location_count": 96,
+    "duplicate_design_load_instances": 6,
+    "candidate_locations": 180,
+    "operational_demo_locations": 48
+  },
+  "coordinate_mapping": {
+    "kind": "UNVALIDATED_DEMO_AFFINE",
+    "source": "state.device.x/y/z",
+    "x": {
+      "scale": 0.39166666666666666,
+      "offset_m": 3.1867419999999997
+    },
+    "y": {
+      "scale": 0.3409090909090909,
+      "offset_m": 5.123308363636363
+    },
+    "z": {
+      "scale": 0.5913043478260871,
+      "offset_m": 7.381171
+    },
+    "explanation": "保留现有48演示库位任务，将演示坐标按等比例显示至CAD前6列4层。比例转换只用于可视化，不改写PLC坐标。"
+  },
+  "motion_reference_m": {
+    "travel_x": 2.984742153,
+    "lift_y": 6.1026,
+    "aisle_z": 7.381170946,
+    "fork_mid_extension": 0.34,
+    "fork_tip_extension": 0.68
+  },
+  "sensor_candidates": [
+    {
+      "instance_id": "cad-ae1d5d8a8f181440",
+      "source_path": "LG2-200000-1/TL_Q5MC1-5",
+      "source_file": "TL_Q5MC1.SLDPRT",
+      "motion_group": "travel",
+      "io_address": null,
+      "calibrated": false
+    },
+    {
+      "instance_id": "cad-fcb035a788e0a952",
+      "source_path": "LG2-200000-1/LG2-210000-1/D4MC_5020-7",
+      "source_file": "D4MC_5020.SLDPRT",
+      "motion_group": "travel",
+      "io_address": null,
+      "calibrated": false
+    },
+    {
+      "instance_id": "cad-b5b4928d9313200d",
+      "source_path": "LG2-200000-1/LG2-210000-1/D4MC_5020-11",
+      "source_file": "D4MC_5020.SLDPRT",
+      "motion_group": "travel",
+      "io_address": null,
+      "calibrated": false
+    },
+    {
+      "instance_id": "cad-332a66aa6bb0c39a",
+      "source_path": "LG2-200000-1/LG2-210000-1/D4MC_5020-10",
+      "source_file": "D4MC_5020.SLDPRT",
+      "motion_group": "travel",
+      "io_address": null,
+      "calibrated": false
+    },
+    {
+      "instance_id": "cad-f4933e3eae5fccc0",
+      "source_path": "LG2-200000-1/LED报警灯-1",
+      "source_file": "LED报警灯.SLDPRT",
+      "motion_group": "travel",
+      "io_address": null,
+      "calibrated": false
+    },
+    {
+      "instance_id": "cad-58094cf1508eb619",
+      "source_path": "LG2-200000-1/富士急停按钮AR22V0R-1",
+      "source_file": "富士急停按钮AR22V0R.SLDPRT",
+      "motion_group": "travel",
+      "io_address": null,
+      "calibrated": false
+    },
+    {
+      "instance_id": "cad-d2303c08f3fa2f46",
+      "source_path": "LG2-200000-1/TL_Q5MC1-1",
+      "source_file": "TL_Q5MC1.SLDPRT",
+      "motion_group": "travel",
+      "io_address": null,
+      "calibrated": false
+    },
+    {
+      "instance_id": "cad-09ecdc3f696687d0",
+      "source_path": "LG2-200000-1/触摸屏  5-MT6070IH-2",
+      "source_file": "触摸屏  5-MT6070IH.SLDPRT",
+      "motion_group": "travel",
+      "io_address": null,
+      "calibrated": false
+    },
+    {
+      "instance_id": "cad-271a3dfa4020472a",
+      "source_path": "LG2-200000-1/TL_Q5MC1-4",
+      "source_file": "TL_Q5MC1.SLDPRT",
+      "motion_group": "travel",
+      "io_address": null,
+      "calibrated": false
+    },
+    {
+      "instance_id": "cad-de19b1e7d1103f69",
+      "source_path": "LG2-200000-1/VBP31-F38-R55-N38-2",
+      "source_file": "VBP31-F38-R55-N38.SLDPRT",
+      "motion_group": "travel",
+      "io_address": null,
+      "calibrated": false
+    },
+    {
+      "instance_id": "cad-30580981496f846b",
+      "source_path": "LG2-200000-1/3DCAD_AMS300-2",
+      "source_file": "3DCAD_AMS300.SLDPRT",
+      "motion_group": "travel",
+      "io_address": null,
+      "calibrated": false
+    },
+    {
+      "instance_id": "cad-5404d2112fd4cff2",
+      "source_path": "LG2-200000-1/LGZY-240000-1/LGZY-260000-1/E3Z_T61A_D-3",
+      "source_file": "E3Z_T61A_D.SLDPRT",
+      "motion_group": "lift",
+      "io_address": null,
+      "calibrated": false
+    },
+    {
+      "instance_id": "cad-4b47165e6650deb3",
+      "source_path": "LG2-200000-1/LGZY-240000-1/LGZY-260000-1/E3Z_T61A_D-2",
+      "source_file": "E3Z_T61A_D.SLDPRT",
+      "motion_group": "lift",
+      "io_address": null,
+      "calibrated": false
+    },
+    {
+      "instance_id": "cad-b9a9290502aef9f2",
+      "source_path": "LG2-200000-1/LGZY-240000-1/LGZY-260000-1/E3Z_T61A_D-1",
+      "source_file": "E3Z_T61A_D.SLDPRT",
+      "motion_group": "lift",
+      "io_address": null,
+      "calibrated": false
+    },
+    {
+      "instance_id": "cad-70e2e8a10df8c87f",
+      "source_path": "LG2-200000-1/LGZY-240000-1/LGZY-260000-1/接近开关..-2",
+      "source_file": "接近开关...SLDPRT",
+      "motion_group": "lift",
+      "io_address": null,
+      "calibrated": false
+    },
+    {
+      "instance_id": "cad-45821faaeeb1ff60",
+      "source_path": "LG2-200000-1/LGZY-240000-1/LGZY-260000-1/接近开关..-1",
+      "source_file": "接近开关...SLDPRT",
+      "motion_group": "lift",
+      "io_address": null,
+      "calibrated": false
+    },
+    {
+      "instance_id": "cad-e9dfc39d1d1d5e2f",
+      "source_path": "LG2-200000-1/LGZY-240000-1/LGZY-260000-1/接近开关..-3",
+      "source_file": "接近开关...SLDPRT",
+      "motion_group": "lift",
+      "io_address": null,
+      "calibrated": false
+    },
+    {
+      "instance_id": "cad-32dba64c93755661",
+      "source_path": "LG2-200000-1/LGZY-240000-1/LGZY-260000-1/E3Z_D62..-3",
+      "source_file": "E3Z_D62...SLDPRT",
+      "motion_group": "lift",
+      "io_address": null,
+      "calibrated": false
+    },
+    {
+      "instance_id": "cad-aef3e1f483b2afd3",
+      "source_path": "LG2-200000-1/LGZY-240000-1/LGZY-260000-1/E3Z_D62..-4",
+      "source_file": "E3Z_D62...SLDPRT",
+      "motion_group": "lift",
+      "io_address": null,
+      "calibrated": false
+    },
+    {
+      "instance_id": "cad-7d2f081463c3c884",
+      "source_path": "LG2-200000-1/LGZY-240000-1/LG2-245000-1/欧姆龙 TL-W5MC1-1",
+      "source_file": "欧姆龙 TL-W5MC1.SLDPRT",
+      "motion_group": "lift",
+      "io_address": null,
+      "calibrated": false
+    }
+  ],
+  "assembly_map_url": "/assets/structure/assembly-map.json",
+  "motion_groups": [
+    {
+      "id": "static",
+      "label": "货架、地轨",
+      "axes": [],
+      "evidence": "货架总总装装配路径",
+      "confidence": "assembly"
+    },
+    {
+      "id": "travel",
+      "label": "行走机体",
+      "axes": [
+        "X"
+      ],
+      "evidence": "LG2-200000剩余节点",
+      "confidence": "inferred"
+    },
+    {
+      "id": "lift",
+      "label": "升降载货台与固定叉座",
+      "axes": [
+        "X",
+        "Y"
+      ],
+      "evidence": "LGZY-240000装配",
+      "confidence": "inferred"
+    },
+    {
+      "id": "fork_mid",
+      "label": "中级伸缩叉",
+      "axes": [
+        "X",
+        "Y",
+        "Z/2"
+      ],
+      "evidence": "LGZY-263000装配；设计伸出0.34m",
+      "confidence": "inferred"
+    },
+    {
+      "id": "fork_tip",
+      "label": "末级伸缩叉",
+      "axes": [
+        "X",
+        "Y",
+        "Z"
+      ],
+      "evidence": "LGZY-264000装配；设计伸出0.68m",
+      "confidence": "inferred"
+    },
+    {
+      "id": "design_load",
+      "label": "设计料箱",
+      "axes": [],
+      "evidence": "料箱.SLDPRT的102个装配实例",
+      "confidence": "assembly"
+    }
+  ],
+  "overlapping_design_loads": [
+    {
+      "position_m": [
+        10.236742,
+        5.259672,
+        8.061171
+      ],
+      "source_paths": [
+        "货架总总装-2/料箱-2",
+        "料箱-91"
+      ]
+    },
+    {
+      "position_m": [
+        10.236742,
+        7.134672,
+        8.061171
+      ],
+      "source_paths": [
+        "货架总总装-2/料箱-7",
+        "料箱-96"
+      ]
+    },
+    {
+      "position_m": [
+        10.236742,
+        5.634672,
+        8.061171
+      ],
+      "source_paths": [
+        "货架总总装-2/料箱-3",
+        "料箱-92"
+      ]
+    },
+    {
+      "position_m": [
+        10.236742,
+        6.759672,
+        8.061171
+      ],
+      "source_paths": [
+        "货架总总装-2/料箱-6",
+        "料箱-95"
+      ]
+    },
+    {
+      "position_m": [
+        10.236742,
+        6.009672,
+        8.061171
+      ],
+      "source_paths": [
+        "货架总总装-2/料箱-4",
+        "料箱-93"
+      ]
+    },
+    {
+      "position_m": [
+        10.236742,
+        6.384672,
+        8.061171
+      ],
+      "source_paths": [
+        "货架总总装-2/料箱-5",
+        "料箱-94"
+      ]
+    }
+  ],
+  "candidate_axes_m": {
+    "x": [
+      3.656742,
+      4.126742,
+      4.596742,
+      5.066742,
+      5.536742,
+      6.006742,
+      6.476742,
+      6.946742,
+      7.416742,
+      7.886742,
+      8.356742,
+      8.826742,
+      9.296742,
+      9.766742,
+      10.236742
+    ],
+    "y": [
+      5.259672,
+      5.634672,
+      6.009672,
+      6.384672,
+      6.759672,
+      7.134672
+    ],
+    "z": [
+      6.701171,
+      8.061171
+    ]
+  },
+  "candidate_locations": [
+    {
+      "id": "L-01-01",
+      "position_m": [
+        3.656742,
+        5.259672,
+        6.701171
+      ],
+      "evidence": "GRID_INTERPOLATION",
+      "source_path": null,
+      "source_paths": [],
+      "approved": false
+    },
+    {
+      "id": "L-01-02",
+      "position_m": [
+        3.656742,
+        5.634672,
+        6.701171
+      ],
+      "evidence": "GRID_INTERPOLATION",
+      "source_path": null,
+      "source_paths": [],
+      "approved": false
+    },
+    {
+      "id": "L-01-03",
+      "position_m": [
+        3.656742,
+        6.009672,
+        6.701171
+      ],
+      "evidence": "GRID_INTERPOLATION",
+      "source_path": null,
+      "source_paths": [],
+      "approved": false
+    },
+    {
+      "id": "L-01-04",
+      "position_m": [
+        3.656742,
+        6.384672,
+        6.701171
+      ],
+      "evidence": "GRID_INTERPOLATION",
+      "source_path": null,
+      "source_paths": [],
+      "approved": false
+    },
+    {
+      "id": "L-01-05",
+      "position_m": [
+        3.656742,
+        6.759672,
+        6.701171
+      ],
+      "evidence": "GRID_INTERPOLATION",
+      "source_path": null,
+      "source_paths": [],
+      "approved": false
+    },
+    {
+      "id": "L-01-06",
+      "position_m": [
+        3.656742,
+        7.134672,
+        6.701171
+      ],
+      "evidence": "GRID_INTERPOLATION",
+      "source_path": null,
+      "source_paths": [],
+      "approved": false
+    },
+    {
+      "id": "L-02-01",
+      "position_m": [
+        4.126742,
+        5.259672,
+        6.701171
+      ],
+      "evidence": "GRID_INTERPOLATION",
+      "source_path": null,
+      "source_paths": [],
+      "approved": false
+    },
+    {
+      "id": "L-02-02",
+      "position_m": [
+        4.126742,
+        5.634672,
+        6.701171
+      ],
+      "evidence": "GRID_INTERPOLATION",
+      "source_path": null,
+      "source_paths": [],
+      "approved": false
+    },
+    {
+      "id": "L-02-03",
+      "position_m": [
+        4.126742,
+        6.009672,
+        6.701171
+      ],
+      "evidence": "GRID_INTERPOLATION",
+      "source_path": null,
+      "source_paths": [],
+      "approved": false
+    },
+    {
+      "id": "L-02-04",
+      "position_m": [
+        4.126742,
+        6.384672,
+        6.701171
+      ],
+      "evidence": "GRID_INTERPOLATION",
+      "source_path": null,
+      "source_paths": [],
+      "approved": false
+    },
+    {
+      "id": "L-02-05",
+      "position_m": [
+        4.126742,
+        6.759672,
+        6.701171
+      ],
+      "evidence": "GRID_INTERPOLATION",
+      "source_path": null,
+      "source_paths": [],
+      "approved": false
+    },
+    {
+      "id": "L-02-06",
+      "position_m": [
+        4.126742,
+        7.134672,
+        6.701171
+      ],
+      "evidence": "GRID_INTERPOLATION",
+      "source_path": null,
+      "source_paths": [],
+      "approved": false
+    },
+    {
+      "id": "L-03-01",
+      "position_m": [
+        4.596742,
+        5.259672,
+        6.701171
+      ],
+      "evidence": "GRID_INTERPOLATION",
+      "source_path": null,
+      "source_paths": [],
+      "approved": false
+    },
+    {
+      "id": "L-03-02",
+      "position_m": [
+        4.596742,
+        5.634672,
+        6.701171
+      ],
+      "evidence": "GRID_INTERPOLATION",
+      "source_path": null,
+      "source_paths": [],
+      "approved": false
+    },
+    {
+      "id": "L-03-03",
+      "position_m": [
+        4.596742,
+        6.009672,
+        6.701171
+      ],
+      "evidence": "GRID_INTERPOLATION",
+      "source_path": null,
+      "source_paths": [],
+      "approved": false
+    },
+    {
+      "id": "L-03-04",
+      "position_m": [
+        4.596742,
+        6.384672,
+        6.701171
+      ],
+      "evidence": "GRID_INTERPOLATION",
+      "source_path": null,
+      "source_paths": [],
+      "approved": false
+    },
+    {
+      "id": "L-03-05",
+      "position_m": [
+        4.596742,
+        6.759672,
+        6.701171
+      ],
+      "evidence": "GRID_INTERPOLATION",
+      "source_path": null,
+      "source_paths": [],
+      "approved": false
+    },
+    {
+      "id": "L-03-06",
+      "position_m": [
+        4.596742,
+        7.134672,
+        6.701171
+      ],
+      "evidence": "GRID_INTERPOLATION",
+      "source_path": null,
+      "source_paths": [],
+      "approved": false
+    },
+    {
+      "id": "L-04-01",
+      "position_m": [
+        5.066742,
+        5.259672,
+        6.701171
+      ],
+      "evidence": "GRID_INTERPOLATION",
+      "source_path": null,
+      "source_paths": [],
+      "approved": false
+    },
+    {
+      "id": "L-04-02",
+      "position_m": [
+        5.066742,
+        5.634672,
+        6.701171
+      ],
+      "evidence": "GRID_INTERPOLATION",
+      "source_path": null,
+      "source_paths": [],
+      "approved": false
+    },
+    {
+      "id": "L-04-03",
+      "position_m": [
+        5.066742,
+        6.009672,
+        6.701171
+      ],
+      "evidence": "GRID_INTERPOLATION",
+      "source_path": null,
+      "source_paths": [],
+      "approved": false
+    },
+    {
+      "id": "L-04-04",
+      "position_m": [
+        5.066742,
+        6.384672,
+        6.701171
+      ],
+      "evidence": "GRID_INTERPOLATION",
+      "source_path": null,
+      "source_paths": [],
+      "approved": false
+    },
+    {
+      "id": "L-04-05",
+      "position_m": [
+        5.066742,
+        6.759672,
+        6.701171
+      ],
+      "evidence": "GRID_INTERPOLATION",
+      "source_path": null,
+      "source_paths": [],
+      "approved": false
+    },
+    {
+      "id": "L-04-06",
+      "position_m": [
+        5.066742,
+        7.134672,
+        6.701171
+      ],
+      "evidence": "GRID_INTERPOLATION",
+      "source_path": null,
+      "source_paths": [],
+      "approved": false
+    },
+    {
+      "id": "L-05-01",
+      "position_m": [
+        5.536742,
+        5.259672,
+        6.701171
+      ],
+      "evidence": "GRID_INTERPOLATION",
+      "source_path": null,
+      "source_paths": [],
+      "approved": false
+    },
+    {
+      "id": "L-05-02",
+      "position_m": [
+        5.536742,
+        5.634672,
+        6.701171
+      ],
+      "evidence": "GRID_INTERPOLATION",
+      "source_path": null,
+      "source_paths": [],
+      "approved": false
+    },
+    {
+      "id": "L-05-03",
+      "position_m": [
+        5.536742,
+        6.009672,
+        6.701171
+      ],
+      "evidence": "GRID_INTERPOLATION",
+      "source_path": null,
+      "source_paths": [],
+      "approved": false
+    },
+    {
+      "id": "L-05-04",
+      "position_m": [
+        5.536742,
+        6.384672,
+        6.701171
+      ],
+      "evidence": "GRID_INTERPOLATION",
+      "source_path": null,
+      "source_paths": [],
+      "approved": false
+    },
+    {
+      "id": "L-05-05",
+      "position_m": [
+        5.536742,
+        6.759672,
+        6.701171
+      ],
+      "evidence": "GRID_INTERPOLATION",
+      "source_path": null,
+      "source_paths": [],
+      "approved": false
+    },
+    {
+      "id": "L-05-06",
+      "position_m": [
+        5.536742,
+        7.134672,
+        6.701171
+      ],
+      "evidence": "GRID_INTERPOLATION",
+      "source_path": null,
+      "source_paths": [],
+      "approved": false
+    },
+    {
+      "id": "L-06-01",
+      "position_m": [
+        6.006742,
+        5.259672,
+        6.701171
+      ],
+      "evidence": "GRID_INTERPOLATION",
+      "source_path": null,
+      "source_paths": [],
+      "approved": false
+    },
+    {
+      "id": "L-06-02",
+      "position_m": [
+        6.006742,
+        5.634672,
+        6.701171
+      ],
+      "evidence": "GRID_INTERPOLATION",
+      "source_path": null,
+      "source_paths": [],
+      "approved": false
+    },
+    {
+      "id": "L-06-03",
+      "position_m": [
+        6.006742,
+        6.009672,
+        6.701171
+      ],
+      "evidence": "GRID_INTERPOLATION",
+      "source_path": null,
+      "source_paths": [],
+      "approved": false
+    },
+    {
+      "id": "L-06-04",
+      "position_m": [
+        6.006742,
+        6.384672,
+        6.701171
+      ],
+      "evidence": "GRID_INTERPOLATION",
+      "source_path": null,
+      "source_paths": [],
+      "approved": false
+    },
+    {
+      "id": "L-06-05",
+      "position_m": [
+        6.006742,
+        6.759672,
+        6.701171
+      ],
+      "evidence": "GRID_INTERPOLATION",
+      "source_path": null,
+      "source_paths": [],
+      "approved": false
+    },
+    {
+      "id": "L-06-06",
+      "position_m": [
+        6.006742,
+        7.134672,
+        6.701171
+      ],
+      "evidence": "GRID_INTERPOLATION",
+      "source_path": null,
+      "source_paths": [],
+      "approved": false
+    },
+    {
+      "id": "L-07-01",
+      "position_m": [
+        6.476742,
+        5.259672,
+        6.701171
+      ],
+      "evidence": "GRID_INTERPOLATION",
+      "source_path": null,
+      "source_paths": [],
+      "approved": false
+    },
+    {
+      "id": "L-07-02",
+      "position_m": [
+        6.476742,
+        5.634672,
+        6.701171
+      ],
+      "evidence": "GRID_INTERPOLATION",
+      "source_path": null,
+      "source_paths": [],
+      "approved": false
+    },
+    {
+      "id": "L-07-03",
+      "position_m": [
+        6.476742,
+        6.009672,
+        6.701171
+      ],
+      "evidence": "GRID_INTERPOLATION",
+      "source_path": null,
+      "source_paths": [],
+      "approved": false
+    },
+    {
+      "id": "L-07-04",
+      "position_m": [
+        6.476742,
+        6.384672,
+        6.701171
+      ],
+      "evidence": "GRID_INTERPOLATION",
+      "source_path": null,
+      "source_paths": [],
+      "approved": false
+    },
+    {
+      "id": "L-07-05",
+      "position_m": [
+        6.476742,
+        6.759672,
+        6.701171
+      ],
+      "evidence": "GRID_INTERPOLATION",
+      "source_path": null,
+      "source_paths": [],
+      "approved": false
+    },
+    {
+      "id": "L-07-06",
+      "position_m": [
+        6.476742,
+        7.134672,
+        6.701171
+      ],
+      "evidence": "GRID_INTERPOLATION",
+      "source_path": null,
+      "source_paths": [],
+      "approved": false
+    },
+    {
+      "id": "L-08-01",
+      "position_m": [
+        6.946742,
+        5.259672,
+        6.701171
+      ],
+      "evidence": "GRID_INTERPOLATION",
+      "source_path": null,
+      "source_paths": [],
+      "approved": false
+    },
+    {
+      "id": "L-08-02",
+      "position_m": [
+        6.946742,
+        5.634672,
+        6.701171
+      ],
+      "evidence": "GRID_INTERPOLATION",
+      "source_path": null,
+      "source_paths": [],
+      "approved": false
+    },
+    {
+      "id": "L-08-03",
+      "position_m": [
+        6.946742,
+        6.009672,
+        6.701171
+      ],
+      "evidence": "GRID_INTERPOLATION",
+      "source_path": null,
+      "source_paths": [],
+      "approved": false
+    },
+    {
+      "id": "L-08-04",
+      "position_m": [
+        6.946742,
+        6.384672,
+        6.701171
+      ],
+      "evidence": "GRID_INTERPOLATION",
+      "source_path": null,
+      "source_paths": [],
+      "approved": false
+    },
+    {
+      "id": "L-08-05",
+      "position_m": [
+        6.946742,
+        6.759672,
+        6.701171
+      ],
+      "evidence": "GRID_INTERPOLATION",
+      "source_path": null,
+      "source_paths": [],
+      "approved": false
+    },
+    {
+      "id": "L-08-06",
+      "position_m": [
+        6.946742,
+        7.134672,
+        6.701171
+      ],
+      "evidence": "GRID_INTERPOLATION",
+      "source_path": null,
+      "source_paths": [],
+      "approved": false
+    },
+    {
+      "id": "L-09-01",
+      "position_m": [
+        7.416742,
+        5.259672,
+        6.701171
+      ],
+      "evidence": "GRID_INTERPOLATION",
+      "source_path": null,
+      "source_paths": [],
+      "approved": false
+    },
+    {
+      "id": "L-09-02",
+      "position_m": [
+        7.416742,
+        5.634672,
+        6.701171
+      ],
+      "evidence": "GRID_INTERPOLATION",
+      "source_path": null,
+      "source_paths": [],
+      "approved": false
+    },
+    {
+      "id": "L-09-03",
+      "position_m": [
+        7.416742,
+        6.009672,
+        6.701171
+      ],
+      "evidence": "GRID_INTERPOLATION",
+      "source_path": null,
+      "source_paths": [],
+      "approved": false
+    },
+    {
+      "id": "L-09-04",
+      "position_m": [
+        7.416742,
+        6.384672,
+        6.701171
+      ],
+      "evidence": "GRID_INTERPOLATION",
+      "source_path": null,
+      "source_paths": [],
+      "approved": false
+    },
+    {
+      "id": "L-09-05",
+      "position_m": [
+        7.416742,
+        6.759672,
+        6.701171
+      ],
+      "evidence": "GRID_INTERPOLATION",
+      "source_path": null,
+      "source_paths": [],
+      "approved": false
+    },
+    {
+      "id": "L-09-06",
+      "position_m": [
+        7.416742,
+        7.134672,
+        6.701171
+      ],
+      "evidence": "GRID_INTERPOLATION",
+      "source_path": null,
+      "source_paths": [],
+      "approved": false
+    },
+    {
+      "id": "L-10-01",
+      "position_m": [
+        7.886742,
+        5.259672,
+        6.701171
+      ],
+      "evidence": "GRID_INTERPOLATION",
+      "source_path": null,
+      "source_paths": [],
+      "approved": false
+    },
+    {
+      "id": "L-10-02",
+      "position_m": [
+        7.886742,
+        5.634672,
+        6.701171
+      ],
+      "evidence": "GRID_INTERPOLATION",
+      "source_path": null,
+      "source_paths": [],
+      "approved": false
+    },
+    {
+      "id": "L-10-03",
+      "position_m": [
+        7.886742,
+        6.009672,
+        6.701171
+      ],
+      "evidence": "GRID_INTERPOLATION",
+      "source_path": null,
+      "source_paths": [],
+      "approved": false
+    },
+    {
+      "id": "L-10-04",
+      "position_m": [
+        7.886742,
+        6.384672,
+        6.701171
+      ],
+      "evidence": "GRID_INTERPOLATION",
+      "source_path": null,
+      "source_paths": [],
+      "approved": false
+    },
+    {
+      "id": "L-10-05",
+      "position_m": [
+        7.886742,
+        6.759672,
+        6.701171
+      ],
+      "evidence": "GRID_INTERPOLATION",
+      "source_path": null,
+      "source_paths": [],
+      "approved": false
+    },
+    {
+      "id": "L-10-06",
+      "position_m": [
+        7.886742,
+        7.134672,
+        6.701171
+      ],
+      "evidence": "GRID_INTERPOLATION",
+      "source_path": null,
+      "source_paths": [],
+      "approved": false
+    },
+    {
+      "id": "L-11-01",
+      "position_m": [
+        8.356742,
+        5.259672,
+        6.701171
+      ],
+      "evidence": "GRID_INTERPOLATION",
+      "source_path": null,
+      "source_paths": [],
+      "approved": false
+    },
+    {
+      "id": "L-11-02",
+      "position_m": [
+        8.356742,
+        5.634672,
+        6.701171
+      ],
+      "evidence": "GRID_INTERPOLATION",
+      "source_path": null,
+      "source_paths": [],
+      "approved": false
+    },
+    {
+      "id": "L-11-03",
+      "position_m": [
+        8.356742,
+        6.009672,
+        6.701171
+      ],
+      "evidence": "GRID_INTERPOLATION",
+      "source_path": null,
+      "source_paths": [],
+      "approved": false
+    },
+    {
+      "id": "L-11-04",
+      "position_m": [
+        8.356742,
+        6.384672,
+        6.701171
+      ],
+      "evidence": "GRID_INTERPOLATION",
+      "source_path": null,
+      "source_paths": [],
+      "approved": false
+    },
+    {
+      "id": "L-11-05",
+      "position_m": [
+        8.356742,
+        6.759672,
+        6.701171
+      ],
+      "evidence": "GRID_INTERPOLATION",
+      "source_path": null,
+      "source_paths": [],
+      "approved": false
+    },
+    {
+      "id": "L-11-06",
+      "position_m": [
+        8.356742,
+        7.134672,
+        6.701171
+      ],
+      "evidence": "GRID_INTERPOLATION",
+      "source_path": null,
+      "source_paths": [],
+      "approved": false
+    },
+    {
+      "id": "L-12-01",
+      "position_m": [
+        8.826742,
+        5.259672,
+        6.701171
+      ],
+      "evidence": "GRID_INTERPOLATION",
+      "source_path": null,
+      "source_paths": [],
+      "approved": false
+    },
+    {
+      "id": "L-12-02",
+      "position_m": [
+        8.826742,
+        5.634672,
+        6.701171
+      ],
+      "evidence": "GRID_INTERPOLATION",
+      "source_path": null,
+      "source_paths": [],
+      "approved": false
+    },
+    {
+      "id": "L-12-03",
+      "position_m": [
+        8.826742,
+        6.009672,
+        6.701171
+      ],
+      "evidence": "GRID_INTERPOLATION",
+      "source_path": null,
+      "source_paths": [],
+      "approved": false
+    },
+    {
+      "id": "L-12-04",
+      "position_m": [
+        8.826742,
+        6.384672,
+        6.701171
+      ],
+      "evidence": "GRID_INTERPOLATION",
+      "source_path": null,
+      "source_paths": [],
+      "approved": false
+    },
+    {
+      "id": "L-12-05",
+      "position_m": [
+        8.826742,
+        6.759672,
+        6.701171
+      ],
+      "evidence": "GRID_INTERPOLATION",
+      "source_path": null,
+      "source_paths": [],
+      "approved": false
+    },
+    {
+      "id": "L-12-06",
+      "position_m": [
+        8.826742,
+        7.134672,
+        6.701171
+      ],
+      "evidence": "GRID_INTERPOLATION",
+      "source_path": null,
+      "source_paths": [],
+      "approved": false
+    },
+    {
+      "id": "L-13-01",
+      "position_m": [
+        9.296742,
+        5.259672,
+        6.701171
+      ],
+      "evidence": "GRID_INTERPOLATION",
+      "source_path": null,
+      "source_paths": [],
+      "approved": false
+    },
+    {
+      "id": "L-13-02",
+      "position_m": [
+        9.296742,
+        5.634672,
+        6.701171
+      ],
+      "evidence": "GRID_INTERPOLATION",
+      "source_path": null,
+      "source_paths": [],
+      "approved": false
+    },
+    {
+      "id": "L-13-03",
+      "position_m": [
+        9.296742,
+        6.009672,
+        6.701171
+      ],
+      "evidence": "GRID_INTERPOLATION",
+      "source_path": null,
+      "source_paths": [],
+      "approved": false
+    },
+    {
+      "id": "L-13-04",
+      "position_m": [
+        9.296742,
+        6.384672,
+        6.701171
+      ],
+      "evidence": "GRID_INTERPOLATION",
+      "source_path": null,
+      "source_paths": [],
+      "approved": false
+    },
+    {
+      "id": "L-13-05",
+      "position_m": [
+        9.296742,
+        6.759672,
+        6.701171
+      ],
+      "evidence": "GRID_INTERPOLATION",
+      "source_path": null,
+      "source_paths": [],
+      "approved": false
+    },
+    {
+      "id": "L-13-06",
+      "position_m": [
+        9.296742,
+        7.134672,
+        6.701171
+      ],
+      "evidence": "GRID_INTERPOLATION",
+      "source_path": null,
+      "source_paths": [],
+      "approved": false
+    },
+    {
+      "id": "L-14-01",
+      "position_m": [
+        9.766742,
+        5.259672,
+        6.701171
+      ],
+      "evidence": "GRID_INTERPOLATION",
+      "source_path": null,
+      "source_paths": [],
+      "approved": false
+    },
+    {
+      "id": "L-14-02",
+      "position_m": [
+        9.766742,
+        5.634672,
+        6.701171
+      ],
+      "evidence": "GRID_INTERPOLATION",
+      "source_path": null,
+      "source_paths": [],
+      "approved": false
+    },
+    {
+      "id": "L-14-03",
+      "position_m": [
+        9.766742,
+        6.009672,
+        6.701171
+      ],
+      "evidence": "GRID_INTERPOLATION",
+      "source_path": null,
+      "source_paths": [],
+      "approved": false
+    },
+    {
+      "id": "L-14-04",
+      "position_m": [
+        9.766742,
+        6.384672,
+        6.701171
+      ],
+      "evidence": "GRID_INTERPOLATION",
+      "source_path": null,
+      "source_paths": [],
+      "approved": false
+    },
+    {
+      "id": "L-14-05",
+      "position_m": [
+        9.766742,
+        6.759672,
+        6.701171
+      ],
+      "evidence": "GRID_INTERPOLATION",
+      "source_path": null,
+      "source_paths": [],
+      "approved": false
+    },
+    {
+      "id": "L-14-06",
+      "position_m": [
+        9.766742,
+        7.134672,
+        6.701171
+      ],
+      "evidence": "GRID_INTERPOLATION",
+      "source_path": null,
+      "source_paths": [],
+      "approved": false
+    },
+    {
+      "id": "L-15-01",
+      "position_m": [
+        10.236742,
+        5.259672,
+        6.701171
+      ],
+      "evidence": "CAD_TOTE",
+      "source_path": "货架总总装-2/料箱-1",
+      "source_paths": [
+        "货架总总装-2/料箱-1"
+      ],
+      "approved": false
+    },
+    {
+      "id": "L-15-02",
+      "position_m": [
+        10.236742,
+        5.634672,
+        6.701171
+      ],
+      "evidence": "CAD_TOTE",
+      "source_path": "货架总总装-2/料箱-8",
+      "source_paths": [
+        "货架总总装-2/料箱-8"
+      ],
+      "approved": false
+    },
+    {
+      "id": "L-15-03",
+      "position_m": [
+        10.236742,
+        6.009672,
+        6.701171
+      ],
+      "evidence": "CAD_TOTE",
+      "source_path": "货架总总装-2/料箱-9",
+      "source_paths": [
+        "货架总总装-2/料箱-9"
+      ],
+      "approved": false
+    },
+    {
+      "id": "L-15-04",
+      "position_m": [
+        10.236742,
+        6.384672,
+        6.701171
+      ],
+      "evidence": "CAD_TOTE",
+      "source_path": "货架总总装-2/料箱-10",
+      "source_paths": [
+        "货架总总装-2/料箱-10"
+      ],
+      "approved": false
+    },
+    {
+      "id": "L-15-05",
+      "position_m": [
+        10.236742,
+        6.759672,
+        6.701171
+      ],
+      "evidence": "CAD_TOTE",
+      "source_path": "货架总总装-2/料箱-11",
+      "source_paths": [
+        "货架总总装-2/料箱-11"
+      ],
+      "approved": false
+    },
+    {
+      "id": "L-15-06",
+      "position_m": [
+        10.236742,
+        7.134672,
+        6.701171
+      ],
+      "evidence": "CAD_TOTE",
+      "source_path": "货架总总装-2/料箱-12",
+      "source_paths": [
+        "货架总总装-2/料箱-12"
+      ],
+      "approved": false
+    },
+    {
+      "id": "R-01-01",
+      "position_m": [
+        3.656742,
+        5.259672,
+        8.061171
+      ],
+      "evidence": "CAD_TOTE",
+      "source_path": "料箱-110",
+      "source_paths": [
+        "料箱-110"
+      ],
+      "approved": false
+    },
+    {
+      "id": "R-01-02",
+      "position_m": [
+        3.656742,
+        5.634672,
+        8.061171
+      ],
+      "evidence": "CAD_TOTE",
+      "source_path": "料箱-124",
+      "source_paths": [
+        "料箱-124"
+      ],
+      "approved": false
+    },
+    {
+      "id": "R-01-03",
+      "position_m": [
+        3.656742,
+        6.009672,
+        8.061171
+      ],
+      "evidence": "CAD_TOTE",
+      "source_path": "料箱-138",
+      "source_paths": [
+        "料箱-138"
+      ],
+      "approved": false
+    },
+    {
+      "id": "R-01-04",
+      "position_m": [
+        3.656742,
+        6.384672,
+        8.061171
+      ],
+      "evidence": "CAD_TOTE",
+      "source_path": "料箱-152",
+      "source_paths": [
+        "料箱-152"
+      ],
+      "approved": false
+    },
+    {
+      "id": "R-01-05",
+      "position_m": [
+        3.656742,
+        6.759672,
+        8.061171
+      ],
+      "evidence": "CAD_TOTE",
+      "source_path": "料箱-166",
+      "source_paths": [
+        "料箱-166"
+      ],
+      "approved": false
+    },
+    {
+      "id": "R-01-06",
+      "position_m": [
+        3.656742,
+        7.134672,
+        8.061171
+      ],
+      "evidence": "CAD_TOTE",
+      "source_path": "料箱-180",
+      "source_paths": [
+        "料箱-180"
+      ],
+      "approved": false
+    },
+    {
+      "id": "R-02-01",
+      "position_m": [
+        4.126742,
+        5.259672,
+        8.061171
+      ],
+      "evidence": "CAD_TOTE",
+      "source_path": "料箱-109",
+      "source_paths": [
+        "料箱-109"
+      ],
+      "approved": false
+    },
+    {
+      "id": "R-02-02",
+      "position_m": [
+        4.126742,
+        5.634672,
+        8.061171
+      ],
+      "evidence": "CAD_TOTE",
+      "source_path": "料箱-123",
+      "source_paths": [
+        "料箱-123"
+      ],
+      "approved": false
+    },
+    {
+      "id": "R-02-03",
+      "position_m": [
+        4.126742,
+        6.009672,
+        8.061171
+      ],
+      "evidence": "CAD_TOTE",
+      "source_path": "料箱-137",
+      "source_paths": [
+        "料箱-137"
+      ],
+      "approved": false
+    },
+    {
+      "id": "R-02-04",
+      "position_m": [
+        4.126742,
+        6.384672,
+        8.061171
+      ],
+      "evidence": "CAD_TOTE",
+      "source_path": "料箱-151",
+      "source_paths": [
+        "料箱-151"
+      ],
+      "approved": false
+    },
+    {
+      "id": "R-02-05",
+      "position_m": [
+        4.126742,
+        6.759672,
+        8.061171
+      ],
+      "evidence": "CAD_TOTE",
+      "source_path": "料箱-165",
+      "source_paths": [
+        "料箱-165"
+      ],
+      "approved": false
+    },
+    {
+      "id": "R-02-06",
+      "position_m": [
+        4.126742,
+        7.134672,
+        8.061171
+      ],
+      "evidence": "CAD_TOTE",
+      "source_path": "料箱-179",
+      "source_paths": [
+        "料箱-179"
+      ],
+      "approved": false
+    },
+    {
+      "id": "R-03-01",
+      "position_m": [
+        4.596742,
+        5.259672,
+        8.061171
+      ],
+      "evidence": "CAD_TOTE",
+      "source_path": "料箱-108",
+      "source_paths": [
+        "料箱-108"
+      ],
+      "approved": false
+    },
+    {
+      "id": "R-03-02",
+      "position_m": [
+        4.596742,
+        5.634672,
+        8.061171
+      ],
+      "evidence": "CAD_TOTE",
+      "source_path": "料箱-122",
+      "source_paths": [
+        "料箱-122"
+      ],
+      "approved": false
+    },
+    {
+      "id": "R-03-03",
+      "position_m": [
+        4.596742,
+        6.009672,
+        8.061171
+      ],
+      "evidence": "CAD_TOTE",
+      "source_path": "料箱-136",
+      "source_paths": [
+        "料箱-136"
+      ],
+      "approved": false
+    },
+    {
+      "id": "R-03-04",
+      "position_m": [
+        4.596742,
+        6.384672,
+        8.061171
+      ],
+      "evidence": "CAD_TOTE",
+      "source_path": "料箱-150",
+      "source_paths": [
+        "料箱-150"
+      ],
+      "approved": false
+    },
+    {
+      "id": "R-03-05",
+      "position_m": [
+        4.596742,
+        6.759672,
+        8.061171
+      ],
+      "evidence": "CAD_TOTE",
+      "source_path": "料箱-164",
+      "source_paths": [
+        "料箱-164"
+      ],
+      "approved": false
+    },
+    {
+      "id": "R-03-06",
+      "position_m": [
+        4.596742,
+        7.134672,
+        8.061171
+      ],
+      "evidence": "CAD_TOTE",
+      "source_path": "料箱-178",
+      "source_paths": [
+        "料箱-178"
+      ],
+      "approved": false
+    },
+    {
+      "id": "R-04-01",
+      "position_m": [
+        5.066742,
+        5.259672,
+        8.061171
+      ],
+      "evidence": "CAD_TOTE",
+      "source_path": "料箱-107",
+      "source_paths": [
+        "料箱-107"
+      ],
+      "approved": false
+    },
+    {
+      "id": "R-04-02",
+      "position_m": [
+        5.066742,
+        5.634672,
+        8.061171
+      ],
+      "evidence": "CAD_TOTE",
+      "source_path": "料箱-121",
+      "source_paths": [
+        "料箱-121"
+      ],
+      "approved": false
+    },
+    {
+      "id": "R-04-03",
+      "position_m": [
+        5.066742,
+        6.009672,
+        8.061171
+      ],
+      "evidence": "CAD_TOTE",
+      "source_path": "料箱-135",
+      "source_paths": [
+        "料箱-135"
+      ],
+      "approved": false
+    },
+    {
+      "id": "R-04-04",
+      "position_m": [
+        5.066742,
+        6.384672,
+        8.061171
+      ],
+      "evidence": "CAD_TOTE",
+      "source_path": "料箱-149",
+      "source_paths": [
+        "料箱-149"
+      ],
+      "approved": false
+    },
+    {
+      "id": "R-04-05",
+      "position_m": [
+        5.066742,
+        6.759672,
+        8.061171
+      ],
+      "evidence": "CAD_TOTE",
+      "source_path": "料箱-163",
+      "source_paths": [
+        "料箱-163"
+      ],
+      "approved": false
+    },
+    {
+      "id": "R-04-06",
+      "position_m": [
+        5.066742,
+        7.134672,
+        8.061171
+      ],
+      "evidence": "CAD_TOTE",
+      "source_path": "料箱-177",
+      "source_paths": [
+        "料箱-177"
+      ],
+      "approved": false
+    },
+    {
+      "id": "R-05-01",
+      "position_m": [
+        5.536742,
+        5.259672,
+        8.061171
+      ],
+      "evidence": "CAD_TOTE",
+      "source_path": "料箱-106",
+      "source_paths": [
+        "料箱-106"
+      ],
+      "approved": false
+    },
+    {
+      "id": "R-05-02",
+      "position_m": [
+        5.536742,
+        5.634672,
+        8.061171
+      ],
+      "evidence": "CAD_TOTE",
+      "source_path": "料箱-120",
+      "source_paths": [
+        "料箱-120"
+      ],
+      "approved": false
+    },
+    {
+      "id": "R-05-03",
+      "position_m": [
+        5.536742,
+        6.009672,
+        8.061171
+      ],
+      "evidence": "CAD_TOTE",
+      "source_path": "料箱-134",
+      "source_paths": [
+        "料箱-134"
+      ],
+      "approved": false
+    },
+    {
+      "id": "R-05-04",
+      "position_m": [
+        5.536742,
+        6.384672,
+        8.061171
+      ],
+      "evidence": "CAD_TOTE",
+      "source_path": "料箱-148",
+      "source_paths": [
+        "料箱-148"
+      ],
+      "approved": false
+    },
+    {
+      "id": "R-05-05",
+      "position_m": [
+        5.536742,
+        6.759672,
+        8.061171
+      ],
+      "evidence": "CAD_TOTE",
+      "source_path": "料箱-162",
+      "source_paths": [
+        "料箱-162"
+      ],
+      "approved": false
+    },
+    {
+      "id": "R-05-06",
+      "position_m": [
+        5.536742,
+        7.134672,
+        8.061171
+      ],
+      "evidence": "CAD_TOTE",
+      "source_path": "料箱-176",
+      "source_paths": [
+        "料箱-176"
+      ],
+      "approved": false
+    },
+    {
+      "id": "R-06-01",
+      "position_m": [
+        6.006742,
+        5.259672,
+        8.061171
+      ],
+      "evidence": "CAD_TOTE",
+      "source_path": "料箱-105",
+      "source_paths": [
+        "料箱-105"
+      ],
+      "approved": false
+    },
+    {
+      "id": "R-06-02",
+      "position_m": [
+        6.006742,
+        5.634672,
+        8.061171
+      ],
+      "evidence": "CAD_TOTE",
+      "source_path": "料箱-119",
+      "source_paths": [
+        "料箱-119"
+      ],
+      "approved": false
+    },
+    {
+      "id": "R-06-03",
+      "position_m": [
+        6.006742,
+        6.009672,
+        8.061171
+      ],
+      "evidence": "CAD_TOTE",
+      "source_path": "料箱-133",
+      "source_paths": [
+        "料箱-133"
+      ],
+      "approved": false
+    },
+    {
+      "id": "R-06-04",
+      "position_m": [
+        6.006742,
+        6.384672,
+        8.061171
+      ],
+      "evidence": "CAD_TOTE",
+      "source_path": "料箱-147",
+      "source_paths": [
+        "料箱-147"
+      ],
+      "approved": false
+    },
+    {
+      "id": "R-06-05",
+      "position_m": [
+        6.006742,
+        6.759672,
+        8.061171
+      ],
+      "evidence": "CAD_TOTE",
+      "source_path": "料箱-161",
+      "source_paths": [
+        "料箱-161"
+      ],
+      "approved": false
+    },
+    {
+      "id": "R-06-06",
+      "position_m": [
+        6.006742,
+        7.134672,
+        8.061171
+      ],
+      "evidence": "CAD_TOTE",
+      "source_path": "料箱-175",
+      "source_paths": [
+        "料箱-175"
+      ],
+      "approved": false
+    },
+    {
+      "id": "R-07-01",
+      "position_m": [
+        6.476742,
+        5.259672,
+        8.061171
+      ],
+      "evidence": "CAD_TOTE",
+      "source_path": "料箱-104",
+      "source_paths": [
+        "料箱-104"
+      ],
+      "approved": false
+    },
+    {
+      "id": "R-07-02",
+      "position_m": [
+        6.476742,
+        5.634672,
+        8.061171
+      ],
+      "evidence": "CAD_TOTE",
+      "source_path": "料箱-118",
+      "source_paths": [
+        "料箱-118"
+      ],
+      "approved": false
+    },
+    {
+      "id": "R-07-03",
+      "position_m": [
+        6.476742,
+        6.009672,
+        8.061171
+      ],
+      "evidence": "CAD_TOTE",
+      "source_path": "料箱-132",
+      "source_paths": [
+        "料箱-132"
+      ],
+      "approved": false
+    },
+    {
+      "id": "R-07-04",
+      "position_m": [
+        6.476742,
+        6.384672,
+        8.061171
+      ],
+      "evidence": "CAD_TOTE",
+      "source_path": "料箱-146",
+      "source_paths": [
+        "料箱-146"
+      ],
+      "approved": false
+    },
+    {
+      "id": "R-07-05",
+      "position_m": [
+        6.476742,
+        6.759672,
+        8.061171
+      ],
+      "evidence": "CAD_TOTE",
+      "source_path": "料箱-160",
+      "source_paths": [
+        "料箱-160"
+      ],
+      "approved": false
+    },
+    {
+      "id": "R-07-06",
+      "position_m": [
+        6.476742,
+        7.134672,
+        8.061171
+      ],
+      "evidence": "CAD_TOTE",
+      "source_path": "料箱-174",
+      "source_paths": [
+        "料箱-174"
+      ],
+      "approved": false
+    },
+    {
+      "id": "R-08-01",
+      "position_m": [
+        6.946742,
+        5.259672,
+        8.061171
+      ],
+      "evidence": "CAD_TOTE",
+      "source_path": "料箱-103",
+      "source_paths": [
+        "料箱-103"
+      ],
+      "approved": false
+    },
+    {
+      "id": "R-08-02",
+      "position_m": [
+        6.946742,
+        5.634672,
+        8.061171
+      ],
+      "evidence": "CAD_TOTE",
+      "source_path": "料箱-117",
+      "source_paths": [
+        "料箱-117"
+      ],
+      "approved": false
+    },
+    {
+      "id": "R-08-03",
+      "position_m": [
+        6.946742,
+        6.009672,
+        8.061171
+      ],
+      "evidence": "CAD_TOTE",
+      "source_path": "料箱-131",
+      "source_paths": [
+        "料箱-131"
+      ],
+      "approved": false
+    },
+    {
+      "id": "R-08-04",
+      "position_m": [
+        6.946742,
+        6.384672,
+        8.061171
+      ],
+      "evidence": "CAD_TOTE",
+      "source_path": "料箱-145",
+      "source_paths": [
+        "料箱-145"
+      ],
+      "approved": false
+    },
+    {
+      "id": "R-08-05",
+      "position_m": [
+        6.946742,
+        6.759672,
+        8.061171
+      ],
+      "evidence": "CAD_TOTE",
+      "source_path": "料箱-159",
+      "source_paths": [
+        "料箱-159"
+      ],
+      "approved": false
+    },
+    {
+      "id": "R-08-06",
+      "position_m": [
+        6.946742,
+        7.134672,
+        8.061171
+      ],
+      "evidence": "CAD_TOTE",
+      "source_path": "料箱-173",
+      "source_paths": [
+        "料箱-173"
+      ],
+      "approved": false
+    },
+    {
+      "id": "R-09-01",
+      "position_m": [
+        7.416742,
+        5.259672,
+        8.061171
+      ],
+      "evidence": "CAD_TOTE",
+      "source_path": "料箱-102",
+      "source_paths": [
+        "料箱-102"
+      ],
+      "approved": false
+    },
+    {
+      "id": "R-09-02",
+      "position_m": [
+        7.416742,
+        5.634672,
+        8.061171
+      ],
+      "evidence": "CAD_TOTE",
+      "source_path": "料箱-116",
+      "source_paths": [
+        "料箱-116"
+      ],
+      "approved": false
+    },
+    {
+      "id": "R-09-03",
+      "position_m": [
+        7.416742,
+        6.009672,
+        8.061171
+      ],
+      "evidence": "CAD_TOTE",
+      "source_path": "料箱-130",
+      "source_paths": [
+        "料箱-130"
+      ],
+      "approved": false
+    },
+    {
+      "id": "R-09-04",
+      "position_m": [
+        7.416742,
+        6.384672,
+        8.061171
+      ],
+      "evidence": "CAD_TOTE",
+      "source_path": "料箱-144",
+      "source_paths": [
+        "料箱-144"
+      ],
+      "approved": false
+    },
+    {
+      "id": "R-09-05",
+      "position_m": [
+        7.416742,
+        6.759672,
+        8.061171
+      ],
+      "evidence": "CAD_TOTE",
+      "source_path": "料箱-158",
+      "source_paths": [
+        "料箱-158"
+      ],
+      "approved": false
+    },
+    {
+      "id": "R-09-06",
+      "position_m": [
+        7.416742,
+        7.134672,
+        8.061171
+      ],
+      "evidence": "CAD_TOTE",
+      "source_path": "料箱-172",
+      "source_paths": [
+        "料箱-172"
+      ],
+      "approved": false
+    },
+    {
+      "id": "R-10-01",
+      "position_m": [
+        7.886742,
+        5.259672,
+        8.061171
+      ],
+      "evidence": "CAD_TOTE",
+      "source_path": "料箱-101",
+      "source_paths": [
+        "料箱-101"
+      ],
+      "approved": false
+    },
+    {
+      "id": "R-10-02",
+      "position_m": [
+        7.886742,
+        5.634672,
+        8.061171
+      ],
+      "evidence": "CAD_TOTE",
+      "source_path": "料箱-115",
+      "source_paths": [
+        "料箱-115"
+      ],
+      "approved": false
+    },
+    {
+      "id": "R-10-03",
+      "position_m": [
+        7.886742,
+        6.009672,
+        8.061171
+      ],
+      "evidence": "CAD_TOTE",
+      "source_path": "料箱-129",
+      "source_paths": [
+        "料箱-129"
+      ],
+      "approved": false
+    },
+    {
+      "id": "R-10-04",
+      "position_m": [
+        7.886742,
+        6.384672,
+        8.061171
+      ],
+      "evidence": "CAD_TOTE",
+      "source_path": "料箱-143",
+      "source_paths": [
+        "料箱-143"
+      ],
+      "approved": false
+    },
+    {
+      "id": "R-10-05",
+      "position_m": [
+        7.886742,
+        6.759672,
+        8.061171
+      ],
+      "evidence": "CAD_TOTE",
+      "source_path": "料箱-157",
+      "source_paths": [
+        "料箱-157"
+      ],
+      "approved": false
+    },
+    {
+      "id": "R-10-06",
+      "position_m": [
+        7.886742,
+        7.134672,
+        8.061171
+      ],
+      "evidence": "CAD_TOTE",
+      "source_path": "料箱-171",
+      "source_paths": [
+        "料箱-171"
+      ],
+      "approved": false
+    },
+    {
+      "id": "R-11-01",
+      "position_m": [
+        8.356742,
+        5.259672,
+        8.061171
+      ],
+      "evidence": "CAD_TOTE",
+      "source_path": "料箱-100",
+      "source_paths": [
+        "料箱-100"
+      ],
+      "approved": false
+    },
+    {
+      "id": "R-11-02",
+      "position_m": [
+        8.356742,
+        5.634672,
+        8.061171
+      ],
+      "evidence": "CAD_TOTE",
+      "source_path": "料箱-114",
+      "source_paths": [
+        "料箱-114"
+      ],
+      "approved": false
+    },
+    {
+      "id": "R-11-03",
+      "position_m": [
+        8.356742,
+        6.009672,
+        8.061171
+      ],
+      "evidence": "CAD_TOTE",
+      "source_path": "料箱-128",
+      "source_paths": [
+        "料箱-128"
+      ],
+      "approved": false
+    },
+    {
+      "id": "R-11-04",
+      "position_m": [
+        8.356742,
+        6.384672,
+        8.061171
+      ],
+      "evidence": "CAD_TOTE",
+      "source_path": "料箱-142",
+      "source_paths": [
+        "料箱-142"
+      ],
+      "approved": false
+    },
+    {
+      "id": "R-11-05",
+      "position_m": [
+        8.356742,
+        6.759672,
+        8.061171
+      ],
+      "evidence": "CAD_TOTE",
+      "source_path": "料箱-156",
+      "source_paths": [
+        "料箱-156"
+      ],
+      "approved": false
+    },
+    {
+      "id": "R-11-06",
+      "position_m": [
+        8.356742,
+        7.134672,
+        8.061171
+      ],
+      "evidence": "CAD_TOTE",
+      "source_path": "料箱-170",
+      "source_paths": [
+        "料箱-170"
+      ],
+      "approved": false
+    },
+    {
+      "id": "R-12-01",
+      "position_m": [
+        8.826742,
+        5.259672,
+        8.061171
+      ],
+      "evidence": "CAD_TOTE",
+      "source_path": "料箱-99",
+      "source_paths": [
+        "料箱-99"
+      ],
+      "approved": false
+    },
+    {
+      "id": "R-12-02",
+      "position_m": [
+        8.826742,
+        5.634672,
+        8.061171
+      ],
+      "evidence": "CAD_TOTE",
+      "source_path": "料箱-113",
+      "source_paths": [
+        "料箱-113"
+      ],
+      "approved": false
+    },
+    {
+      "id": "R-12-03",
+      "position_m": [
+        8.826742,
+        6.009672,
+        8.061171
+      ],
+      "evidence": "CAD_TOTE",
+      "source_path": "料箱-127",
+      "source_paths": [
+        "料箱-127"
+      ],
+      "approved": false
+    },
+    {
+      "id": "R-12-04",
+      "position_m": [
+        8.826742,
+        6.384672,
+        8.061171
+      ],
+      "evidence": "CAD_TOTE",
+      "source_path": "料箱-141",
+      "source_paths": [
+        "料箱-141"
+      ],
+      "approved": false
+    },
+    {
+      "id": "R-12-05",
+      "position_m": [
+        8.826742,
+        6.759672,
+        8.061171
+      ],
+      "evidence": "CAD_TOTE",
+      "source_path": "料箱-155",
+      "source_paths": [
+        "料箱-155"
+      ],
+      "approved": false
+    },
+    {
+      "id": "R-12-06",
+      "position_m": [
+        8.826742,
+        7.134672,
+        8.061171
+      ],
+      "evidence": "CAD_TOTE",
+      "source_path": "料箱-169",
+      "source_paths": [
+        "料箱-169"
+      ],
+      "approved": false
+    },
+    {
+      "id": "R-13-01",
+      "position_m": [
+        9.296742,
+        5.259672,
+        8.061171
+      ],
+      "evidence": "CAD_TOTE",
+      "source_path": "料箱-98",
+      "source_paths": [
+        "料箱-98"
+      ],
+      "approved": false
+    },
+    {
+      "id": "R-13-02",
+      "position_m": [
+        9.296742,
+        5.634672,
+        8.061171
+      ],
+      "evidence": "CAD_TOTE",
+      "source_path": "料箱-112",
+      "source_paths": [
+        "料箱-112"
+      ],
+      "approved": false
+    },
+    {
+      "id": "R-13-03",
+      "position_m": [
+        9.296742,
+        6.009672,
+        8.061171
+      ],
+      "evidence": "CAD_TOTE",
+      "source_path": "料箱-126",
+      "source_paths": [
+        "料箱-126"
+      ],
+      "approved": false
+    },
+    {
+      "id": "R-13-04",
+      "position_m": [
+        9.296742,
+        6.384672,
+        8.061171
+      ],
+      "evidence": "CAD_TOTE",
+      "source_path": "料箱-140",
+      "source_paths": [
+        "料箱-140"
+      ],
+      "approved": false
+    },
+    {
+      "id": "R-13-05",
+      "position_m": [
+        9.296742,
+        6.759672,
+        8.061171
+      ],
+      "evidence": "CAD_TOTE",
+      "source_path": "料箱-154",
+      "source_paths": [
+        "料箱-154"
+      ],
+      "approved": false
+    },
+    {
+      "id": "R-13-06",
+      "position_m": [
+        9.296742,
+        7.134672,
+        8.061171
+      ],
+      "evidence": "CAD_TOTE",
+      "source_path": "料箱-168",
+      "source_paths": [
+        "料箱-168"
+      ],
+      "approved": false
+    },
+    {
+      "id": "R-14-01",
+      "position_m": [
+        9.766742,
+        5.259672,
+        8.061171
+      ],
+      "evidence": "CAD_TOTE",
+      "source_path": "料箱-97",
+      "source_paths": [
+        "料箱-97"
+      ],
+      "approved": false
+    },
+    {
+      "id": "R-14-02",
+      "position_m": [
+        9.766742,
+        5.634672,
+        8.061171
+      ],
+      "evidence": "CAD_TOTE",
+      "source_path": "料箱-111",
+      "source_paths": [
+        "料箱-111"
+      ],
+      "approved": false
+    },
+    {
+      "id": "R-14-03",
+      "position_m": [
+        9.766742,
+        6.009672,
+        8.061171
+      ],
+      "evidence": "CAD_TOTE",
+      "source_path": "料箱-125",
+      "source_paths": [
+        "料箱-125"
+      ],
+      "approved": false
+    },
+    {
+      "id": "R-14-04",
+      "position_m": [
+        9.766742,
+        6.384672,
+        8.061171
+      ],
+      "evidence": "CAD_TOTE",
+      "source_path": "料箱-139",
+      "source_paths": [
+        "料箱-139"
+      ],
+      "approved": false
+    },
+    {
+      "id": "R-14-05",
+      "position_m": [
+        9.766742,
+        6.759672,
+        8.061171
+      ],
+      "evidence": "CAD_TOTE",
+      "source_path": "料箱-153",
+      "source_paths": [
+        "料箱-153"
+      ],
+      "approved": false
+    },
+    {
+      "id": "R-14-06",
+      "position_m": [
+        9.766742,
+        7.134672,
+        8.061171
+      ],
+      "evidence": "CAD_TOTE",
+      "source_path": "料箱-167",
+      "source_paths": [
+        "料箱-167"
+      ],
+      "approved": false
+    },
+    {
+      "id": "R-15-01",
+      "position_m": [
+        10.236742,
+        5.259672,
+        8.061171
+      ],
+      "evidence": "CAD_TOTE",
+      "source_path": "货架总总装-2/料箱-2",
+      "source_paths": [
+        "货架总总装-2/料箱-2",
+        "料箱-91"
+      ],
+      "approved": false
+    },
+    {
+      "id": "R-15-02",
+      "position_m": [
+        10.236742,
+        5.634672,
+        8.061171
+      ],
+      "evidence": "CAD_TOTE",
+      "source_path": "货架总总装-2/料箱-3",
+      "source_paths": [
+        "货架总总装-2/料箱-3",
+        "料箱-92"
+      ],
+      "approved": false
+    },
+    {
+      "id": "R-15-03",
+      "position_m": [
+        10.236742,
+        6.009672,
+        8.061171
+      ],
+      "evidence": "CAD_TOTE",
+      "source_path": "货架总总装-2/料箱-4",
+      "source_paths": [
+        "货架总总装-2/料箱-4",
+        "料箱-93"
+      ],
+      "approved": false
+    },
+    {
+      "id": "R-15-04",
+      "position_m": [
+        10.236742,
+        6.384672,
+        8.061171
+      ],
+      "evidence": "CAD_TOTE",
+      "source_path": "货架总总装-2/料箱-5",
+      "source_paths": [
+        "货架总总装-2/料箱-5",
+        "料箱-94"
+      ],
+      "approved": false
+    },
+    {
+      "id": "R-15-05",
+      "position_m": [
+        10.236742,
+        6.759672,
+        8.061171
+      ],
+      "evidence": "CAD_TOTE",
+      "source_path": "货架总总装-2/料箱-6",
+      "source_paths": [
+        "货架总总装-2/料箱-6",
+        "料箱-95"
+      ],
+      "approved": false
+    },
+    {
+      "id": "R-15-06",
+      "position_m": [
+        10.236742,
+        7.134672,
+        8.061171
+      ],
+      "evidence": "CAD_TOTE",
+      "source_path": "货架总总装-2/料箱-7",
+      "source_paths": [
+        "货架总总装-2/料箱-7",
+        "料箱-96"
+      ],
+      "approved": false
+    }
+  ],
+  "operational_location_ids": [
+    "L-01-01",
+    "L-01-02",
+    "L-01-03",
+    "L-01-04",
+    "L-02-01",
+    "L-02-02",
+    "L-02-03",
+    "L-02-04",
+    "L-03-01",
+    "L-03-02",
+    "L-03-03",
+    "L-03-04",
+    "L-04-01",
+    "L-04-02",
+    "L-04-03",
+    "L-04-04",
+    "L-05-01",
+    "L-05-02",
+    "L-05-03",
+    "L-05-04",
+    "L-06-01",
+    "L-06-02",
+    "L-06-03",
+    "L-06-04",
+    "R-01-01",
+    "R-01-02",
+    "R-01-03",
+    "R-01-04",
+    "R-02-01",
+    "R-02-02",
+    "R-02-03",
+    "R-02-04",
+    "R-03-01",
+    "R-03-02",
+    "R-03-03",
+    "R-03-04",
+    "R-04-01",
+    "R-04-02",
+    "R-04-03",
+    "R-04-04",
+    "R-05-01",
+    "R-05-02",
+    "R-05-03",
+    "R-05-04",
+    "R-06-01",
+    "R-06-02",
+    "R-06-03",
+    "R-06-04"
+  ],
+  "missing_components": [
+    "LG2-200000-1/LG2-210000-1/LG-214000BJ-1/100X100铝地轨-1"
+  ],
+  "unmapped_instances": [],
+  "pending_calibration": [
+    "确认实际可用层列与L/R方向",
+    "核定X/Y/Z零点、单位与编码器比例",
+    "确认载货台和多级货叉的机械联动比",
+    "补齐缺失地轨引用",
+    "确认传感器IO与可视化位置",
+    "验证碰撞包络和行程极限"
+  ]
+}

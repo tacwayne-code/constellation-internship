@@ -1,0 +1,15 @@
+{
+  "source": "样板间总装.SLDASM",
+  "exported_instances": 2704,
+  "extracted_instances": 2704,
+  "omitted_hardware_instances": 0,
+  "missing_components": [
+    "LG2-200000-1/LG2-210000-1/LG-214000BJ-1/100X100铝地轨-1"
+  ],
+  "mesh_count": 315,
+  "triangle_instances": 11353422,
+  "glb_bytes": 65791528,
+  "units": "metres",
+  "mapping_url": "/assets/structure/twin-map.json",
+  "note": "全部已提取实例均导出，含紧固件/轴承/链条；面网格保持原尺寸与装配变换。运动组接收实时状态，映射尚未现场校准。"
+}
