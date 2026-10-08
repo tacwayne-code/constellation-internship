@@ -2,13 +2,16 @@ import React,{useRef,useState} from 'react';
 import {api,requestId,kindNames,storedLocation} from './api';
 import {Modal,Empty} from './components';
 import {TaskButtons,TaskActionDialog} from './TaskActions';
+import {usePagination} from './paging';
+import Pager from './Pager';
 
 const stages={QUEUED:'待取箱',FETCHING:'取箱中',FETCH_ACK:'取箱回执处理中',WAIT_LOAD:'待人工装料',WAIT_PICK:'待扫码取料',RETURN_QUEUED:'待返库下发',RETURNING:'返库中',RETURN_ACK:'返库回执处理中',REVIEW:'待现场核对',COMPLETED:'已完成',CANCELLED:'已取消'};
-export default function OrderCards({state,canEdit,refresh,notify,all=false}){
+export default function OrderCards({state,canEdit,refresh,notify,all=false,onlyId}){
  const [action,setAction]=useState(null),[returnId,setReturnId]=useState(null);
- const orders=(state.orders||[]).filter(order=>all||!['COMPLETED','CANCELLED'].includes(order.status)).slice().reverse();
+ const orders=(state.orders||[]).filter(order=>(all||!['COMPLETED','CANCELLED'].includes(order.status))&&(!onlyId||order.id===onlyId)).slice().reverse();
+ const paging=usePagination(orders,1,`${all}:${onlyId||''}`);
  const returning=(state.orders||[]).find(order=>order.id===returnId);
- return <><div className="wm-pending-list">{orders.map(order=>{
+ return <div className="wm-orders"><div className="wm-pending-list">{paging.items.map(order=>{
   const task=state.tasks.find(item=>item.id===order.current_task_id);
   const waiting=['WAIT_LOAD','WAIT_PICK'].includes(order.status);
   const status=task?.status==='REVIEW'?'待现场核对':task?.status==='QUEUED'?(task.order_leg==='RETURN'?'待返库下发':'待取箱'):stages[order.status]||order.status;
@@ -16,10 +19,10 @@ export default function OrderCards({state,canEdit,refresh,notify,all=false}){
    {waiting&&order.station_confirmation&&<p className="wm-error">之前的人工操作已确认，请勿重复装料或取料。核对箱内数量后重新返库。</p>}
    {waiting?<button className="wm-primary wm-full" disabled={!canEdit} onClick={()=>setReturnId(order.id)}>{order.kind==='INBOUND'?'装料完成，返库':'扫码核对并返库'}</button>:task&&<TaskButtons task={task} state={state} canEdit={canEdit} onAction={kind=>setAction({task,kind})}/>}
   </article>;
- })}</div>{!orders.length&&<Empty title={all?'暂无物料单据':'暂无待办物料单据'}>登记单据后，按取箱、人工操作、返库顺序执行</Empty>}
+ })}</div>{!orders.length&&<Empty title={all?'暂无物料单据':'暂无待办物料单据'}>登记单据后，按取箱、人工操作、返库顺序执行</Empty>}{!onlyId&&<Pager paging={paging} label="待办单据"/>}
  {action&&<TaskActionDialog action={action} state={state} canEdit={canEdit} refresh={refresh} notify={notify} onClose={()=>setAction(null)}/>}
  {returning&&<ReturnDialog key={returning.id} order={returning} state={state} canEdit={canEdit} refresh={refresh} notify={notify} onClose={()=>setReturnId(null)}/>}
- </>;
+ </div>;
 }
 
 function ReturnDialog({order,state,canEdit,refresh,notify,onClose}){

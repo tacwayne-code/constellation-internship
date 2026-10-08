@@ -1,0 +1,1 @@
+import{R as e}from"./x-jxp7vTzS.js";import i from"./RealTwin-DhYgDS8B.js";import"./twin-pose-CKX6anvh.js";function c({url:t,state:a,onSelect:r}){return e.createElement("section",{className:"panel cad-view"},e.createElement(i,{url:t,state:a,onSelect:r}))}export{c as default};

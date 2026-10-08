@@ -5,12 +5,13 @@ import {Empty,Modal,MaterialRows,Badge} from './components';
 import {AddLocation} from './WarehousePages';
 import {allocationSummary} from './allocation';
 import AllocationSettings from './AllocationSettings';
+import Pager from './Pager';
+import {usePagination,useTableSize,useViewport} from './paging';
 import './locations.css';
 
 const labels={EMPTY:'可用空位',BLOCKED:'通道待清空',UNVERIFIED:'待核对',OCCUPIED:'已占用',RESERVED:'任务预留',DISABLED:'已停用',UNREGISTERED:'未建档'};
 const slotId=(side,level,column,depth)=>`${side===1?'L':'R'}-${String(column).padStart(2,'0')}-${String(level).padStart(2,'0')}-${depth}`;
 const sideName=side=>side===1?'左仓':'右仓';
-const PAGE_COLUMNS=8,PAGE_LEVELS=10;
 
 export default function LocationPage({state,canEdit,refresh,notify}){
  const [side,setSide]=useState(1),[view,setView]=useState('map'),[settings,setSettings]=useState(false),[rules,setRules]=useState(false),[adding,setAdding]=useState(false),[selected,setSelected]=useState(null);
@@ -21,12 +22,16 @@ export default function LocationPage({state,canEdit,refresh,notify}){
  const sideLocations=state.locations.filter(item=>item.side===side),enabled=sideLocations.filter(item=>item.enabled);
  const layout=state.rack_layouts?.find(item=>item.side===side)||{side,levels:Math.max(0,...enabled.map(item=>item.level)),columns:Math.max(0,...enabled.map(item=>item.column)),depths:Math.max(1,...enabled.map(item=>item.depth)),revision:0};
  const depths=layout.depths===2?[1,2]:[1];
+ const {width,height}=useViewport();
+ const pageColumns=Math.max(2,Math.min(15,Math.floor((width-(width<760?90:width<1200?230:260))/72)));
+ const pageLevels=Math.max(1,Math.min(10,Math.floor((height-(width<760?420:350))/(depths.length===2?118:62))));
+ const listPaging=usePagination(sideLocations.slice().sort((a,b)=>b.level-a.level||a.column-b.column),Math.max(3,useTableSize()-2),side);
  const within=sideLocations.filter(item=>item.level<=layout.levels&&item.column<=layout.columns&&depths.includes(item.depth));
  const counts=Object.fromEntries(Object.keys(labels).map(status=>[status,within.filter(item=>item.status===status).length]));
  counts.UNREGISTERED=layout.levels*layout.columns*depths.length-within.length;
- const colStart=Math.min(columnPage,Math.max(0,Math.ceil(layout.columns/PAGE_COLUMNS)-1))*PAGE_COLUMNS+1;
- const levelStart=Math.min(levelPage,Math.max(0,Math.ceil(layout.levels/PAGE_LEVELS)-1))*PAGE_LEVELS+1;
- const colEnd=Math.min(layout.columns,colStart+PAGE_COLUMNS-1),levelEnd=Math.min(layout.levels,levelStart+PAGE_LEVELS-1);
+ const colStart=Math.min(columnPage,Math.max(0,Math.ceil(layout.columns/pageColumns)-1))*pageColumns+1;
+ const levelStart=Math.min(levelPage,Math.max(0,Math.ceil(layout.levels/pageLevels)-1))*pageLevels+1;
+ const colEnd=Math.min(layout.columns,colStart+pageColumns-1),levelEnd=Math.min(layout.levels,levelStart+pageLevels-1);
  const cols=Array.from({length:Math.max(0,colEnd-colStart+1)},(_,index)=>colStart+index);
  const levels=Array.from({length:Math.max(0,levelEnd-levelStart+1)},(_,index)=>levelEnd-index);
  function chooseSide(value){setSide(value);setColumnPage(0);setLevelPage(0);}
@@ -42,16 +47,16 @@ export default function LocationPage({state,canEdit,refresh,notify}){
    <p className="wm-allocation-summary">自动分配：{allocationSummary(state.allocation_policy)}</p>
    <div className="wm-rack-legend">{['OCCUPIED','RESERVED','EMPTY','BLOCKED','UNVERIFIED','DISABLED','UNREGISTERED'].map(status=><span key={status}><i className={`wm-slot-${status.toLowerCase()}`}/>{labels[status]} <b>{counts[status]}</b></span>)}</div>
    {view==='map'?layout.levels&&layout.columns?<>
-    {(layout.columns>PAGE_COLUMNS||layout.levels>PAGE_LEVELS)&&<div className="wm-rack-paging"><span>当前：{levelStart}—{levelEnd} 层 · {colStart}—{colEnd} 列</span><div><button disabled={colStart===1} onClick={()=>setColumnPage(Math.max(0,columnPage-1))}>前 {PAGE_COLUMNS} 列</button><button disabled={colEnd===layout.columns} onClick={()=>setColumnPage(columnPage+1)}>后 {PAGE_COLUMNS} 列</button><button disabled={levelStart===1} onClick={()=>setLevelPage(Math.max(0,levelPage-1))}>较低楼层</button><button disabled={levelEnd===layout.levels} onClick={()=>setLevelPage(levelPage+1)}>较高楼层</button></div></div>}
-    <div className="wm-rack-scroll" tabIndex={0} role="region" aria-label={`${sideName(side)}层列库位图`}><div className="wm-rack-grid" style={{gridTemplateColumns:`52px repeat(${cols.length}, minmax(112px, 1fr))`}}>
+    {(layout.columns>pageColumns||layout.levels>pageLevels)&&<div className="wm-rack-paging"><span>当前：{levelStart}—{levelEnd} 层 · {colStart}—{colEnd} 列</span><div><button disabled={colStart===1} onClick={()=>setColumnPage(Math.max(0,(colStart-1)/pageColumns-1))}>前 {pageColumns} 列</button><button disabled={colEnd===layout.columns} onClick={()=>setColumnPage((colStart-1)/pageColumns+1)}>后 {pageColumns} 列</button><button disabled={levelStart===1} onClick={()=>setLevelPage(Math.max(0,(levelStart-1)/pageLevels-1))}>较低楼层</button><button disabled={levelEnd===layout.levels} onClick={()=>setLevelPage((levelStart-1)/pageLevels+1)}>较高楼层</button></div></div>}
+    <div className="wm-rack-scroll" role="region" aria-label={`${sideName(side)}层列库位图`}><div className="wm-rack-grid" style={{gridTemplateColumns:`30px repeat(${cols.length}, minmax(0, 1fr))`,gridTemplateRows:`24px repeat(${levels.length},minmax(0,1fr))`}}>
      <span className="wm-rack-axis">层 / 列</span>{cols.map(column=><span key={`col-${column}`} className="wm-rack-axis">{column} 列</span>)}
      {levels.map(level=><React.Fragment key={level}><span className="wm-rack-axis wm-level-axis">{level} 层</span>{cols.map(column=><div className="wm-rack-cell" key={column}>{depths.map(depth=>{
       const id=slotId(side,level,column,depth),location=locations.get(id),status=location?.status||'UNREGISTERED',item=stock.get(id),task=tasks.get(location?.reserved);
       return <button key={id} className={`wm-rack-slot wm-slot-${status.toLowerCase()}`} onClick={()=>setSelected({id,side,level,column,depth})} aria-label={`${sideName(side)} ${depthName(depth)} ${level}层 ${column}列 ${labels[status]} ${item?.material_name||item?.barcode||task?.barcode||''}`}><strong>{level}层 {column}列</strong>{depths.length===2&&<span className="wm-slot-depth">{depth===1?'单伸 · 前排':'双伸 · 后排'}</span>}<span className="wm-slot-status">{labels[status]}</span><small title={item?.material_name||item?.barcode||task?.barcode||displayLocation(id)}>{item?.material_name||item?.barcode||task?.barcode||displayLocation(id)}</small></button>;
      })}</div>)}</React.Fragment>)}
-    </div></div><p className="wm-help wm-map-note">高层在上，列号从左向右增加。图示按层列排列，不代表实际尺寸；窄屏可左右滑动。</p>
+    </div></div><p className="wm-help wm-map-note">高层在上，列号从左向右增加。超出当前视图时切换层列；编号与 PLC 映射保持不变。</p>
    </>:<Empty title="尚未设置货架范围">解锁后点击“设置总层列数”，批量建立实际库位。</Empty>:
-   <div className="wm-table-wrap"><table><thead><tr>{['库位编号','现场位置','状态','料箱','操作'].map(label=><th key={label}>{label}</th>)}</tr></thead><tbody>{sideLocations.sort((a,b)=>b.level-a.level||a.column-b.column).map(item=><tr key={item.id} className="wm-location-row" onClick={()=>setSelected(item)}><td><strong>{displayLocation(item.id)}</strong></td><td>{locationLabel(item)}</td><td>{labels[item.status]}</td><td>{item.barcode||'—'}</td><td><button onClick={()=>setSelected(item)}>查看 / 管理</button></td></tr>)}</tbody></table>{!sideLocations.length&&<Empty title="暂无库位记录"/>}</div>}
+   <><div className="wm-table-wrap"><table className="wm-location-table"><thead><tr>{['库位编号','现场位置','状态','料箱','操作'].map(label=><th key={label}>{label}</th>)}</tr></thead><tbody>{listPaging.items.map(item=><tr key={item.id} className="wm-location-row" onClick={()=>setSelected(item)}><td><strong>{displayLocation(item.id)}</strong></td><td>{locationLabel(item)}</td><td>{labels[item.status]}</td><td>{item.barcode||'—'}</td><td><button aria-label={`管理库位 ${displayLocation(item.id)}`} onClick={()=>setSelected(item)}>查看 / 管理</button></td></tr>)}</tbody></table>{!sideLocations.length&&<Empty title="暂无库位记录"/>}</div><Pager paging={listPaging} label="库位"/></>}
   </section>
   {settings&&<RackSettings layout={layout} onClose={()=>setSettings(false)} onDone={async()=>{setColumnPage(0);setLevelPage(0);await changed('总层列数已保存');}}/>}
   {rules&&<AllocationSettings policy={state.allocation_policy} onClose={()=>setRules(false)} onDone={()=>changed('分配规则已保存，对新建任务立即生效')}/>}
@@ -89,7 +94,7 @@ function LocationDetails({location,stock,task,canEdit,onClose,onSettings,onChang
   catch(e){setError(e.message);}finally{setBusy(false);}
  }
  return <Modal title="库位物料信息" onClose={onClose}><p className="wm-review"><b>{locationLabel(location)}</b><br/>{displayLocation(location.id)} · {labels[location.status]}</p>
-  {item?<><h3>{incoming?'待入库物料（任务预留）':'当前在库物料'}</h3><dl className="wm-info-list"><div><dt>料箱条码</dt><dd>{item.barcode}</dd></div><div><dt>料箱类型</dt><dd>{boxName(item)}</dd></div>{item.container_type!=='EMPTY_BIN'&&<><div><dt>物料编码</dt><dd>{item.sku}</dd></div><MaterialRows item={item}/><div><dt>数量</dt><dd>{item.quantity}</dd></div><div><dt>批次</dt><dd>{item.batch||'—'}</dd></div></>}</dl></>:<p className="wm-help">{location.status==='UNREGISTERED'?'该位置尚未建档，设置总层列数后可批量生成。':location.status==='UNVERIFIED'?'该库位尚未现场核对，当前没有登记库存。':location.status==='DISABLED'?'该库位已停用，不参与出入库分配。':'该库位当前没有登记库存。'}</p>}
+  {!operation&&(item?<><h3>{incoming?'待入库物料（任务预留）':'当前在库物料'}</h3><dl className="wm-info-list wm-detail-grid"><div><dt>料箱条码</dt><dd>{item.barcode}</dd></div><div><dt>料箱类型</dt><dd>{boxName(item)}</dd></div>{item.container_type!=='EMPTY_BIN'&&<><div><dt>物料编码</dt><dd>{item.sku}</dd></div><MaterialRows item={item}/><div><dt>数量</dt><dd>{item.quantity}</dd></div><div><dt>批次</dt><dd>{item.batch||'—'}</dd></div></>}</dl></>:<p className="wm-help">{location.status==='UNREGISTERED'?'该位置尚未建档，设置总层列数后可批量生成。':location.status==='UNVERIFIED'?'该库位尚未现场核对，当前没有登记库存。':location.status==='DISABLED'?'该库位已停用，不参与出入库分配。':'该库位当前没有登记库存。'}</p>)}
   {location.access_error&&<p className="wm-help">{location.access_error}</p>}{task&&<div className="wm-location-task"><span>{kindNames[task.kind]} · {task.number}</span><Badge status={task.status}/></div>}
   {location.status==='DISABLED'&&stock&&<p className="wm-help">库位已停用，库存保留；重新启用后才能出库。</p>}
   {blocked&&<p className="wm-help">该库位关联未结束任务或预留{location.blocking_tasks?.length?`：${location.blocking_tasks.join('、')}`:''}。请先在任务页处理，再更改库位状态。</p>}

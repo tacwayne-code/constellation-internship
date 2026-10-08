@@ -75,6 +75,12 @@ USB/蓝牙扫码枪使用键盘输入并自动回车；电脑扫码前切换英�
 
 ## 7. 更新与故障检查
 
+迁移到本机后先双击 `WMS环境自检.cmd`，或运行 `.venv\Scripts\python.exe scripts/doctor-wms.py`。自检按只读方式打开正式库存与指令数据库，检查完整性及迁移是否遗漏其中一份，并显示库位、料箱、物料、任务、单据和分配规则；它不启动后台，也不连接 PLC。空的新安装可没有两份数据库，已有数据的迁移必须同时具备两份。增加 `--live` 时只读取已配置 WMS 的 HTTP 健康接口。
+
+监听地址不属于新主机时，自检与启动器会提示修改 `config/wms.json` 的 `listen_host`；端口不可用会单独提示。启动检查在打开账本前完成。不要通过修改 PLC 的 `host` 来修复网页监听地址。
+
+开发回归使用 `powershell -NoProfile -ExecutionPolicy Bypass -File scripts/test-local.ps1`，默认验证常规 WMS、全量 Python 测试和前端构建。需要额外验证 CAD 工程映射时增加 `-Mode lab`，并先提供完整工程提取数据。
+
 后续拉取代码前先备份，完成现场作业并停止后台，再 `git pull --ff-only`，安装依赖后重新启动。生产 `config/wms.json`、`config/plc.json` 与 `data/` 不受 Git 更新覆盖。浏览器 Ctrl+F5，平板重新加载。
 
 `http://后台IP:8770/api/health` 应返回版本 `1.6.0`。网页能打开而 PLC 离线时，检查 PLC 地址、网卡 IP、TCP 102 与 CPU/S7 权限；另一台电脑网页打不开时检查公司 IP、8770 端口、防火墙和客户端是否处于可达网络。
