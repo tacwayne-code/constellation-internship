@@ -1,5 +1,5 @@
 import React,{useRef,useState} from 'react';
-import {api,requestId,kindNames,storedLocation} from './api';
+import {api,requestId,kindNames,storedLocation,hasPermission} from './api';
 import {Modal,Empty} from './components';
 import {TaskButtons,TaskActionDialog} from './TaskActions';
 import {usePagination} from './paging';
@@ -17,7 +17,7 @@ export default function OrderCards({state,canEdit,refresh,notify,all=false,onlyI
   const status=task?.status==='REVIEW'?'待现场核对':task?.status==='QUEUED'?(task.order_leg==='RETURN'?'待返库下发':'待取箱'):stages[order.status]||order.status;
   return <article className="wm-pending-card wm-order-card" key={order.id} aria-label={order.number}><div className="wm-pending-heading"><strong>{kindNames[order.kind]}单 · {order.number}</strong><span className={`wm-badge wm-${order.status.toLowerCase()}`}>{status}</span></div><h3>{order.material_name||order.sku}</h3><p>编码 {order.sku} · 型号 {order.model||'—'} · 规格 {order.specification||'—'}</p><p>本单{kindNames[order.kind]} <b>{order.quantity}</b> · 箱内数量 {order.before_quantity} → <b>{order.after_quantity}</b>{order.after_quantity===0?'（返库后转为空箱）':''}</p><p>料箱 <b>{order.barcode}</b> · 原库位 {storedLocation(order.location)}</p><p className="wm-help">{waiting?(order.kind==='INBOUND'?'料箱已到交接点，请按本单数量装料，再点击返库。':'料箱已到出口，请扫描箱号和物料编码，按本单数量取料，再点击返库。'):task?.detail}</p>{order.quantity_posted&&<p className="wm-help">本单数量已过账</p>}
    {waiting&&order.station_confirmation&&<p className="wm-error">之前的人工操作已确认，请勿重复装料或取料。核对箱内数量后重新返库。</p>}
-   {waiting?<button className="wm-primary wm-full" disabled={!canEdit} onClick={()=>setReturnId(order.id)}>{order.kind==='INBOUND'?'装料完成，返库':'扫码核对并返库'}</button>:task&&<TaskButtons task={task} state={state} canEdit={canEdit} onAction={kind=>setAction({task,kind})}/>}
+   {waiting?<button className="wm-primary wm-full" disabled={!canEdit||!hasPermission(state,'control')||!hasPermission(state,order.kind.toLowerCase())} onClick={()=>setReturnId(order.id)}>{order.kind==='INBOUND'?'装料完成，返库':'扫码核对并返库'}</button>:task&&<TaskButtons task={task} state={state} canEdit={canEdit} onAction={kind=>setAction({task,kind})}/>}
   </article>;
  })}</div>{!orders.length&&<Empty title={all?'暂无物料单据':'暂无待办物料单据'}>登记单据后，按取箱、人工操作、返库顺序执行</Empty>}{!onlyId&&<Pager paging={paging} label="待办单据"/>}
  {action&&<TaskActionDialog action={action} state={state} canEdit={canEdit} refresh={refresh} notify={notify} onClose={()=>setAction(null)}/>}
@@ -30,7 +30,7 @@ function ReturnDialog({order,state,canEdit,refresh,notify,onClose}){
  const [id]=useState(requestId),[barcode,setBarcode]=useState(''),[sku,setSku]=useState(''),[confirmed,setConfirmed]=useState(false),[busy,setBusy]=useState(false),[error,setError]=useState('');
  const waiting=['WAIT_LOAD','WAIT_PICK'].includes(order.status);
  const matched=!outbound||(barcode.trim()===order.barcode&&sku.trim()===order.sku);
- const ready=canEdit&&waiting&&state.readiness.ready&&matched&&confirmed&&!busy;
+ const ready=canEdit&&hasPermission(state,'control')&&hasPermission(state,order.kind.toLowerCase())&&waiting&&state.readiness.ready&&matched&&confirmed&&!busy;
  async function submit(event){
   event.preventDefault();if(!ready||busyRef.current)return;busyRef.current=true;setBusy(true);setError('');
   try{await api(`/api/orders/${order.id}/return`,{request_id:id,confirmed:true,scanned_barcode:barcode.trim(),scanned_sku:sku.trim()});await refresh();notify('返库已提交，匹配完成回执后自动更新数量');onClose();}

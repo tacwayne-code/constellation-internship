@@ -3,7 +3,8 @@ import io
 import struct
 
 import pytest
-from fastapi.testclient import TestClient
+from wms_test_client import TestClient
+from fastapi.testclient import TestClient as AnonymousClient
 
 from test_wms import CONFIG, FakePLC, request, system, layout_request
 from backend.wms_app import create_app
@@ -128,7 +129,7 @@ def test_api_empty_validation_legacy_defaults_batch_auth_and_display(tmp_path):
     store = app.state.store
     store.verify_empty('L-01-01-1')
     batch = dict(request_id='batch-api-request', tasks=[empty_request()])
-    assert client.post('/api/tasks/batch',json=batch).status_code == 401
+    assert AnonymousClient(app).post('/api/tasks/batch',json=batch).status_code == 401
     assert client.post('/api/tasks/batch',json={**batch,'tasks':[]},headers=headers).status_code == 422
     assert client.post('/api/tasks',json={**empty_request(),'sku':'BAD'},headers=headers).status_code == 409
     assert client.post('/api/tasks',json={**request(),'quantity':0},headers=headers).status_code == 409

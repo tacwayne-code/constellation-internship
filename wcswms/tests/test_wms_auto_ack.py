@@ -1,7 +1,8 @@
 import struct
 
 import pytest
-from fastapi.testclient import TestClient
+from wms_test_client import TestClient
+from fastapi.testclient import TestClient as AnonymousClient
 
 from backend.wms_app import create_app
 from backend.wms_service import WmsService

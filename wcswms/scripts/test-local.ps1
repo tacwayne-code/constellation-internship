@@ -5,8 +5,8 @@ Push-Location -LiteralPath (Split-Path $PSScriptRoot -Parent)
 try {
     & '.\.venv\Scripts\python.exe' -m pytest -q
     if ($LASTEXITCODE -ne 0) { throw 'Regression tests failed' }
-    & node --test tests/test_wms_paging.mjs
-    if ($LASTEXITCODE -ne 0) { throw 'WMS pagination regression tests failed' }
+    & node --test tests/test_wms_paging.mjs tests/test_wms_scope.mjs
+    if ($LASTEXITCODE -ne 0) { throw 'WMS pagination/context regression tests failed' }
     if ($Mode -eq 'lab') {
         & '.\.venv\Scripts\python.exe' scripts/validate_twin.py
         if ($LASTEXITCODE -ne 0) { throw 'CAD mapping validation failed; lab mode requires the engineering CAD extraction data.' }

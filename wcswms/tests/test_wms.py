@@ -5,7 +5,8 @@ import threading
 from concurrent.futures import ThreadPoolExecutor
 
 import pytest
-from fastapi.testclient import TestClient
+from wms_test_client import TestClient
+from fastapi.testclient import TestClient as AnonymousClient
 
 from backend.wms_app import create_app
 from backend.wms_service import WmsService
@@ -229,7 +230,7 @@ def test_remote_api_auth_origin_and_readwrite_mode(tmp_path):
     client = TestClient(app)
     assert client.get('/api/health').json()['write_enabled'] is True
     for route in ['/api/tasks','/api/locations','/api/stocktake','/api/handover','/api/device/stop']:
-        assert client.post(route,json={}).status_code == 401
+        assert AnonymousClient(app).post(route,json={}).status_code == 401
     headers={'X-Control-Key':'test-control-key'}
     assert client.post('/api/auth/check',json={},headers=headers).status_code == 200
     assert client.post('/api/device/acknowledge',json={'expected_task_id':0,'expected_status':7,'site_ready':True},headers=headers).status_code == 422
@@ -306,7 +307,7 @@ def test_material_edit_auth_conflict_csv_and_no_plc_write(tmp_path):
     item = store.stocktake(dict(request_id='material-stocktake',barcode='BOX-X',sku='SKU-X',quantity=3,batch='BATCH-X',location='L-01-01-1',note='现场核对'))
     client = TestClient(app)
     body = dict(request_id='material-edit-001',barcode='BOX-X',expected_updated_at=item['updated_at'],material_name='=名称',model='+型号',specification='@规格')
-    assert client.post('/api/inventory/material',json=body).status_code == 401
+    assert AnonymousClient(app).post('/api/inventory/material',json=body).status_code == 401
     headers = {'X-Control-Key':'key'}
     result = client.post('/api/inventory/material',json=body,headers=headers)
     assert result.status_code == 200
@@ -404,7 +405,7 @@ def test_layout_api_auth_limits_and_disabled_status(tmp_path):
     client, headers = TestClient(app), {'X-Control-Key':'key'}
     store = app.state.store
     body = layout_request(store)
-    assert client.post('/api/locations/layout',json=body).status_code == 401
+    assert AnonymousClient(app).post('/api/locations/layout',json=body).status_code == 401
     for invalid in ({'levels':0},{'columns':100},{'levels':1.5},{'side':3},{'expected_revision':-1}):
         assert client.post('/api/locations/layout',json={**body,**invalid},headers=headers).status_code == 422
     assert client.post('/api/locations/layout',json=body,headers=headers).status_code == 200
@@ -643,7 +644,7 @@ def test_location_management_api_auth_validation_token_and_history(tmp_path):
     token=state['locations'][0]['management_token']
     body=dict(request_id='api-location-disable',action='DISABLE',expected_token=token,note='设备检修',confirmed=True)
     route='/api/locations/L-01-01-1/state'
-    assert client.post(route,json=body).status_code==401
+    assert AnonymousClient(app).post(route,json=body).status_code==401
     for change in ({'action':'EMPTY'},{'note':''},{'expected_token':'x'}):
         assert client.post(route,json=body|change,headers=headers).status_code==422
     assert client.post(route,json=body,headers=headers).status_code==200

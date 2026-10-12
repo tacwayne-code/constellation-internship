@@ -1,6 +1,6 @@
 import React,{useEffect,useRef,useState} from 'react';
 import {X,Inbox,ExternalLink} from 'lucide-react';
-import {api,getKey,saveKey,taskNames,kindNames,formatTime,storedLocation,taskLabel,boxName} from './api';
+import {taskNames,kindNames,formatTime,storedLocation,taskLabel,boxName} from './api';
 import {materialFields} from './material';
 
 export function MaterialFields({value,onChange,disabled=false}){
@@ -22,11 +22,6 @@ export function Modal({title,children,onClose,className}){
 }
 export function Empty({title='暂无记录',children}){return <div className="wm-empty"><Inbox size={48}/><strong>{title}</strong>{children&&<p>{children}</p>}</div>;}
 export function Badge({status}){return <span className={`wm-badge wm-${status.toLowerCase()}`}>{taskNames[status]||status}</span>;}
-export function Unlock({onClose,onUnlocked}){
- const [key,setKey]=useState(getKey()),[busy,setBusy]=useState(false),[error,setError]=useState('');
- async function submit(event){event.preventDefault();setBusy(true);try{await api('/api/auth/check',{}, {key});saveKey(key);onUnlocked();onClose();}catch(e){setError(e.message);}finally{setBusy(false);}}
- return <Modal title="解锁操作" onClose={onClose}><form onSubmit={submit}><p className="wm-help">输入后台主机上的控制密钥。当前标签页解锁后可登记库存、创建任务和操作真实 PLC。</p><label>控制密钥<input type="password" value={key} onChange={e=>setKey(e.target.value)} autoFocus required autoComplete="off"/></label><p className="wm-help">密钥文件：后台主机 data/physical-control-key.txt</p>{error&&<p className="wm-error" role="alert">{error}</p>}<button className="wm-primary wm-full" disabled={busy}>{busy?'校验中…':'解锁操作'}</button></form></Modal>;
-}
 export function ConfirmDialog({title,children,label='我已核对以上信息',button='确认',onClose,onConfirm,danger=false,disabled=false}){
  const [confirmed,setConfirmed]=useState(false),[busy,setBusy]=useState(false),[error,setError]=useState('');
  const busyRef=useRef(false);

@@ -14,7 +14,7 @@ from .wms_store import WmsError, IN_FLIGHT, now
 class WmsReader(PhysicalReader):
     def __init__(self, config):
         super().__init__(config)
-        self.data.update(mode='PHYSICAL_WMS', task_dispatch_enabled=config.get('control_enabled') is True)
+        self.data.update(mode='PHYSICAL_WMS', task_dispatch_enabled=config.get('control_enabled') is True and config.get('device_enabled',True) is True)
         self._publish_snapshot()
 
     def replace_connection(self, replacement, config):
@@ -342,6 +342,8 @@ class WmsService:
         if not self.enabled:
             raise WmsError('后台未启用写入')
         with self.lock:
+            if not self.enabled:
+                raise WmsError('后台未启用写入')
             result = self.control.execute(Command(request_id=request_id, action='stop', site_ready=site_ready))
             def update(state):
                 for task in state['tasks']:

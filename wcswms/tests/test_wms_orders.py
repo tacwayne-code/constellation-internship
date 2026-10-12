@@ -4,7 +4,8 @@ import struct
 from concurrent.futures import ThreadPoolExecutor
 
 import pytest
-from fastapi.testclient import TestClient
+from wms_test_client import TestClient
+from fastapi.testclient import TestClient as AnonymousClient
 from backend.wms_app import create_app
 from backend.wms_store import WmsError, location_token
 from test_wms import CONFIG, FakePLC, request
@@ -282,8 +283,8 @@ def test_api_auth_and_input_and_readonly_return(system):
     app, store, plc, service = system
     client = TestClient(app)
     payload = body()
-    assert client.post('/api/orders', json=payload).status_code == 401
-    assert client.post('/api/orders/batch', json=dict(request_id='batch-api', orders=[payload])).status_code == 401
+    assert AnonymousClient(app).post('/api/orders', json=payload).status_code == 401
+    assert AnonymousClient(app).post('/api/orders/batch', json=dict(request_id='batch-api', orders=[payload])).status_code == 401
     auth = {'X-Control-Key':'qa-key'}
     assert client.post('/api/orders', json=payload | {'barcode':'INVENTED'}, headers=auth).status_code == 422
     result = client.post('/api/orders', json=payload, headers=auth)
@@ -291,7 +292,7 @@ def test_api_auth_and_input_and_readonly_return(system):
     order = result.json()
     assert client.get('/api/state').json()['orders'][0]['id'] == order['id']
     fetch(system, order)
-    assert client.post('/api/orders/'+order['id']+'/return', json=return_body(order)).status_code == 401
+    assert AnonymousClient(app).post('/api/orders/'+order['id']+'/return', json=return_body(order)).status_code == 401
     before, writes = store.read(), list(plc.writes)
     service.enabled = False
     with pytest.raises(WmsError):

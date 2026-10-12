@@ -382,3 +382,65 @@ tbody tr:hover{background:#f8fbf9}
  .wm-shell dialog .wm-info-list>div{padding:5px 0}
 }
 @media(prefers-reduced-motion:no-preference){button{transition:background-color .15s,border-color .15s,color .15s}.wm-panel{animation:wm-appear .18s ease-out}@keyframes wm-appear{from{opacity:.5;transform:translateY(3px)}to{opacity:1;transform:translateY(0)}}}
+
+.wm-user-button{max-width:180px;color:#167565;border-color:#aec8bd;font-size:12px}
+.wm-user-button span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.wm-logout{font-size:12px}
+.wm-login{height:100dvh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:23px;padding:24px;background:#f3f5f4}
+.wm-login-brand{display:flex;align-items:center;gap:10px;color:#172825;flex-shrink:0}
+.wm-login-brand strong{font-size:21px}
+.wm-login-brand span{font-size:12px;color:#758780;border-left:1px solid #cbd8d1;padding-left:13px;margin-left:4px}
+.wm-login-panel{width:min(440px,100%);background:#fff;border:1px solid #dde5e1;border-radius:12px;padding:28px;box-shadow:0 10px 35px #17282508}
+.wm-login-heading{display:flex;gap:13px;align-items:center;margin-bottom:23px;color:#167565}
+.wm-login-heading h1{font-size:23px;letter-spacing:-.4px}
+.wm-login-heading p{font-size:12px;color:#758780;line-height:1.6;margin-top:5px}
+.wm-login label,.wm-account label{display:block;font-size:13px;font-weight:600;line-height:1.4;margin-bottom:13px}
+.wm-login input,.wm-account input{display:block;width:100%;margin-top:6px;padding:10px 12px;min-height:42px;color:#233b35;border:1px solid #cbd8d1;border-radius:6px;background:#fff;font-weight:400;line-height:1.4}
+.wm-login input::placeholder,.wm-account input::placeholder{font-size:12px;color:#99a59f}
+.wm-login .wm-help,.wm-account .wm-help{margin-bottom:13px}
+.wm-login .wm-error,.wm-login-notice{font-size:12px;line-height:1.5;margin-bottom:12px}
+.wm-login-notice{color:#167565}
+.wm-login-footer{color:#8b9c94;font-size:12px;flex-shrink:0}
+
+.wm-users-table th:first-child{width:22%}.wm-users-table th:nth-child(2){width:13%}.wm-users-table th:nth-child(3){width:43%}.wm-users-table th:nth-child(4){width:12%}.wm-users-table th:last-child{width:10%}
+.wm-users-table td{font-size:12px}.wm-users-table td:nth-child(3){font-size:11px;line-height:1.55}
+.wm-auth-audit th:nth-child(1){width:24%}.wm-auth-audit th:nth-child(2){width:18%}.wm-auth-audit th:nth-child(3){width:36%}.wm-auth-audit th:nth-child(4){width:22%}
+.wm-permissions{border:1px solid #dde5e1;border-radius:7px;padding:12px;display:grid;grid-template-columns:1fr 1fr;gap:9px 14px;margin:4px 0 12px;min-width:0}
+.wm-permissions legend{font-size:13px;font-weight:600;padding:0 5px}.wm-permissions legend svg{vertical-align:middle;margin-right:5px}
+.wm-shell dialog .wm-permissions label.wm-check{margin:0!important;font-size:12px!important;align-items:center}
+.wm-account{max-width:520px;width:100%}.wm-account h2{display:flex;align-items:center;gap:8px}
+.wm-account form{max-width:400px}.wm-account h3{margin-top:10px;margin-bottom:13px}
+@media(max-height:800px){.wm-login{gap:14px;padding:15px}.wm-login-panel{padding:19px 24px}.wm-login-heading{margin-bottom:14px}.wm-login label{margin-bottom:9px;font-size:12px}.wm-login input{min-height:36px;padding:7px 10px;margin-top:4px}.wm-login .wm-help{margin-bottom:9px;font-size:11px}.wm-login-footer{font-size:11px}.wm-account label{margin-bottom:10px}.wm-account input{min-height:36px;padding:7px 10px}.wm-shell dialog .wm-permissions{gap:8px 12px;padding:10px}}
+@media(max-width:759px){.wm-sidebar nav{grid-template-columns:repeat(7,minmax(0,1fr))}.wm-sidebar nav button{min-width:0}.wm-header-controls{gap:5px}.wm-user-button{max-width:100px;padding:7px;font-size:10px;gap:4px}.wm-logout{padding:7px;min-height:32px}.wm-logout span{display:none}.wm-header-controls .wm-connection{display:none}.wm-login{padding:15px;gap:18px}.wm-login-brand strong{font-size:18px}.wm-login-brand span{display:none}.wm-login-panel{padding:20px}.wm-login-heading{gap:10px;margin-bottom:17px}.wm-login-heading h1{font-size:21px}.wm-user-dialog .wm-form-grid{gap:0 10px}.wm-permissions{gap:9px 8px;padding:10px}.wm-users-table th:first-child{width:29%}.wm-users-table th:nth-child(2){width:19%}.wm-users-table th:nth-child(3),.wm-users-table td:nth-child(3){display:none}.wm-users-table th:nth-child(4){width:23%}.wm-users-table th:last-child{width:29%}.wm-users-table td{font-size:11px}.wm-account{padding:14px}.wm-auth-audit th,.wm-auth-audit td{font-size:10px;padding:8px 5px}.wm-auth-audit th:first-child{width:24%}}
+
+@media(max-height:650px){
+ .wm-login{gap:10px;padding:10px}
+ .wm-login-panel{padding:14px 18px;flex-shrink:0}
+ .wm-login-heading{margin-bottom:10px}
+ .wm-login label{margin-bottom:6px;font-size:11px}
+ .wm-login input{min-height:32px;padding:5px 9px;margin-top:3px}
+ .wm-login .wm-help{margin-bottom:6px;font-size:10px}
+ .wm-login .wm-primary{min-height:34px;padding:7px}
+ .wm-login-setup form{display:grid;grid-template-columns:1fr 1fr;gap:0 12px}
+ .wm-login-setup form>label:nth-child(5),.wm-login-setup form>p,.wm-login-setup form>button{grid-column:1/-1}
+}
+
+@media(max-width:759px){.wm-header-controls{flex-direction:row;align-items:center}}
+.wm-context-bar{display:flex;align-items:center;gap:16px;flex-shrink:0;padding:8px 12px;border:1px solid #dde5e1;border-radius:8px;background:#eef3f0}
+.wm-context-bar label{display:flex;align-items:center;gap:9px;font-size:12px;color:#657c70;min-width:0}
+.wm-context-bar select{width:190px;max-width:100%;min-height:32px;border:1px solid #cbd8d1;border-radius:6px;padding:5px 8px;background:#fff;color:#233b35;font-weight:600}
+.wm-context-bar>span{font-size:11px;color:#82938b;margin-left:auto}
+.wm-sites-table th:first-child{width:26%}.wm-sites-table th:nth-child(2){width:25%}.wm-sites-table th:nth-child(3){width:35%}.wm-sites-table th:last-child{width:14%}
+.wm-sites-table td{overflow-wrap:anywhere}
+.wm-page-settings>.wm-tabs{align-self:flex-start}
+@media(max-width:759px){
+ .wm-context-bar{gap:10px;padding:7px 9px}
+ .wm-context-bar label{flex:1;gap:5px;font-size:11px}
+ .wm-context-bar select{width:100%;min-width:0;font-size:11px;padding:5px 4px}
+ .wm-context-bar>span{display:none}
+ .wm-page-settings>.wm-section-tools>.wm-tabs{gap:0;width:100%;justify-content:space-between}
+ .wm-page-settings>.wm-section-tools>.wm-tabs button{padding:7px 8px;white-space:nowrap}
+ .wm-sites-table td,.wm-sites-table th{font-size:11px;padding:8px 5px}
+ .wm-sites-table th:first-child{width:24%}.wm-sites-table th:nth-child(2){width:30%}.wm-sites-table th:nth-child(3){width:25%}.wm-sites-table th:last-child{width:21%}
+ .wm-site-device-dialog .wm-form-grid{grid-template-columns:1fr 1fr}
+}

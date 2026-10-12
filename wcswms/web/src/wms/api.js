@@ -1,14 +1,23 @@
-const KEY='wms-control-key';
-export const getKey=()=>sessionStorage.getItem(KEY)||'';
-export const saveKey=value=>value?sessionStorage.setItem(KEY,value):sessionStorage.removeItem(KEY);
+let csrfToken='',deviceScope='primary',scopeRevision=0;
+const globalPath=path=>/^\/api\/(auth|users|sites|warehouses|devices)(?:\/|$)/.test(path);
+export function setDeviceScope(id){if(deviceScope===id)return;deviceScope=id;scopeRevision++;for(const key of Object.keys(sessionStorage))if(key.startsWith('wms-')&&key.includes('draft'))sessionStorage.removeItem(key);}
+export function apiPath(path){if(globalPath(path))return path;if(!deviceScope)throw new Error('请先选择仓库和设备');return deviceScope==='primary'?path:`/api/scopes/${deviceScope}${path}`;}
+export function setSession(session){csrfToken=session?.csrf_token||'';}
+export function clearSession(){
+ scopeRevision++;csrfToken='';sessionStorage.removeItem('wms-control-key');
+ for(const key of Object.keys(sessionStorage))if(key.startsWith('wms-')&&key.includes('draft'))sessionStorage.removeItem(key);
+}
+export const hasPermission=(state,permission)=>Boolean(state?.user?.permissions.includes(permission));
 // getRandomValues works on HTTP LAN origins, where randomUUID is unavailable.
 export function requestId(){return [...crypto.getRandomValues(new Uint8Array(16))].map(value=>value.toString(16).padStart(2,'0')).join('');}
-export async function api(path,body,{signal,key=getKey()}={}){
- const response=await fetch(path,{signal,cache:'no-store',...(body===undefined?{}:{method:'POST',headers:{'Content-Type':'application/json','X-Control-Key':key},body:JSON.stringify(body)})});
+export async function api(path,body,{signal,silentAuth=false}={}){
+ const revision=scopeRevision,scoped=!globalPath(path);
+ const response=await fetch(apiPath(path),{signal,cache:'no-store',credentials:'same-origin',...(body===undefined?{}:{method:'POST',headers:{'Content-Type':'application/json','X-WMS-Request':'1','X-CSRF-Token':csrfToken},body:JSON.stringify(body)})});
  let value;try{value=await response.json();}catch{throw new Error('后台响应异常，请检查服务是否运行');}
+ if(scoped&&revision!==scopeRevision)throw new Error('仓库或设备已切换，原请求结果已忽略');
  if(!response.ok){
-  if(response.status===401){saveKey('');window.dispatchEvent(new Event('wms-locked'));}
-  throw new Error(typeof value.detail==='string'?displayLocationText(value.detail):`请求未通过校验（${response.status}），请检查填写内容`);
+  if(response.status===401&&!silentAuth&&!['/api/auth/login','/api/auth/bootstrap'].includes(path)){clearSession();window.dispatchEvent(new Event('wms-logged-out'));}
+  const error=new Error(typeof value.detail==='string'?displayLocationText(value.detail):`请求未通过校验（${response.status}），请检查填写内容`);error.status=response.status;throw error;
  }
  return value;
 }

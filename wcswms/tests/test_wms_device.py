@@ -6,7 +6,8 @@ from concurrent.futures import ThreadPoolExecutor
 from types import SimpleNamespace
 
 import pytest
-from fastapi.testclient import TestClient
+from wms_test_client import TestClient
+from fastapi.testclient import TestClient as AnonymousClient
 
 from backend import physical_app, wms_device
 from backend.wms_app import create_app
@@ -127,10 +128,11 @@ def test_invalid_address_does_not_change_config_or_client(device, host):
     assert device.path.read_bytes() == before and device.service.reader.client is client
 
 
-def test_requires_key_and_same_origin_does_not_expose_config_secrets(device):
-    device.client.headers.pop('X-Control-Key')
+def test_requires_login_and_same_origin_does_not_expose_config_secrets(device):
+    saved_cookies = dict(device.client.cookies)
+    device.client.cookies.clear()
     assert change(device).status_code == 401
-    device.client.headers['X-Control-Key'] = 'test-key'
+    device.client.cookies.update(saved_cookies)
     device.client.headers['Origin'] = 'http://other-site'
     assert change(device).status_code == 403
     settings = device.client.get('/api/state').json()['device_settings']

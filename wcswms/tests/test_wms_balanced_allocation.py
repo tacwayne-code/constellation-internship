@@ -2,7 +2,8 @@
 from concurrent.futures import ThreadPoolExecutor
 
 import pytest
-from fastapi.testclient import TestClient
+from wms_test_client import TestClient
+from fastapi.testclient import TestClient as AnonymousClient
 
 from backend.wms_allocation import DEFAULT_POLICY, LEGACY_PRIORITIES, allocation_policy
 from backend.wms_app import create_app
@@ -187,7 +188,7 @@ def test_independent_api_auth_validation_stale_save_and_layout_separation(tmp_pa
     # API request IDs have a 100-character limit; real UI sends a 32-character random ID.
     payload['request_id'] = 'api-balanced-setting'
     before = store.read()
-    assert client.post('/api/allocation-policy', json=payload).status_code == 401
+    assert AnonymousClient(app).post('/api/allocation-policy', json=payload).status_code == 401
     for bad in [payload | {'expected_revision':-1}, payload | {'allocation':DEFAULT_POLICY | {'side_order':'UNKNOWN'}}]:
         assert client.post('/api/allocation-policy', json=bad, headers=auth).status_code == 422
     result = client.post('/api/allocation-policy', json=payload, headers=auth)

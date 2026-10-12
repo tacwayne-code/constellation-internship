@@ -27,5 +27,5 @@ export function usePagination(items,size,resetKey=''){
 }
 export function useTableSize(){
  const {width,height}=useViewport();
- return Math.max(3,Math.min(width<760?6:12,Math.floor((height-(width<760?380:330))/64)));
+ return Math.max(3,Math.min(width<760?6:12,Math.floor((height-(width<760?440:390))/64)));
 }

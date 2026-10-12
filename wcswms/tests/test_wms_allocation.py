@@ -3,7 +3,8 @@ import itertools
 import struct
 
 import pytest
-from fastapi.testclient import TestClient
+from wms_test_client import TestClient
+from fastapi.testclient import TestClient as AnonymousClient
 
 from backend.wms_allocation import DEFAULT_POLICY, allocation_policy
 from backend.wms_app import create_app
@@ -202,7 +203,7 @@ def test_api_validation_auth_policy_state_and_legacy_retry(tmp_path):
                      commands_path=tmp_path/'commands.sqlite3', automatic=False)
     store, client, auth = app.state.store, TestClient(app), {'X-Control-Key':'qa-key'}
     payload = layout_request(store) | dict(allocation=DEFAULT_POLICY | {'side_order':'RIGHT_FIRST'}, expected_allocation_revision=0)
-    assert client.post('/api/locations/layout', json=payload).status_code == 401
+    assert AnonymousClient(app).post('/api/locations/layout', json=payload).status_code == 401
     for bad in [{'side_order':'OTHER'}, {'priority':'SIDE_ONLY'}, {'level_order':4}, {'depth_order':'FIRST'}]:
         response = client.post('/api/locations/layout', json=payload | {'allocation':DEFAULT_POLICY | bad}, headers=auth)
         assert response.status_code == 422
@@ -213,4 +214,4 @@ def test_api_validation_auth_policy_state_and_legacy_retry(tmp_path):
     assert client.post('/api/locations/layout', json=legacy, headers=auth).json() == saved
     response = client.post('/api/locations', json=dict(request_id='api-add-new-row', side=1, level=3, column=1, verified_empty=False), headers=auth)
     assert response.status_code == 201 and response.json()['count'] == 2
-    assert client.get('/api/health').json()['version'] == '1.6.0'
+    assert client.get('/api/health').json()['version'] == '1.8.0'

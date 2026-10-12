@@ -2,7 +2,8 @@ import struct
 import threading
 from concurrent.futures import ThreadPoolExecutor
 
-from fastapi.testclient import TestClient
+from wms_test_client import TestClient
+from fastapi.testclient import TestClient as AnonymousClient
 
 from backend import physical_app, wms_service
 from backend.wms_app import create_app

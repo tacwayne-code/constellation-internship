@@ -17,6 +17,7 @@ from .wms_service import WmsReader, WmsService, feedback
 from .wms_store import WmsStore, WmsError, ACTIVE, rack_layouts, location_token, display_location
 from .wms_allocation import allocation_policy
 from .wms_device import DeviceSettings
+from .wms_auth import Users, AuthError, PERMISSIONS, ROLES, DEFAULTS, COOKIE, SESSION_SECONDS
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -153,7 +154,72 @@ class DeviceSettingsInput(Input):
     expected_revision: int = Field(ge=0, strict=True)
 
 
-def create_app(config=None, data_dir=None, reader=None, key=None, commands_path=None, automatic=True, config_path=None):
+class LoginInput(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    username: str = Field(min_length=1, max_length=32)
+    password: str = Field(min_length=1, max_length=128)
+
+
+class UserInput(LoginInput):
+    display_name: str = Field(min_length=1, max_length=40)
+    role: Literal['admin', 'operator', 'viewer', 'custom'] = 'operator'
+    permissions: list[str] = Field(default_factory=list, max_length=6)
+
+
+class BootstrapInput(LoginInput):
+    display_name: str = Field(min_length=1, max_length=40)
+    control_key: str = Field(min_length=1, max_length=256)
+
+
+class UserUpdate(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    display_name: str = Field(min_length=1, max_length=40)
+    role: Literal['admin', 'operator', 'viewer', 'custom']
+    permissions: list[str] = Field(default_factory=list, max_length=6)
+    enabled: bool = Field(strict=True)
+    expected_revision: int = Field(ge=1, strict=True)
+    password: str = Field(default='', max_length=128)
+
+
+class PasswordInput(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    old_password: str = Field(min_length=1, max_length=128)
+    new_password: str = Field(min_length=10, max_length=128)
+
+
+class WarehouseInput(Input):
+    name: str = Field(min_length=1, max_length=40)
+    note: str = Field(default='', max_length=200)
+
+
+class WarehouseUpdate(WarehouseInput):
+    expected_revision: int = Field(ge=1, strict=True)
+
+
+class SiteDeviceInput(Input):
+    warehouse_id: str = Field(min_length=1, max_length=32)
+    name: str = Field(min_length=1, max_length=40)
+    host: str = Field(min_length=7, max_length=15)
+    port: int = Field(default=102, ge=1, le=65535, strict=True)
+    rack: int = Field(default=0, ge=0, le=7, strict=True)
+    slot: int = Field(default=1, ge=0, le=31, strict=True)
+    inbound_dock: int = Field(default=1, ge=1, le=32767, strict=True)
+    outbound_dock: int = Field(default=1, ge=1, le=32767, strict=True)
+
+
+class SiteDeviceUpdate(Input):
+    name: str = Field(min_length=1, max_length=40)
+    host: str = Field(min_length=7, max_length=15)
+    port: int = Field(default=102, ge=1, le=65535, strict=True)
+    rack: int = Field(default=0, ge=0, le=7, strict=True)
+    slot: int = Field(default=1, ge=0, le=31, strict=True)
+    inbound_dock: int = Field(default=1, ge=1, le=32767, strict=True)
+    outbound_dock: int = Field(default=1, ge=1, le=32767, strict=True)
+    enabled: bool = Field(strict=True)
+    expected_revision: int = Field(ge=1, strict=True)
+
+
+def create_app(config=None, data_dir=None, reader=None, key=None, commands_path=None, automatic=True, config_path=None, shared_users=None, _managed=False):
     if config is None:
         config_path = Path(config_path or ROOT / 'config/wms.json')
         config = json.loads(config_path.read_text(encoding='utf-8-sig'))
@@ -161,7 +227,7 @@ def create_app(config=None, data_dir=None, reader=None, key=None, commands_path=
     data_dir.mkdir(parents=True, exist_ok=True)
     store = WmsStore(data_dir / 'warehouse.sqlite3', config)
     reader = reader or WmsReader(config)
-    enabled = config.get('profile') == 'PHYSICAL_CONTROL' and config.get('control_enabled') is True
+    enabled = config.get('profile') == 'PHYSICAL_CONTROL' and config.get('control_enabled') is True and config.get('device_enabled',True) is True
     service = WmsService(store, reader, commands_path or ROOT / 'data/physical-commands.sqlite3', enabled=enabled,
                          auto_acknowledge=config.get('auto_acknowledge', True) is True)
     device = DeviceSettings(config, config_path, service)
@@ -173,6 +239,7 @@ def create_app(config=None, data_dir=None, reader=None, key=None, commands_path=
         key = key_path.read_text(encoding='utf-8').strip()
     if not key:
         raise RuntimeError('Control key cannot be empty')
+    users = shared_users or Users(data_dir / 'users.sqlite3')
 
     @asynccontextmanager
     async def lifespan(app):
@@ -185,7 +252,10 @@ def create_app(config=None, data_dir=None, reader=None, key=None, commands_path=
                     import logging
                     logging.exception('WMS feedback reconciliation failed; no command retry')
                 await asyncio.sleep(1)
-        worker = asyncio.create_task(sample()) if automatic else None
+        sites = getattr(app.state, 'sites', None)
+        if sites and not _managed:
+            await sites.start(automatic)
+        worker = asyncio.create_task(sample()) if automatic and not sites else None
         yield
         if worker:
             worker.cancel()
@@ -196,33 +266,207 @@ def create_app(config=None, data_dir=None, reader=None, key=None, commands_path=
         def close():
             with service.lock, reader.lock:
                 reader.close()
-        await asyncio.to_thread(close)
+        if sites and not _managed:
+            await sites.close()
+        else:
+            await asyncio.to_thread(close)
 
-    app = FastAPI(title='常规仓储 WMS', version='1.6.0', lifespan=lifespan)
+    app = FastAPI(title='常规仓储 WMS', version='1.8.0', lifespan=lifespan)
     app.state.store, app.state.service = store, service
     app.state.device = device
+    app.state.users = users
+
+    def require(user, permission):
+        allowed = user['manage_users'] if permission == 'users' else permission in user['permissions']
+        if not allowed:
+            raise AuthError('当前用户没有' + ('用户管理' if permission == 'users' else PERMISSIONS[permission]) + '权限', 403)
+
+    def task_permission(user, task, control=False):
+        require(user, (task.get('document_kind') or task.get('kind', '')).lower())
+        if control:
+            require(user, 'control')
+
+    def route_path(request):
+        path = request.url.path
+        root = request.scope.get('root_path','')
+        return path[len(root):] if root and path.startswith(root + '/') else path
+
+    async def authorize_write(request, user):
+        path = route_path(request)
+        if path.startswith(('/api/users','/api/warehouses','/api/devices')):
+            require(user, 'users')
+        elif path in ('/api/auth/logout', '/api/auth/password', '/api/auth/check'):
+            return
+        elif path in ('/api/tasks', '/api/tasks/batch', '/api/orders', '/api/orders/batch'):
+            try:
+                body = await request.json()
+            except ValueError:
+                return  # Pydantic reports malformed JSON without performing a write.
+            if not isinstance(body, dict):
+                return
+            batch = body.get('tasks' if '/tasks' in path else 'orders', []) if path.endswith('/batch') else [body]
+            if isinstance(batch, list):
+                for row in batch:
+                    if isinstance(row, dict) and row.get('kind') in ('INBOUND', 'OUTBOUND'):
+                        require(user, row['kind'].lower())
+        elif path.startswith('/api/tasks/'):
+            parts = path.split('/')
+            if len(parts) != 5 or parts[4] not in ('cancel', 'dispatch', 'acknowledge', 'resolve'):
+                raise AuthError('操作不在允许范围内', 403)
+            task = next((t for t in store.read()['tasks'] if t['id'] == parts[3]), None)
+            if task:
+                task_permission(user, task, parts[4] != 'cancel')
+            if parts[4] != 'cancel' and not service.enabled:
+                raise AuthError('设备连接与控制尚未启用',409)
+        elif path.startswith('/api/orders/') and path.endswith('/return'):
+            order = next((o for o in store.read()['orders'] if o['id'] == path.split('/')[3]), None)
+            if order:
+                task_permission(user, order, True)
+            if not service.enabled:
+                raise AuthError('设备连接与控制尚未启用',409)
+        elif path.startswith('/api/locations') or path == '/api/allocation-policy':
+            require(user, 'locations')
+        elif path in ('/api/stocktake', '/api/inventory/material'):
+            require(user, 'inventory')
+        elif path == '/api/handover':
+            require(user, 'outbound')
+        elif path == '/api/device/settings':
+            require(user, 'device')
+        elif path in ('/api/device/stop', '/api/device/acknowledge'):
+            require(user, 'control')
+        else:
+            raise AuthError('操作不在允许范围内', 403)
 
     @app.middleware('http')
     async def operator_access(request: Request, call_next):
-        if request.method not in ('GET', 'HEAD', 'OPTIONS'):
-            origin = request.headers.get('origin')
-            if origin and origin != str(request.base_url).rstrip('/'):
-                return JSONResponse({'detail': '拒绝跨来源操作'}, status_code=403)
-            supplied = request.headers.get('x-control-key', '')
-            if not secrets.compare_digest(supplied.encode(), key.encode()):
-                return JSONResponse({'detail': '请先输入后台主机上的控制密钥，解锁操作'}, status_code=401)
+        path = route_path(request)
+        if not _managed and path.startswith('/api/scopes/'):
+            # Mounted workspace handles authentication, CSRF and permissions itself.
+            return await call_next(request)
+        writing = request.method not in ('GET', 'HEAD', 'OPTIONS')
+        public = path in ('/api/auth/status', '/api/auth/login', '/api/auth/bootstrap', '/api/health')
+        request.state.user = None
+        try:
+            if writing:
+                origin = request.headers.get('origin')
+                if origin and origin != f'{request.url.scheme}://{request.url.netloc}':
+                    raise AuthError('拒绝跨来源操作', 403)
+            if path.startswith('/api/') and not public:
+                session = users.session(request.cookies.get(COOKIE, ''))
+                request.state.user = session['user']
+                request.state.csrf = session['csrf_token']
+                if path.startswith('/api/users'):
+                    require(session['user'], 'users')
+                if writing:
+                    supplied = request.headers.get('x-csrf-token', '')
+                    if not secrets.compare_digest(supplied.encode(), session['csrf_token'].encode()):
+                        raise AuthError('页面验证已失效，请刷新后重试', 403)
+                    await authorize_write(request, session['user'])
+            elif writing and public:
+                if request.headers.get('x-wms-request') != '1':
+                    raise AuthError('请从 WMS 登录页面提交', 403)
+        except AuthError as error:
+            return JSONResponse({'detail': error.detail}, status_code=error.status, headers={'Cache-Control': 'no-store'})
         response = await call_next(request)
-        if request.url.path.startswith('/api/') or request.url.path == '/':
+        if writing and request.state.user and response.status_code < 400 and not path.startswith('/api/auth/') and not path.startswith('/api/users'):
+            endpoint = request.scope.get('endpoint')
+            action = {
+                'create':'登记料箱任务', 'create_batch':'批量登记料箱任务',
+                'create_order':'登记物料单据', 'create_order_batch':'批量登记物料单据',
+                'return_order':'下发返库', 'cancel':'取消任务', 'dispatch':'下发任务',
+                'acknowledge':'确认任务回执', 'resolve':'处理任务异常',
+                'add_location':'添加库位', 'configure_rack':'配置货架',
+                'configure_allocation':'修改分配规则', 'verify_empty':'确认空库位',
+                'location_state':'修改库位状态', 'stocktake':'库存盘点调整',
+                'handover':'确认提走', 'update_material':'修订物料信息',
+                'device_settings':'修改设备连接', 'stop':'请求设备停止',
+                'external_ack':'确认外部设备回执',
+            }.get(getattr(endpoint, '__name__', ''), '仓储操作')
+            if path.startswith('/api/warehouses'):
+                action = '修改仓库' if request.path_params else '添加仓库'
+            elif path.startswith('/api/devices'):
+                action = '修改设备' if request.path_params else '添加设备'
+            scope = getattr(app.state,'scope_id','primary')
+            users.record_operation(request.state.user['username'], action,
+                                   scope + ' / ' + request.path_params.get('ident', ''))
+        if path.startswith('/api/') or path == '/':
             response.headers['Cache-Control'] = 'no-store'
         response.headers['X-Content-Type-Options'] = 'nosniff'
+        response.headers['X-Frame-Options'] = 'DENY'
         return response
+
+    @app.exception_handler(AuthError)
+    async def auth_error(request, error):
+        return JSONResponse({'detail': error.detail}, status_code=error.status)
+
+    @app.get('/api/auth/status')
+    def auth_status():
+        return dict(initialized=users.initialized(), roles=ROLES, permissions=PERMISSIONS, defaults=DEFAULTS)
+
+    def session_response(request, username, password):
+        token, session = users.login(username, password, request.client.host if request.client else 'local')
+        response = JSONResponse(session)
+        response.set_cookie(COOKIE, token, max_age=SESSION_SECONDS, httponly=True,
+                            samesite='strict', secure=request.url.scheme == 'https', path='/')
+        return response
+
+    @app.post('/api/auth/bootstrap', status_code=201)
+    def bootstrap(body: BootstrapInput, request: Request):
+        if users.initialized():
+            raise AuthError('管理员已初始化，请使用账号登录', 409)
+        users.throttle('bootstrap', request.client.host if request.client else 'local')
+        if not secrets.compare_digest(body.control_key.encode(), key.encode()):
+            raise AuthError('后台控制密钥不正确', 401)
+        users.create(body.username, body.display_name, body.password, 'admin', [], '后台主机', bootstrap=True)
+        response = session_response(request, body.username, body.password)
+        response.status_code = 201
+        return response
+
+    @app.post('/api/auth/login')
+    def login(body: LoginInput, request: Request):
+        return session_response(request, body.username, body.password)
+
+    @app.get('/api/auth/me')
+    def me(request: Request):
+        return dict(user=request.state.user, csrf_token=request.state.csrf)
+
+    @app.post('/api/auth/logout')
+    def logout(request: Request):
+        users.logout(request.cookies.get(COOKIE, ''), request.state.user['username'])
+        response = JSONResponse(dict(ok=True))
+        response.delete_cookie(COOKIE, path='/')
+        return response
+
+    @app.post('/api/auth/password')
+    def change_password(body: PasswordInput, request: Request):
+        users.change_password(request.state.user, body.old_password, body.new_password)
+        response = JSONResponse(dict(ok=True))
+        response.delete_cookie(COOKIE, path='/')
+        return response
+
+    @app.get('/api/users')
+    def list_users():
+        return dict(users=users.list(), roles=ROLES, permissions=PERMISSIONS, defaults=DEFAULTS)
+
+    @app.post('/api/users', status_code=201)
+    def add_user(body: UserInput, request: Request):
+        return users.create(body.username, body.display_name, body.password, body.role, body.permissions, request.state.user['username'])
+
+    @app.post('/api/users/{ident}')
+    def edit_user(ident: str, body: UserUpdate, request: Request):
+        return users.update(ident, body.display_name, body.role, body.permissions, body.enabled,
+                            body.expected_revision, body.password, request.state.user)
+
+    @app.get('/api/users/audit')
+    def audit_users():
+        return dict(events=users.events())
 
     @app.exception_handler(WmsError)
     async def domain_error(request, error):
         return JSONResponse({'detail': str(error)}, status_code=409)
 
     @app.get('/api/state')
-    def state():
+    def state(request: Request):
         ledger = store.read()
         stock = list(ledger['stock'].values())
         stock_by_location = {item['location']: item for item in stock if item['status'] == 'IN_STOCK'}
@@ -244,7 +488,7 @@ def create_app(config=None, data_dir=None, reader=None, key=None, commands_path=
                 'inbound_access_error': inbound_access_error,
                 'management_token': location_token(location, item, related),
                 'blocking_tasks': [task['number'] for task in related]})
-        return dict(mode='PHYSICAL_WMS', real_plc=True, write_enabled=enabled,
+        return dict(user=request.state.user, scope=app.state.sites.scope(app.state.scope_id), mode='PHYSICAL_WMS', real_plc=True, write_enabled=service.enabled,
                     device_settings=device.snapshot(),
                     auto_acknowledge=service.auto_acknowledge, plc=reader.snapshot(),
                     readiness=service.readiness(), locations=locations, rack_layouts=rack_layouts(ledger), allocation_policy=allocation_policy(ledger), stock=stock,
@@ -254,13 +498,13 @@ def create_app(config=None, data_dir=None, reader=None, key=None, commands_path=
 
     @app.get('/api/health')
     def health():
-        return dict(status='ok', version='1.6.0', features=['empty_bins', 'batch_tasks', 'double_depth', 'auto_acknowledge', 'material_return_orders', 'rack_allocation_policy', 'balanced_allocation', 'device_connection_settings'], mode='PHYSICAL_WMS', real_plc=True, write_enabled=enabled,
+        return dict(status='ok', version='1.8.0', features=['empty_bins', 'batch_tasks', 'double_depth', 'auto_acknowledge', 'material_return_orders', 'rack_allocation_policy', 'balanced_allocation', 'device_connection_settings', 'user_login', 'user_permissions', 'multiple_warehouses', 'multiple_devices'], mode='PHYSICAL_WMS', real_plc=True, write_enabled=service.enabled,
                     auto_acknowledge=service.auto_acknowledge,
-                    plc=reader.snapshot(), readiness=service.readiness())
+                    plc={'live': reader.snapshot().get('live', False)}, readiness=service.readiness())
 
     @app.post('/api/device/settings')
     def device_settings(body: DeviceSettingsInput):
-        return device.change_host(body.host, body.expected_revision)
+        return app.state.sites.change_host(app.state.scope_id,body.host,body.expected_revision)
 
     @app.get('/api/lookup')
     def lookup(barcode: str):
@@ -280,15 +524,21 @@ def create_app(config=None, data_dir=None, reader=None, key=None, commands_path=
 
     @app.post('/api/auth/check')
     def auth_check():
-        return dict(ok=True, write_enabled=enabled)
+        return dict(ok=True, write_enabled=service.enabled)
+
+    def register(operation,body):
+        with service.lock:
+            if not service.enabled:
+                raise WmsError('请先在设置中启用设备连接，再登记入出库任务')
+            return operation(body)
 
     @app.post('/api/tasks', status_code=201)
     def create(body: TaskInput):
-        return store.create_task(body.model_dump())
+        return register(store.create_task,body.model_dump())
 
     @app.post('/api/tasks/batch', status_code=201)
     def create_batch(body: TaskBatchInput):
-        return store.create_tasks(body.model_dump())
+        return register(store.create_tasks,body.model_dump())
 
     @app.get('/api/orders/options')
     def order_options(sku: str = Query(min_length=1, max_length=80)):
@@ -296,11 +546,11 @@ def create_app(config=None, data_dir=None, reader=None, key=None, commands_path=
 
     @app.post('/api/orders', status_code=201)
     def create_order(body: OrderInput):
-        return store.orders.create(body.model_dump())
+        return register(store.orders.create,body.model_dump())
 
     @app.post('/api/orders/batch', status_code=201)
     def create_order_batch(body: OrderBatchInput):
-        return store.orders.create_batch(body.model_dump())
+        return register(store.orders.create_batch,body.model_dump())
 
     @app.post('/api/orders/{ident}/return')
     def return_order(ident: str, body: ReturnInput):
@@ -368,9 +618,11 @@ def create_app(config=None, data_dir=None, reader=None, key=None, commands_path=
 
     @app.post('/api/device/acknowledge')
     def external_ack(body: ExternalAck):
-        if not body.site_ready or not enabled:
+        if not body.site_ready or not service.enabled:
             raise WmsError('请确认外部任务已处理及现场控制权')
         with service.lock, reader.lock:
+            if not service.enabled:
+                raise WmsError('设备连接与控制尚未启用')
             if any(task['status'] in {'DISPATCHING', 'SENT', 'RUNNING', 'REVIEW', 'PLC_DONE'} for task in store.read()['tasks']):
                 raise WmsError('存在本 WMS 的未结束任务，请从对应任务处理')
             reader.poll()
@@ -386,16 +638,18 @@ def create_app(config=None, data_dir=None, reader=None, key=None, commands_path=
     def inventory_csv():
         output = io.StringIO(newline='')
         writer = csv.writer(output)
-        writer.writerow(['料箱条码', '物料编码', '物料名称', '型号', '规格', '数量', '批次', '库位', '状态', '料箱类型', '伸位'])
+        writer.writerow(['料箱条码', '物料编码', '物料名称', '型号', '规格', '数量', '批次', '库位', '状态', '料箱类型', '伸位', '仓库', '设备'])
         def safe(value):
             text = str(value)
             return "'" + text if text.startswith(('=', '+', '-', '@', '\t', '\r')) else text
         ledger = store.read()
+        scope = app.state.sites.scope(app.state.scope_id)
         for item in ledger['stock'].values():
             loc = ledger['locations'].get(item['location'])
             values = {**item, 'location': display_location(item['location'])}
             writer.writerow([safe(values[key]) for key in ('barcode', 'sku', 'material_name', 'model', 'specification', 'quantity', 'batch', 'location', 'status')]
-                + ['空箱' if item['container_type'] == 'EMPTY_BIN' else '物料箱', ('双伸' if loc['depth'] == 2 else '单伸') if loc else ''])
+                + ['空箱' if item['container_type'] == 'EMPTY_BIN' else '物料箱', ('双伸' if loc['depth'] == 2 else '单伸') if loc else '',
+                   safe(scope['warehouse_name']),safe(scope['device_name'])])
         return Response('\ufeff' + output.getvalue(), media_type='text/csv; charset=utf-8', headers={'Content-Disposition': 'attachment; filename=inventory.csv'})
 
     @app.get('/')
@@ -403,4 +657,31 @@ def create_app(config=None, data_dir=None, reader=None, key=None, commands_path=
         return HTMLResponse((ROOT / 'web/dist/wms.html').read_text(encoding='utf-8'))
 
     app.mount('/static', StaticFiles(directory=ROOT / 'web/dist/static'), name='static')
+    if not _managed:
+        from .wms_sites import Sites
+        def factory(child_config, path, folder, commands):
+            return create_app(config=child_config,config_path=path,data_dir=folder,commands_path=commands,
+                              automatic=False,key=key,shared_users=users,_managed=True)
+        sites = Sites(app,data_dir,config,config_path,commands_path or ROOT/'data/physical-commands.sqlite3',factory)
+        app.state.sites = sites
+
+        @app.get('/api/sites')
+        def site_list():
+            return sites.snapshot()
+
+        @app.post('/api/warehouses',status_code=201)
+        def add_warehouse(body: WarehouseInput):
+            return sites.warehouse(body.name,body.note)
+
+        @app.post('/api/warehouses/{ident}')
+        def edit_warehouse(ident: str, body: WarehouseUpdate):
+            return sites.warehouse(body.name,body.note,ident,body.expected_revision)
+
+        @app.post('/api/devices',status_code=201)
+        def add_device(body: SiteDeviceInput):
+            return sites.add_device(body.model_dump())
+
+        @app.post('/api/devices/{ident}')
+        def edit_device(ident: str, body: SiteDeviceUpdate):
+            return sites.update_device(ident,body.model_dump())
     return app
