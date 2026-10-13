@@ -96,7 +96,7 @@ a{color:var(--wm-blue);text-decoration:none}
 .wm-worklist{display:flex;flex-direction:column;gap:12px}
 .wm-pending-panel{display:flex;flex-direction:column;flex:1;min-height:0}
 .wm-orders{display:flex;flex:1;min-height:0;flex-direction:column}
-.wm-pending-list{flex:1;min-height:0}
+.wm-pending-list{flex:1 0 auto;min-height:min-content}
 .wm-pending-card{padding:6px 0 10px;min-width:0}
 .wm-pending-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}
 .wm-pending-heading strong{font-size:14px;font-weight:600;overflow-wrap:anywhere}
@@ -146,7 +146,7 @@ tbody tr:hover{background:#f8fbf9}
 .wm-table-action{min-height:30px;padding:4px 7px;font-size:12px;border-color:#d9e4dd;color:#3c7660}
 .wm-row-link{padding:0;border:0;background:transparent;min-height:22px;color:#245b42;font-size:13px;justify-content:flex-start;font-weight:600;text-align:left}
 .wm-row-selected{background:#edf6f0!important}
-.wm-pagination{display:flex;align-items:center;justify-content:space-between;gap:10px;padding-top:10px;margin-top:auto;border-top:1px solid var(--wm-border);flex-shrink:0;font-size:11px;color:#809487}
+.wm-pagination{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;padding-top:10px;margin-top:auto;border-top:1px solid var(--wm-border);flex-shrink:0;font-size:11px;color:#809487}
 .wm-pagination>div{display:flex;align-items:center;gap:5px}
 .wm-pagination button{min-height:32px;width:32px;padding:4px;border-color:#d9e3dc}
 .wm-pagination select{border:1px solid #dae4dd;border-radius:5px;height:32px;min-width:98px;padding:4px 7px;color:#54735f;background:white;font-size:11px}
@@ -380,6 +380,47 @@ tbody tr:hover{background:#f8fbf9}
  .wm-shell dialog .wm-review{font-size:12px;line-height:1.5;margin-bottom:8px}
  .wm-shell dialog .wm-check{margin:7px 0!important;font-size:11px!important}
  .wm-shell dialog .wm-info-list>div{padding:5px 0}
+ .wm-pending-panel .wm-panel-title{margin-bottom:7px}
+ .wm-pending-card{padding:3px 0 7px}
+ .wm-pending-card h3{margin:7px 0 4px;font-size:14px}
+ .wm-pending-card>p{font-size:12px;line-height:1.5;margin-top:5px}
+ .wm-pending-card .wm-task-actions{margin-top:9px;gap:6px}
+ .wm-pending-card .wm-task-actions>button{min-width:0;min-height:34px;padding:6px 8px}
+ .wm-pending-card .wm-task-actions>.wm-help{font-size:11px;line-height:1.45}
+ .wm-pending-card .wm-full{margin-top:8px;min-height:34px}
+ .wm-pending-panel .wm-pagination{padding-top:7px}
+}
+
+@media(min-width:760px) and (max-height:680px){
+ .wm-main{padding-top:8px;padding-bottom:7px;gap:6px}
+ .wm-header{min-height:40px}
+ .wm-header h1{font-size:23px}
+ .wm-main>.wm-context-bar{padding:4px 10px}
+ .wm-page,.wm-operation{gap:8px}
+ .wm-operation .wm-worklist{gap:8px}
+ .wm-operation .wm-panel{padding:10px 13px}
+ .wm-operation .wm-registration label{font-size:12px;margin-bottom:5px}
+ .wm-operation .wm-registration input,.wm-operation .wm-registration select{min-height:32px;padding:5px 9px;margin-top:3px}
+ .wm-operation .wm-form-grid>.wm-field-wide{grid-column:auto}
+ .wm-operation .wm-registration-actions>button{min-height:34px;padding:6px 9px;font-size:12px}
+ .wm-operation .wm-registration .wm-review{font-size:11px;line-height:1.4;padding:5px 8px;margin:3px 0 5px}
+ .wm-operation .wm-registration .wm-review>.wm-help{font-size:10px;line-height:1.4}
+ .wm-operation .wm-plc-summary .wm-panel-title{padding-bottom:5px;margin-bottom:5px}
+ .wm-operation .wm-plc-summary h2{font-size:15px}
+ .wm-operation .wm-plc-summary dt{margin-bottom:2px}
+ .wm-operation .wm-plc-summary dd{font-size:12px}
+}
+@media(min-width:760px) and (max-height:560px){
+ .wm-operation .wm-mobile-toggle{display:inline-flex;min-height:34px;font-size:12px}
+ .wm-operation .wm-workspace{display:flex}
+ .wm-operation .wm-workspace>.wm-registration,.wm-operation .wm-workspace>.wm-worklist{width:100%;flex:1}
+ .wm-operation[data-pane="registration"] .wm-worklist{display:none}
+ .wm-operation[data-pane="pending"] .wm-registration{display:none}
+ .wm-operation .wm-worklist{display:grid;grid-template-columns:minmax(0,1fr) 260px;align-items:start}
+ .wm-operation .wm-pending-panel{height:100%}
+ .wm-operation .wm-registration .wm-form-grid{grid-template-columns:repeat(3,minmax(0,1fr))}
+ .wm-operation .wm-registration>form>label,.wm-operation .wm-registration .wm-form-grid>label{display:grid;grid-template-columns:78px minmax(0,1fr);align-items:center;gap:6px}
+ .wm-operation .wm-registration>form>label>input,.wm-operation .wm-registration .wm-form-grid>label>input{margin-top:0;min-width:0}
 }
 @media(prefers-reduced-motion:no-preference){button{transition:background-color .15s,border-color .15s,color .15s}.wm-panel{animation:wm-appear .18s ease-out}@keyframes wm-appear{from{opacity:.5;transform:translateY(3px)}to{opacity:1;transform:translateY(0)}}}
 
