@@ -36,7 +36,7 @@ CLOSED_STOCK = {'SHIPPED', 'REMOVED'}
 
 
 def task_locations(task):
-    return {task['location'], *([task['target_location']] if task['kind'] == 'MOVE' else [])}
+    return {task['location'], *([task['target_location']] if task['kind'] in {'MOVE', 'AGING'} else [])}
 
 
 def business_allowed(state, aging_id=None):
@@ -556,6 +556,8 @@ class WmsStore:
 
     @staticmethod
     def release(state, task):
+        if task['kind'] == 'AGING':
+            return
         for ident in task_locations(task):
             if state['locations'][ident]['reserved'] == task['id']:
                 state['locations'][ident]['reserved'] = None
@@ -565,6 +567,11 @@ class WmsStore:
 
     def post_completion(self, state, task, manual=False):
         if task['posted']:
+            return
+        if task['kind'] == 'AGING':
+            task.update(posted=True, status='PLC_DONE', ack_pending=True, updated_at=now(),
+                        detail='老化步骤完成，库存保持不变；待确认 PLC 回执')
+            self.event(state, f'{task["number"]} 老化完成，库存保持不变', task['id'])
             return
         if task.get('order_id'):
             return self.orders.posted(state, task)

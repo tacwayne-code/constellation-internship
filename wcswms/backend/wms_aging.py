@@ -21,24 +21,59 @@ def preparation(state):
     active = [task for task in state['tasks'] if task['status'] in ACTIVE]
     if active:
         reasons.append('当前设备有未结束任务，请先完成或取消')
-    if any(box['status'] in {'AT_EXIT', 'AT_STATION'} for box in state['stock'].values()):
-        reasons.append('交接点仍有料箱，请先完成交接或返库')
     for index, (source, target) in enumerate(PAIRS, 1):
-        box = next((box for box in state['stock'].values() if box['location'] == source and box['status'] == 'IN_STOCK'), None)
-        group = dict(group=index, source=source, target=target, barcode=box['barcode'] if box else None, ready=False, reason='')
+        group = dict(group=index, source=source, target=target, ready=False, reason='')
         try:
-            if not box:
-                raise WmsError('原库位缺少在库料箱')
-            wms_transfer.check(state, box['barcode'], source, target)
+            check_coordinates(state, source, target)
             group['ready'] = True
         except WmsError as error:
             group['reason'] = str(error)
             reasons.append(f'第 {index} 组：{error}')
         groups.append(group)
-    # Includes stock revision, both ends and front-slot access dependencies.
-    token = hashlib.sha256(json.dumps(dict(locations=state['locations'], stock=state['stock'],
+    # Stock, occupancy, verification and reservations are irrelevant to this test.
+    coordinates = {key: {field: state['locations'][key].get(field) for field in
+        ('enabled', 'side', 'level', 'column', 'depth')} if key in state['locations'] else None
+        for pair in PAIRS for key in pair}
+    token = hashlib.sha256(json.dumps(dict(locations=coordinates,
         tasks=[dict(id=task['id'], status=task['status']) for task in active]), ensure_ascii=False, sort_keys=True).encode()).hexdigest()
     return dict(ready=not reasons, reasons=reasons, groups=groups, token=token)
+
+
+def check_coordinates(state, source, target):
+    for key in (source, target):
+        location = state['locations'].get(key)
+        if not location or not location['enabled']:
+            raise WmsError('测试坐标需已建档并启用')
+        side, column, level, depth = key.split('-')
+        expected = (1 if side == 'L' else 2, int(level), int(column), int(depth))
+        if tuple(location.get(field) for field in ('side', 'level', 'column', 'depth')) != expected:
+            raise WmsError('测试库位坐标与固定路线不一致')
+
+
+def create_coordinate_task(store, run, step):
+    request = dict(request_id=f'aging-{run["id"]}-{run["completed_moves"]}',
+                   source_location=step['source'], target_location=step['target'])
+    def apply(state):
+        current = state.get('aging_run')
+        if not current or current['id'] != run['id'] or current['status'] != 'RUNNING' or current['current_task_id']:
+            raise WmsError('老化运行状态已变化，禁止创建下一步')
+        if current['completed_moves'] != run['completed_moves']:
+            raise WmsError('老化步骤已变化')
+        if any(task['status'] in ACTIVE for task in state['tasks']):
+            raise WmsError('设备已有未结束任务')
+        check_coordinates(state, step['source'], step['target'])
+        state['sequence'] += 1
+        task = dict(id=str(uuid.uuid4()), number=f'WMS-{state["sequence"]:06}', kind='AGING',
+                    request=request, aging_run_id=run['id'], barcode='', sku='', quantity=0, batch='',
+                    location=step['source'], target_location=step['target'], dock=store.config['outbound_dock'],
+                    status='QUEUED', plc_id=None, posted=False, ack_pending=False,
+                    detail='坐标老化步骤已登记，不关联库存', created_at=now(), updated_at=now())
+        state['tasks'].insert(0, task)
+        current.update(current_task_id=task['id'], current_started_at=now(), updated_at=now())
+        store.event(state, f'{task["number"]} 坐标老化：{step["source"]} → {step["target"]}', task['id'])
+        return task
+    return store.once(request['request_id'], {'operation':'aging-coordinate', 'aging_run_id':run['id'], **request},
+                      apply, aging_id=run['id'])
 
 
 def snapshot(state):
@@ -54,14 +89,14 @@ class AgingRunner:
         with service.lock, service.reader.lock:
             def apply(state):
                 if not request['site_ready']:
-                    raise WmsError('请核对四组料箱、目标空位、动作区域及现场控制权')
+                    raise WmsError('请核对固定坐标、动作区域及现场控制权')
                 if not service.enabled or not service.auto_acknowledge:
                     raise WmsError('老化需要设备控制及自动回执确认已启用')
                 if not actor['enabled'] or not {'inventory', 'control'}.issubset(actor['permissions']):
                     raise WmsError('启动老化需要库存调整及设备控制权限')
                 prepared = preparation(state)
                 if prepared['token'] != request['expected_token']:
-                    raise WmsError('料箱、库位或任务已变化，请重新核对后开始')
+                    raise WmsError('测试坐标或任务已变化，请重新核对后开始')
                 if not prepared['ready']:
                     raise WmsError('；'.join(prepared['reasons']))
                 service.reader.poll()
@@ -70,7 +105,7 @@ class AgingRunner:
                     raise WmsError('；'.join(ready['reasons']))
                 run = dict(id=uuid.uuid4().hex, status='RUNNING', next_step=0, completed_moves=0, completed_cycles=0,
                            limit_cycles=request['limit_cycles'], step_timeout=request['step_timeout'],
-                           barcodes=[group['barcode'] for group in prepared['groups']], actor_id=actor['id'],
+                           mode='COORDINATE_ONLY', actor_id=actor['id'],
                            actor=actor['username'], started_at=now(), updated_at=now(), ended_at=None,
                            current_task_id=None, current_started_at=None, stop_requested=False,
                            detail='老化已启动，准备第 1 步；四组往返共八步一圈', last_error='')
@@ -132,7 +167,7 @@ class AgingRunner:
         task = self.store.task(state, run['current_task_id']) if run['current_task_id'] else None
         if task and task['status'] == 'COMPLETED':
             if task.get('aging_resolution') or not task.get('ack_source'):
-                self._finish('当前搬运经人工处理，老化已结束；该步不计入完成圈数', '请核对箱位后重新准备四组起点')
+                self._finish('当前搬运经人工处理，老化已结束；该步不计入完成圈数', '请现场核对后重新开始')
                 return
             def completed(state):
                 current = state['aging_run']
@@ -144,7 +179,7 @@ class AgingRunner:
             self.store.mutate(completed)
             run = self.store.read()['aging_run']
             if run['stop_requested'] or (run['limit_cycles'] and run['completed_cycles'] >= run['limit_cycles']):
-                self._finish('停止循环，当前搬运已完成' if run['stop_requested'] else '已达到目标圈数，四组料箱已返回原位')
+                self._finish('停止循环，当前搬运已完成' if run['stop_requested'] else '已达到目标圈数，八步往返已完成')
             return
         if task and task['status'] == 'CANCELLED':
             self._finish('当前搬运已取消，老化已结束')
@@ -171,7 +206,7 @@ class AgingRunner:
                 self.pause('CPU、报警或远程任务许可已变化，老化后续下发已暂停')
                 return
             if task.get('plc_id') and sample.get('command_task_id') != task['plc_id']:
-                self.pause('PLC 当前任务号与老化步骤不匹配，已暂停并保留预留；请现场核对')
+                self.pause('PLC 当前任务号与老化步骤不匹配，已暂停并保留任务；请现场核对')
                 return
             if task['status'] == 'REVIEW' or task.get('ack_error'):
                 self.pause('当前步骤需现场核对或回执确认异常，老化已暂停：' + task['detail'])
@@ -186,13 +221,16 @@ class AgingRunner:
             return
         try:
             step = PLAN[run['next_step']]
-            barcode = run['barcodes'][step['group'] - 1]
-            box = state['stock'].get(barcode)
-            if not box:
-                raise WmsError('测试料箱记录已变化')
-            request = dict(request_id=f'aging-{run["id"]}-{run["completed_moves"]}', barcode=barcode,
-                           source_location=step['source'], target_location=step['target'], expected_updated_at=box['updated_at'])
-            task = wms_transfer.create(self.store, request, aging_id=run['id'])
+            if run.get('mode') == 'COORDINATE_ONLY':
+                task = create_coordinate_task(self.store, run, step)
+            else:  # Legacy inventory-linked runs retain their original bookkeeping.
+                barcode = run['barcodes'][step['group'] - 1]
+                box = state['stock'].get(barcode)
+                if not box:
+                    raise WmsError('测试料箱记录已变化')
+                request = dict(request_id=f'aging-{run["id"]}-{run["completed_moves"]}', barcode=barcode,
+                               source_location=step['source'], target_location=step['target'], expected_updated_at=box['updated_at'])
+                task = wms_transfer.create(self.store, request, aging_id=run['id'])
             sent = self.service.dispatch(task['id'], True, aging_id=run['id'])
             if sent['status'] == 'REVIEW':
                 self.pause('下发结果待核对，老化已暂停，不自动重发：' + sent['detail'])

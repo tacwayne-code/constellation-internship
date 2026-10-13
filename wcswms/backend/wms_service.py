@@ -12,7 +12,7 @@ from .wms_store import WmsError, IN_FLIGHT, now, business_allowed
 
 
 def task_function(task):
-    return {'OUTBOUND': 1, 'INBOUND': 2, 'MOVE': 3}[task['kind']]
+    return {'OUTBOUND': 1, 'INBOUND': 2, 'MOVE': 3, 'AGING': 3}[task['kind']]
 
 
 class WmsReader(PhysicalReader):
@@ -236,8 +236,8 @@ class WmsService:
             params = dict(request_id=task['id'], action='task', task_id=task['plc_id'],
                           function=task_function(task), dock=task['dock'], site_ready=True)
             for prefix in ('source', 'target'):
-                use_location = task['kind'] == 'MOVE' or (prefix == 'source') == (task['kind'] == 'OUTBOUND')
-                position = state['locations'][task['target_location']] if task['kind'] == 'MOVE' and prefix == 'target' else location
+                use_location = task['kind'] in {'MOVE', 'AGING'} or (prefix == 'source') == (task['kind'] == 'OUTBOUND')
+                position = state['locations'][task['target_location']] if task['kind'] in {'MOVE', 'AGING'} and prefix == 'target' else location
                 for field in ('side', 'level', 'column', 'depth'):
                     params[f'{prefix}_{field}'] = position[field] if use_location else 0
             try:
@@ -268,6 +268,10 @@ class WmsService:
             return self.store.mutate(record)
 
     def check_dispatch(self, state, task):
+        if task['kind'] == 'AGING':
+            from .wms_aging import check_coordinates
+            check_coordinates(state, task['location'], task['target_location'])
+            return
         station = next((box for box in state['stock'].values() if box['status'] == 'AT_STATION'), None)
         if station and not (task.get('order_leg') == 'RETURN' and station.get('reserved') == task['id']):
             raise WmsError('交接点正在装料或取料，请先完成该箱返库')
@@ -319,7 +323,7 @@ class WmsService:
             item = self.store.task(state, ident)
             item.update(status='AWAIT_PICKUP' if item['kind'] == 'OUTBOUND' else 'COMPLETED', ack_pending=False,
                 ack_error=None, ack_source='AUTO' if automatic else 'MANUAL', acknowledged_at=now(),
-                updated_at=now(), detail={'INBOUND':'入库完成', 'OUTBOUND':'料箱在出口，请扫码确认取走', 'MOVE':'调仓完成，料箱已到目标库位'}[item['kind']])
+                updated_at=now(), detail={'INBOUND':'入库完成', 'OUTBOUND':'料箱在出口，请扫码确认取走', 'MOVE':'调仓完成，料箱已到目标库位', 'AGING':'老化调仓完成，库存保持不变'}[item['kind']])
             if item.get('order_id'):
                 self.store.orders.acknowledged(state, item)
             self.store.event(state, f'{item["number"]} PLC 完成回执已{"自动" if automatic else "人工"}确认，确认信号已复位', ident)

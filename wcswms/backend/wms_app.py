@@ -322,7 +322,7 @@ def create_app(config=None, data_dir=None, reader=None, key=None, commands_path=
             raise AuthError('当前用户没有' + ('用户管理' if permission == 'users' else PERMISSIONS[permission]) + '权限', 403)
 
     def task_permission(user, task, control=False):
-        require(user, 'inventory' if task['kind'] == 'MOVE' else (task.get('document_kind') or task.get('kind', '')).lower())
+        require(user, 'inventory' if task['kind'] in {'MOVE', 'AGING'} else (task.get('document_kind') or task.get('kind', '')).lower())
         if control:
             require(user, 'control')
 

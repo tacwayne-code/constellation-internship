@@ -50,10 +50,14 @@ def current_task(system):
     return store.task(store.read(), store.read()['aging_run']['current_task_id'])
 
 
-@pytest.mark.parametrize('cycles', [1, 2])
-def test_exact_eight_leg_route_repeats_returns_all_four_boxes_and_conserves_stock(system, cycles):
+@pytest.mark.parametrize('cycles,empty', [(1, False), (2, False), (1, True)])
+def test_exact_eight_leg_route_repeats_without_changing_inventory(system, cycles, empty):
     _, store, plc, service, client = system
+    if empty:
+        store.mutate(lambda state: state['stock'].clear())
     before = store.read()['stock']
+    locations_before = store.read()['locations']
+    materials_before = store.read()['materials']
     run, body = start(system, cycles)
     assert not plc.writes and run['next_step'] == 0
     assert client.post('/api/aging/start', json=body).status_code == 200
@@ -61,7 +65,7 @@ def test_exact_eight_leg_route_repeats_returns_all_four_boxes_and_conserves_stoc
         service.poll()
         task = current_task(system)
         step = PLAN[index % 8]
-        assert task['kind'] == 'MOVE' and task['aging_run_id'] == run['id']
+        assert task['kind'] == 'AGING' and task['aging_run_id'] == run['id']
         assert (task['location'], task['target_location']) == (step['source'], step['target'])
         source, target = (store.read()['locations'][step[key]] for key in ('source', 'target'))
         assert plc.writes[-3] == (8, struct.pack('>10h', *[source[k] for k in ('side','level','column','depth')],
@@ -70,8 +74,9 @@ def test_exact_eight_leg_route_repeats_returns_all_four_boxes_and_conserves_stoc
         state = store.read()
         assert state['aging_run']['completed_moves'] == index + 1
         assert state['aging_run']['completed_cycles'] == (index+1)//8
-        for barcode, box in before.items():
-            assert all(state['stock'][barcode][key] == box[key] for key in ('sku','quantity','material_name','model','specification','batch','received_at'))
+        assert state['stock'] == before
+        assert state['locations'] == locations_before
+        assert state['materials'] == materials_before
         if index + 1 < cycles * 8:
             assert state['aging_run']['status'] == 'RUNNING'
     assert store.read()['aging_run']['status'] == 'STOPPED'
@@ -79,6 +84,48 @@ def test_exact_eight_leg_route_repeats_returns_all_four_boxes_and_conserves_stoc
     writes = list(plc.writes)
     for _ in range(3): service.poll()
     assert plc.writes == writes and len(store.read()['tasks']) == cycles*8
+
+
+@pytest.mark.parametrize('case', ['absent','occupied','unverified','exit','station','reservation'])
+def test_inventory_presence_and_verification_do_not_gate_coordinate_dispatch(system, case):
+    _, store, plc, service, _ = system
+    token = preparation(store.read())['token']
+    if case == 'absent':
+        store.mutate(lambda state: state['stock'].clear())
+    elif case == 'occupied':
+        store.stocktake(dict(request_id='occupied-coordinate-target', barcode='OTHER', location=PAIRS[0][1],
+                            sku='OTHER', quantity=1, batch='', note='占用目标测试'))
+    elif case == 'unverified':
+        store.mutate(lambda state: state['locations'][PAIRS[0][1]].update(verified=False))
+    elif case in ('exit','station'):
+        store.mutate(lambda state: state['stock']['AGING-BOX-1'].update(
+            status='AT_EXIT' if case=='exit' else 'AT_STATION', location='OUT-1' if case=='exit' else 'STATION-1'))
+    else:
+        # A closed task reference in stock is irrelevant; no aging reservation is created.
+        store.mutate(lambda state: state['stock']['AGING-BOX-1'].update(reserved='historical-reference'))
+    assert preparation(store.read())['ready'] and preparation(store.read())['token'] == token
+    before = store.read()
+    start(system, expected_token=token)
+    service.poll(); task = current_task(system)
+    assert task['kind']=='AGING' and task['status']=='SENT' and task['barcode']==''
+    plc.finish(3,task['plc_id']); service.poll()
+    assert store.read()['aging_run']['current_task_id'] is None
+    for field in ('stock','locations','materials'):
+        assert store.read()[field] == before[field]
+
+
+def test_legacy_inventory_linked_run_keeps_its_stock_bookkeeping(system):
+    _, store, plc, service, _ = system
+    run, _ = start(system, cycles=1)
+    def legacy(state):
+        state['aging_run'].pop('mode')
+        state['aging_run']['barcodes']=[f'AGING-BOX-{index+1}' for index in range(4)]
+    store.mutate(legacy)
+    service.poll(); task=current_task(system)
+    assert task['kind']=='MOVE' and task['aging_run_id']==run['id']
+    plc.finish(3,task['plc_id']); service.poll()
+    assert store.read()['stock'][task['barcode']]['location']==PAIRS[0][1]
+    assert store.read()['aging_run']['completed_moves']==1
 
 
 def test_visible_coordinates_are_side_level_column_not_internal_column_level():
@@ -91,6 +138,7 @@ def test_visible_coordinates_are_side_level_column_not_internal_column_level():
 
 def test_stop_before_first_dispatch_and_continuous_stop_mid_leg_never_sends_next(system):
     _, store, plc, service, _ = system
+    before = store.read()['stock']
     run, _ = start(system)
     assert stop(system, run)['status'] == 'STOPPED' and not plc.writes
     run, _ = start(system, request_id='aging-start-next')
@@ -103,22 +151,22 @@ def test_stop_before_first_dispatch_and_continuous_stop_mid_leg_never_sends_next
     plc.finish(3, task['plc_id']); service.poll()
     stopped = store.read()['aging_run']
     assert stopped['status'] == 'STOPPED' and stopped['completed_moves'] == 1 and stopped['completed_cycles'] == 0
-    assert store.read()['stock'][task['barcode']]['location'] == task['target_location']
+    assert store.read()['stock'] == before
     writes = list(plc.writes)
     for _ in range(3): service.poll(); stop(system, run)
     assert plc.writes == writes
-    assert not preparation(store.read())['ready']  # Returning the away box is an explicit operator action.
+    assert preparation(store.read())['ready']
 
 
-@pytest.mark.parametrize('cause', ['missing','occupied','unverified','disabled','stale','unconfirmed','not_ready'])
+@pytest.mark.parametrize('cause', ['missing_location','disabled','stale','unconfirmed','not_ready','active_task'])
 def test_start_preconditions_and_stale_plan_do_not_create_motion(system, cause):
     _, store, plc, _, client = system
     token = preparation(store.read())['token']
-    if cause == 'missing': store.mutate(lambda state: state['stock']['AGING-BOX-1'].update(location='L-03-03-1'))
-    elif cause == 'occupied': store.stocktake(dict(request_id='occupied-aging-target', barcode='OTHER', location=PAIRS[0][1], sku='OTHER', quantity=1, batch='', note='占用目标测试'))
-    elif cause in ('unverified','disabled'): store.mutate(lambda state: state['locations'][PAIRS[0][1]].update(**{('verified' if cause=='unverified' else 'enabled'):False}))
+    if cause == 'missing_location': store.mutate(lambda state: state['locations'].pop(PAIRS[0][1]))
+    elif cause == 'disabled': store.mutate(lambda state: state['locations'][PAIRS[0][1]].update(enabled=False))
     elif cause == 'not_ready': plc.raw[6:8] = b'\0\0'; plc.poll()
-    elif cause == 'stale': store.mutate(lambda state: state['stock']['AGING-BOX-1'].update(quantity=2))
+    elif cause == 'stale': store.mutate(lambda state: state['locations'][PAIRS[0][1]].update(level=5))
+    elif cause == 'active_task': store.create_task(request(barcode='NORMAL-TASK'))
     if cause != 'stale': token = preparation(store.read())['token']
     before = store.read()
     result = client.post('/api/aging/start', json=dict(request_id='aging-start-bad', expected_token=token,
@@ -190,6 +238,7 @@ def test_queued_failure_can_be_stopped_and_cancelled_without_replay(system, monk
 @pytest.mark.parametrize('outcome', ['AT_SOURCE','AT_DESTINATION'])
 def test_device_stop_and_manual_recovery_do_not_count_a_cycle(system, outcome):
     _, store, plc, service, client = system
+    before = store.read()
     run, _ = start(system); service.poll(); task=current_task(system)
     result=client.post('/api/device/stop',json=dict(request_id='aging-device-stop',site_ready=True))
     assert result.status_code == 200 and plc.writes[-1] == (28,b'\0\x02')
@@ -197,11 +246,14 @@ def test_device_stop_and_manual_recovery_do_not_count_a_cycle(system, outcome):
     assert store.task(store.read(),task['id'])['status']=='REVIEW'
     assert stop(system, run)['status']=='STOPPING'
     plc.raw[:8]=struct.pack('>4h',8,0,0,1);plc.raw[28:30]=b'\0\0';plc.poll()
-    service.resolve(task['id'],outcome,'现场核对实际箱位后处理',True)
+    resolved = client.post(f'/api/tasks/{task["id"]}/resolve', json=dict(
+        outcome=outcome, note='现场核对实际执行结果后处理', site_ready=True))
+    assert resolved.status_code == 200, resolved.text
     service.poll()
     stopped=store.read()['aging_run']
     assert stopped['status']=='STOPPED' and stopped['completed_moves']==stopped['completed_cycles']==0
-    assert store.read()['stock'][task['barcode']]['location']==(task['location'] if outcome=='AT_SOURCE' else task['target_location'])
+    for field in ('stock','locations','materials'):
+        assert store.read()[field] == before[field]
 
 
 def test_auth_csrf_strict_inputs_and_scoped_start_do_not_cross_devices(system):

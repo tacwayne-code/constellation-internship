@@ -1,6 +1,6 @@
 import {activeTask} from './api.js';
 
-export const taskPermission=task=>task.kind==='MOVE'?'inventory':(task.document_kind||task.kind).toLowerCase();
+export const taskPermission=task=>['MOVE','AGING'].includes(task.kind)?'inventory':(task.document_kind||task.kind).toLowerCase();
 const touches=(task,id)=>task.location===id||task.target_location===id;
 const idAtDepth=(location,depth)=>location.id.replace(/-[12]$/,`-${depth}`);
 export function transferSources(state){

@@ -10,6 +10,7 @@ test('whole-box choices omit closed, reserved and inaccessible stock without los
  state.tasks.push({id:'move',kind:'MOVE',barcode:'MATERIAL',location:'L-01-01-1',target_location:'L-02-01-1',status:'PLC_DONE'});
  assert.deepEqual(transferSources(state),[]);
  assert.equal(taskPermission({kind:'MOVE'}),'inventory');
+ assert.equal(taskPermission({kind:'AGING'}),'inventory');
  assert.equal(taskPermission({kind:'INBOUND',document_kind:'OUTBOUND'}),'outbound');
 });
 test('targets permit same-bay placement after retrieval while guarding other front occupancy and both task ends',()=>{
