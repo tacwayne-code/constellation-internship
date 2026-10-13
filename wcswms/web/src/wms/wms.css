@@ -471,6 +471,20 @@ tbody tr:hover{background:#f8fbf9}
 .wm-context-bar label{display:flex;align-items:center;gap:9px;font-size:12px;color:#657c70;min-width:0}
 .wm-context-bar select{width:190px;max-width:100%;min-height:32px;border:1px solid #cbd8d1;border-radius:6px;padding:5px 8px;background:#fff;color:#233b35;font-weight:600}
 .wm-context-bar>span{font-size:11px;color:#82938b;margin-left:auto}
+.wm-inventory-tabs{align-self:flex-start}
+.wm-material-catalog{display:flex;flex:1;min-height:0;flex-direction:column;gap:9px}
+.wm-material-cell{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.wm-materials-table td{height:52px}
+.wm-materials-table .wm-row-link{width:100%;font-size:inherit}
+.wm-materials-table .wm-table-action{width:100%;min-width:0;font-size:11px;padding:4px}
+.wm-materials-table .wm-error{margin:3px 0 0;font-size:10px}
+.wm-material-import-summary{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:7px;font-size:12px;color:#54735f;flex-shrink:0}
+.wm-material-import-summary>span{overflow-wrap:anywhere;min-width:0}
+.wm-material-import-summary .wm-check{margin:0!important}
+.wm-material-import-actions{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-shrink:0}
+.wm-material-import-actions .wm-check{margin:0!important}
+.wm-material-import-actions>button{min-width:100px}
+@media(max-width:759px){.wm-material-catalog{gap:7px}.wm-material-catalog>.wm-help{font-size:10px;line-height:1.4}.wm-material-import-summary{font-size:10px}.wm-materials-table th,.wm-materials-table td{font-size:10px;padding:7px 4px}.wm-materials-table .wm-badge{font-size:9px;padding:3px}.wm-material-import-actions{align-items:flex-start;gap:7px}.wm-material-import-actions .wm-check{font-size:10px!important}.wm-material-import-actions>button{font-size:11px;min-width:80px;min-height:34px;padding:6px}}
 .wm-sites-table th:first-child{width:26%}.wm-sites-table th:nth-child(2){width:25%}.wm-sites-table th:nth-child(3){width:35%}.wm-sites-table th:last-child{width:14%}
 .wm-sites-table td{overflow-wrap:anywhere}
 .wm-page-settings>.wm-tabs{align-self:flex-start}

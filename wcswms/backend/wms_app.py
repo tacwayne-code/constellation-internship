@@ -18,6 +18,7 @@ from .wms_store import WmsStore, WmsError, ACTIVE, rack_layouts, location_token,
 from .wms_allocation import allocation_policy
 from .wms_device import DeviceSettings
 from .wms_auth import Users, AuthError, PERMISSIONS, ROLES, DEFAULTS, COOKIE, SESSION_SECONDS
+from . import wms_material_import
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -39,6 +40,16 @@ class MaterialInput(Identified):
 class MaterialUpdate(MaterialInput):
     barcode: str = Field(min_length=1, max_length=64)
     expected_updated_at: str = Field(min_length=1, max_length=60)
+
+
+class MaterialFile(Input):
+    filename: str = Field(min_length=1, max_length=200)
+    content: str = Field(min_length=1, max_length=2800000)
+
+
+class MaterialImport(MaterialFile, Identified):
+    expected_token: str = Field(min_length=64, max_length=64, pattern=r'^[0-9a-f]+$')
+    confirmed: bool = False
 
 
 class Goods(MaterialInput):
@@ -326,7 +337,7 @@ def create_app(config=None, data_dir=None, reader=None, key=None, commands_path=
                 raise AuthError('设备连接与控制尚未启用',409)
         elif path.startswith('/api/locations') or path == '/api/allocation-policy':
             require(user, 'locations')
-        elif path in ('/api/stocktake', '/api/inventory/material'):
+        elif path in ('/api/stocktake', '/api/inventory/material', '/api/materials/import/preview', '/api/materials/import'):
             require(user, 'inventory')
         elif path == '/api/handover':
             require(user, 'outbound')
@@ -379,6 +390,7 @@ def create_app(config=None, data_dir=None, reader=None, key=None, commands_path=
                 'configure_allocation':'修改分配规则', 'verify_empty':'确认空库位',
                 'location_state':'修改库位状态', 'stocktake':'库存盘点调整',
                 'handover':'确认提走', 'update_material':'修订物料信息',
+                'import_materials':'导入物料信息', 'preview_materials':'预览物料导入',
                 'device_settings':'修改设备连接', 'stop':'请求设备停止',
                 'external_ack':'确认外部设备回执',
             }.get(getattr(endpoint, '__name__', ''), '仓储操作')
@@ -521,6 +533,23 @@ def create_app(config=None, data_dir=None, reader=None, key=None, commands_path=
         if not sku:
             raise WmsError('请填写物料编码')
         return dict(sku=sku, material=store.read()['materials'].get(sku))
+
+    @app.get('/api/materials')
+    def materials():
+        return dict(materials=sorted(store.read()['materials'].values(), key=lambda item: item['sku']))
+
+    @app.get('/api/materials/template.xlsx')
+    def material_template():
+        return Response(wms_material_import.template(), media_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                        headers={'Content-Disposition': 'attachment; filename="wms-material-template.xlsx"'})
+
+    @app.post('/api/materials/import/preview')
+    def preview_materials(body: MaterialFile):
+        return wms_material_import.preview(store.read(), wms_material_import.parse_file(body.filename, body.content))
+
+    @app.post('/api/materials/import')
+    def import_materials(body: MaterialImport):
+        return wms_material_import.import_materials(store, body.model_dump())
 
     @app.post('/api/auth/check')
     def auth_check():

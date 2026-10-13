@@ -6,8 +6,13 @@ import {materialDetails} from './material';
 import useMaterialLookup from './useMaterialLookup';
 import Pager from './Pager';
 import {usePagination,useTableSize} from './paging';
+import MaterialCatalog from './MaterialCatalog';
 
-export function InventoryPage({state,canEdit,refresh,notify}){
+export function InventoryPage(props){
+ const [tab,setTab]=useState('stock');
+ return <><div className="wm-tabs wm-inventory-tabs" aria-label="库存分类"><button className={tab==='stock'?'selected':''} onClick={()=>setTab('stock')}>料箱库存</button><button className={tab==='materials'?'selected':''} onClick={()=>setTab('materials')}>物料档案</button></div>{tab==='materials'?<MaterialCatalog {...props}/>:<StockInventoryPage {...props}/>}</>;
+}
+function StockInventoryPage({state,canEdit,refresh,notify}){
  const [query,setQuery]=useState(''),[history,setHistory]=useState(false),[adding,setAdding]=useState(false),[editing,setEditing]=useState(null),[details,setDetails]=useState(null);
  const items=state.stock.filter(item=>(history||!['SHIPPED','REMOVED'].includes(item.status))&&[item.barcode,item.sku,item.material_name,item.model,item.specification,item.batch,storedLocation(item.location)].join(' ').toLowerCase().includes(query.toLowerCase()));
  const paging=usePagination(items,useTableSize(),`${query}:${history}`);
