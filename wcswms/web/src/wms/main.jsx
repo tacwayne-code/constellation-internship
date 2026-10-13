@@ -13,7 +13,7 @@ import {Empty} from './components';
 import './wms.css';
 
 const nav=[['inbound','入库',Download],['outbound','出库',Upload],['inventory','库存',Box],['tasks','任务',ClipboardList],['locations','库位',MapPin],['device','设备',Settings],['settings','设置',Settings2]];
-const titles={inbound:['物料入库','创建单据、取箱装料、返库自动记账'],outbound:['物料出库','按单取箱、扫码取料、余料或空箱返库'],inventory:['库存管理','查询在库料箱，登记现场已有库存'],tasks:['作业任务','核对下发、跟踪执行，正常完成后自动确认回执'],locations:['库位管理','按实际货架建档，核对空位后参与分配'],device:['设备状态','真实 PLC 连接、接单条件与操作记录'],settings:['系统设置','管理仓库、设备、用户及操作权限']};
+const titles={inbound:['物料入库','创建单据、取箱装料、返库自动记账'],outbound:['物料出库','按单取箱、扫码取料、余料或空箱返库'],inventory:['库存管理','查询物料库存与档案，登记现场盘点'],tasks:['作业任务','核对下发、跟踪执行，正常完成后自动确认回执'],locations:['库位管理','按实际货架建档，核对空位后参与分配'],device:['设备状态','真实 PLC 连接、接单条件与操作记录'],settings:['系统设置','管理仓库、设备、用户及操作权限']};
 function savedContext(){try{const value=JSON.parse(sessionStorage.getItem('wms-context-v1'));if(value&&/^(main|[0-9a-f]{32})$/.test(value.warehouse)&&/^(primary|[0-9a-f]{32}|)$/.test(value.device))return value;}catch{}return {warehouse:'main',device:'primary'};}
 function App(){
  const [context,setContext]=useState(savedContext),[sites,setSites]=useState(null);

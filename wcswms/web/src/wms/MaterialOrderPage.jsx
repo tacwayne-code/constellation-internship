@@ -7,11 +7,13 @@ import OrderCards from './OrderCards';
 import DraftTray from './DraftTray';
 import Pager from './Pager';
 import {usePagination,useViewport} from './paging';
+import MaterialPicker from './MaterialPicker';
 
 const blank=()=>({request_id:requestId(),sku:'',...materialDetails(),quantity:1,batch:'',box_mode:'NEW',box_barcode:''});
 export default function MaterialOrderPage({kind,state,canEdit,refresh,notify,onPage}){
  const inbound=kind==='INBOUND',busyRef=useRef(false),lookupVersion=useRef(0),scanner=useRef(null),completedCode=useRef('');
  const [form,setForm]=useState(blank),[query,setQuery]=useState(''),[selected,setSelected]=useState(null),[lookup,setLookup]=useState(null),[lookupError,setLookupError]=useState(''),[pending,setPending]=useState(false),[choose,setChoose]=useState(false),[chosen,setChosen]=useState(false),[busy,setBusy]=useState(false),[lookupTick,setLookupTick]=useState(0);
+ const [materialQuery,setMaterialQuery]=useState('');
  const draftKey=`wms-material-order-draft-v1-${kind}`;
  const [draft,setDraft]=useState(()=>{try{const saved=JSON.parse(sessionStorage.getItem(draftKey));return saved?.orders?saved:{request_id:requestId(),orders:[]};}catch{return {request_id:requestId(),orders:[]};}});
  const {height}=useViewport();
@@ -32,12 +34,9 @@ export default function MaterialOrderPage({kind,state,canEdit,refresh,notify,onP
   return()=>{clearTimeout(timer);controller.abort();lookupVersion.current++;};
  },[inbound,form.sku,lookupTick]);
  function update(key,value){setForm(previous=>({...previous,[key]:value,request_id:requestId()}));if(key==='sku'){completedCode.current='';setPending(Boolean(value.trim()));setLookup(null);setChosen(false);setChoose(false);}}
- function completeCode(value){
-  const code=value.trim();if(!code||completedCode.current===code)return;completedCode.current=code;
-  if(lookup&&!pending)setChoose(Boolean(lookup.material));
-  else if(lookupError)setLookupTick(tick=>tick+1);
- }
- function reset(){completedCode.current='';setForm(blank());setQuery('');setSelected(null);setLookup(null);setChoose(false);setChosen(false);setLookupError('');scanner.current?.focus();}
+ function chooseMaterial(code,item){completedCode.current=code;setMaterialQuery(code);setForm(previous=>({...previous,sku:code,...materialDetails(item),request_id:requestId()}));setPending(true);setLookup(null);setChosen(false);setChoose(false);setLookupTick(tick=>tick+1);}
+ function searchMaterial(value){setMaterialQuery(value);completedCode.current='';setForm(previous=>({...previous,sku:'',...materialDetails(),request_id:requestId()}));setLookup(null);setChosen(false);setChoose(false);setLookupError('');}
+ function reset(){completedCode.current='';setForm(blank());setMaterialQuery('');setQuery('');setSelected(null);setLookup(null);setChoose(false);setChosen(false);setLookupError('');scanner.current?.focus();}
  function select(item){setSelected(item);setQuery(item.barcode);setForm({...blank(),sku:item.sku,...materialDetails(item),batch:item.batch||'',box_mode:'EXISTING',box_barcode:item.barcode});}
  function eligible(item){const loc=state.locations.find(row=>row.id===item.location);return item.status==='IN_STOCK'&&!item.reserved&&loc?.enabled&&loc?.verified&&!loc.reserved&&!loc.access_error&&(item.container_type||'MATERIAL')==='MATERIAL'&&!draft.orders.some(row=>row.box_barcode===item.barcode);}
  function scanOutbound(value){const item=state.stock.find(row=>row.barcode===value.trim()&&eligible(row));if(item)select(item);}
@@ -60,12 +59,12 @@ export default function MaterialOrderPage({kind,state,canEdit,refresh,notify,onP
   try{const result=await api('/api/orders/batch',draft);await refresh();setDraft({request_id:requestId(),orders:[]});notify(`已登记 ${result.count} 条单据，按顺序核对取箱`);}catch(error){notify(error.message,'error');}finally{busyRef.current=false;setBusy(false);}
  }
  return <div className="wm-workspace"><section className="wm-panel wm-registration"><h2>创建物料{kindNames[kind]}单</h2><p className="wm-help">{inbound?'系统先取出分配的料箱，人工装料后返库。无需输入新箱箱号。':'选择在库物料箱，取箱到出口后扫码核对，按本单数量取料，再返库。'}</p><form onSubmit={submit}>
- {inbound?<label>物料编码<input ref={scanner} autoFocus autoComplete="off" spellCheck={false} value={form.sku} disabled={busy} maxLength={80} required placeholder="扫描或输入物料编码" onChange={e=>update('sku',e.target.value)} onBlur={e=>completeCode(e.currentTarget.value)} onKeyDown={e=>{if(e.key==='Enter'&&!e.nativeEvent.isComposing){e.preventDefault();completeCode(e.currentTarget.value);}}}/></label>:<><label>扫码或搜索物料<input ref={scanner} autoFocus autoComplete="off" value={query} disabled={busy} maxLength={200} placeholder="条码、编码、名称、型号、规格" onChange={e=>{setQuery(e.target.value);setSelected(null);}} onKeyDown={e=>{if(e.key==='Enter'){e.preventDefault();scanOutbound(e.currentTarget.value);}}}/></label>{!selected&&<OutboundChoices query={query} state={state} busy={busy} onSelect={select} excluded={draft.orders.map(row=>row.box_barcode)}/>}</>}
- <ScanHint value={inbound?form.sku:query}/>
+ {inbound?<MaterialPicker value={materialQuery} selectedSku={form.sku} onChange={searchMaterial} onSelect={chooseMaterial} inputRef={scanner} disabled={busy}/>:<><label>扫码或搜索物料<input ref={scanner} autoFocus autoComplete="off" value={query} disabled={busy} maxLength={200} placeholder="条码、编码、名称、型号、规格" onChange={e=>{setQuery(e.target.value);setSelected(null);}} onKeyDown={e=>{if(e.key==='Enter'){e.preventDefault();scanOutbound(e.currentTarget.value);}}}/></label>{!selected&&<OutboundChoices query={query} state={state} busy={busy} onSelect={select} excluded={draft.orders.map(row=>row.box_barcode)}/>}</>}
+ <ScanHint value={inbound?materialQuery:query}/>
  {pending&&<p className="wm-help" role="status">正在查询物料档案…</p>}{lookupError&&<p className="wm-error" role="alert">{lookupError}<button type="button" onClick={()=>setLookupTick(value=>value+1)}>重试查询</button></p>}
  {(inbound||selected)&&<>{inbound?<div className="wm-form-grid"><MaterialFields value={form} onChange={update} disabled={busy||pending||Boolean(lookup?.material)}/><label>本单入库数量<input type="number" min="1" max="1000000" step="1" inputMode="numeric" required value={form.quantity} disabled={busy} onChange={e=>update('quantity',e.target.value)}/></label><label>批次<input value={form.batch} disabled={busy||form.box_mode==='EXISTING'} maxLength={80} placeholder="选填" onChange={e=>update('batch',e.target.value)}/></label></div>:<><dl className="wm-info-list wm-out-material-grid">{[['物料编码',form.sku],['物料名称',form.material_name||'—'],['型号',form.model||'—'],['规格',form.specification||'—'],['批次',form.batch||'—']].map(([label,value])=><div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl><label>本单出库数量<input type="number" min="1" max={selected.quantity} step="1" inputMode="numeric" required value={form.quantity} disabled={busy} onChange={e=>update('quantity',e.target.value)}/></label></>}
 
- {inbound?<div className="wm-review"><p>{!lookup?'扫描编码后确定配箱方式':!chosen?'该编码已有档案，请选择新箱或已有物料箱':form.box_mode==='NEW'?`系统分配空箱 · 当前可用 ${lookup.empty_count} 箱`:`已有料箱 ${form.box_barcode}`}</p>{lookup?.material&&<button type="button" disabled={busy||pending} onClick={()=>setChoose(true)}>选择新箱或已有物料箱</button>}<p className="wm-help">提交单据时预留料箱和原库位；返库完成后增加本单数量。</p></div>:<div className="wm-review"><p>料箱 <b>{selected.barcode}</b> · {storedLocation(selected.location)}</p><p>箱内现有 {selected.quantity}，本次取出 {Number(form.quantity)||0}，返库后剩余 {selected.quantity-(Number(form.quantity)||0)}</p><p className="wm-help">剩余为 0 时自动转为空箱并保留箱号。</p></div>}
+ {inbound?<div className="wm-review wm-inbound-summary"><p>{!lookup?'扫描编码后确定配箱方式':!chosen?'该编码已有档案，请选择新箱或已有物料箱':form.box_mode==='NEW'?`系统分配空箱 · 当前可用 ${lookup.empty_count} 箱`:`已有料箱 ${form.box_barcode}`}</p>{lookup?.material&&<button type="button" disabled={busy||pending} onClick={()=>setChoose(true)}>选择新箱或已有物料箱</button>}<p className="wm-help">提交单据时预留料箱和原库位；返库完成后增加本单数量。</p></div>:<div className="wm-review"><p>料箱 <b>{selected.barcode}</b> · {storedLocation(selected.location)}</p><p>箱内现有 {selected.quantity}，本次取出 {Number(form.quantity)||0}，返库后剩余 {selected.quantity-(Number(form.quantity)||0)}</p><p className="wm-help">剩余为 0 时自动转为空箱并保留箱号。</p></div>}
  </>}
  {!canEdit&&<p className="wm-help wm-lock-hint">请先启用设备连接；还需具备登记权限且后台连接正常。</p>}<div className="wm-registration-actions"><button type="submit" value="draft" disabled={!valid||!canEdit||busy}>加入单据清单</button><button type="submit" value="single" className="wm-primary" disabled={!valid||!canEdit||busy}>{busy?'处理中…':`创建${kindNames[kind]}单`}</button></div>
  </form>
