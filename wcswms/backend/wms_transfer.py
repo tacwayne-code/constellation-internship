@@ -40,8 +40,10 @@ def check(state, barcode, source, target, task=None):
     return box
 
 
-def create(store, request):
+def create(store, request, *, aging_id=None):
     def apply(state):
+        if aging_id and (state.get('aging_run', {}).get('id') != aging_id or state['aging_run']['status'] != 'RUNNING' or state['aging_run']['current_task_id']):
+            raise WmsError('老化运行状态已变化，禁止创建下一步')
         box = check(state, request['barcode'], request['source_location'], request['target_location'])
         if box['updated_at'] != request['expected_updated_at']:
             raise WmsError('源料箱信息已变化，请重新选择并核对')
@@ -57,6 +59,9 @@ def create(store, request):
         for key in task_locations(task):
             state['locations'][key]['reserved'] = task['id']
         box['reserved'] = task['id']
+        if aging_id:
+            task['aging_run_id'] = aging_id
+            state['aging_run'].update(current_task_id=task['id'], current_started_at=now(), updated_at=now())
         store.event(state, f'{task["number"]} 调仓已登记：{box["barcode"]} / {box["location"]} → {request["target_location"]}', task['id'])
         return task
-    return store.once(request['request_id'], {'operation': 'transfer', **request}, apply)
+    return store.once(request['request_id'], {'operation': 'transfer', 'aging_run_id':aging_id, **request}, apply, aging_id=aging_id)

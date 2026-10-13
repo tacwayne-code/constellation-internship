@@ -39,6 +39,12 @@ def task_locations(task):
     return {task['location'], *([task['target_location']] if task['kind'] == 'MOVE' else [])}
 
 
+def business_allowed(state, aging_id=None):
+    run = state.get('aging_run')
+    if run and run['status'] != 'STOPPED' and aging_id != run['id']:
+        raise WmsError('老化测试占用当前设备，请先停止测试并处理当前搬运任务')
+
+
 def material_details(record):
     return {key: record.get(key, '') for key in MATERIAL_FIELDS}
 
@@ -167,11 +173,11 @@ class WmsStore:
                 if task['status'] not in ACTIVE or state['locations'][order['location']]['reserved'] != task['id']:
                     raise WmsError('物料单据的原库位预留与当前任务不一致')
 
-    def once(self, key, payload, apply):
+    def once(self, key, payload, apply, *, aging_id=None):
         def comparable(value):
             # Empty optional fields must not invalidate retries from older clients.
             defaults = dict.fromkeys(MATERIAL_FIELDS, '') | dict(container_type='MATERIAL', depth=0, depths=1,
-                                                                 allocation=None, expected_allocation_revision=None)
+                                                                 allocation=None, expected_allocation_revision=None, aging_run_id=None)
             return {name: item for name, item in value.items() if name not in defaults or item != defaults[name]}
         def update(state):
             previous = state['receipts'].get(key)
@@ -179,6 +185,7 @@ class WmsStore:
                 if comparable(previous['payload']) != comparable(payload):
                     raise WmsError('同一请求编号不能提交不同内容')
                 return previous['result']
+            business_allowed(state, aging_id)
             result = apply(state)
             state['receipts'][key] = dict(payload=payload, result=copy.deepcopy(result))
             return result
@@ -186,6 +193,9 @@ class WmsStore:
 
     def recover(self):
         def update(state):
+            run = state.get('aging_run')
+            if run and run['status'] != 'STOPPED':
+                run.update(status='PAUSED', stop_requested=True, detail='后台重启，老化已暂停；不自动重发，请停止循环并核对当前箱位', updated_at=now())
             for task in state['tasks']:
                 if task['status'] in {'DISPATCHING', 'SENT', 'RUNNING'}:
                     task.update(status='REVIEW', detail='后台重启，保留预留并核对 PLC；不自动重发', updated_at=now())
@@ -341,6 +351,7 @@ class WmsStore:
 
     def verify_empty(self, ident):
         def update(state):
+            business_allowed(state)
             location = state['locations'].get(ident)
             if location is None:
                 raise WmsError('库位不存在')
@@ -526,11 +537,12 @@ class WmsStore:
         self.event(state, f'{task["number"]} {label}已登记：{barcode} / {location}', task['id'])
         return task
 
-    def cancel(self, ident):
+    def cancel(self, ident, *, aging_id=None):
         def update(state):
             task = self.task(state, ident)
             if task['status'] == 'CANCELLED':
                 return task
+            business_allowed(state, aging_id)
             if task['status'] != 'QUEUED':
                 raise WmsError('仅未下发的任务可以取消；已下发任务需现场核对')
             if task.get('order_id'):

@@ -8,7 +8,7 @@ from time import monotonic
 from fastapi import HTTPException
 from .physical_app import PhysicalReader
 from .physical_control import Command, ManualControl
-from .wms_store import WmsError, IN_FLIGHT, now
+from .wms_store import WmsError, IN_FLIGHT, now, business_allowed
 
 
 def task_function(task):
@@ -89,6 +89,7 @@ class WmsService:
         self.enabled = enabled
         self.auto_acknowledge = bool(enabled and auto_acknowledge)
         self.lock = threading.RLock()
+        self.aging = None
         self.control = ManualControl(reader, commands_path) if enabled else None
 
     def sync_order_phase(self, state, task):
@@ -128,9 +129,16 @@ class WmsService:
 
     def poll(self):
         with self.lock:
-            self.reader.poll()
+            try:
+                self.reader.poll()
+            except Exception:
+                if self.aging:
+                    self.aging.pause('PLC 采样失败，老化已暂停；请核对设备和当前箱位')
+                raise
             snapshot = self.reader.snapshot()
             if not snapshot.get('live'):
+                if self.aging:
+                    self.aging.pause('PLC 连接中断或反馈过期，老化已暂停；不会自动重发')
                 return
             fields = feedback(snapshot)
             status, ident, alarm = (fields.get(key) for key in ('DB2.DBW0', 'DB2.DBW2', 'DB2.DBW4'))
@@ -149,9 +157,16 @@ class WmsService:
                         task.update(status='REVIEW', detail=f'PLC 报警 {alarm}，保留库位与料箱预留', updated_at=now())
                         self.sync_order_phase(state, task)
                         self.store.event(state, task['detail'], task['id'])
-            self.store.mutate(update)
+            try:
+                self.store.mutate(update)
+            except Exception:
+                if self.aging:
+                    self.aging.pause('搬运回执处理异常，老化后续下发已暂停；请核对库存和箱位')
+                raise
             if self.auto_acknowledge:
                 self._auto_acknowledge()
+            if self.aging:
+                self.aging.tick()
 
     def _auto_acknowledge(self):
         # The service lock serializes polling and operator actions. Persist the
@@ -175,7 +190,7 @@ class WmsService:
                     self.store.event(state, f'{item["number"]} {item["detail"]}', item['id'])
                 self.store.mutate(failed)
 
-    def dispatch(self, ident, site_ready):
+    def dispatch(self, ident, site_ready, *, aging_id=None):
         if not site_ready:
             raise WmsError('请确认入口料箱、出口空闲和现场控制权')
         if not self.enabled:
@@ -185,6 +200,9 @@ class WmsService:
             task = self.store.task(state, ident)
             if task['status'] != 'QUEUED':
                 return task  # An HTTP retry must never resend motion commands.
+            business_allowed(state, aging_id)
+            if task.get('aging_run_id') and task['aging_run_id'] != aging_id:
+                raise WmsError('老化步骤由测试程序自动下发，请在老化界面停止或处理')
             if any(other['id'] != ident and other['status'] in IN_FLIGHT for other in state['tasks']):
                 raise WmsError('设备已有未结束任务或待确认回执')
             self.check_dispatch(state, task)
@@ -197,6 +215,7 @@ class WmsService:
             snapshot = self.reader.snapshot()
             used.update([snapshot.get('command_task_id'), feedback(snapshot).get('DB2.DBW2')])
             def prepare(state):
+                business_allowed(state, aging_id)
                 item = self.store.task(state, ident)
                 if not state['locations'][item['location']]['enabled']:
                     raise WmsError('任务库位已停用，禁止下发；请核对库位与任务')
@@ -355,6 +374,8 @@ class WmsService:
         with self.lock:
             if not self.enabled:
                 raise WmsError('后台未启用写入')
+            if self.aging and site_ready:
+                self.aging.pause('已请求设备停止，老化后续下发已暂停；请在现场确认停机和箱位', stop_requested=True)
             result = self.control.execute(Command(request_id=request_id, action='stop', site_ready=site_ready))
             def update(state):
                 for task in state['tasks']:
@@ -391,6 +412,8 @@ class WmsService:
                         self.store.release(state, task)
                         task['status'] = 'CANCELLED'
                 task.update(detail=f'人工核对：{note}', updated_at=now())
+                if task.get('aging_run_id'):
+                    task['aging_resolution'] = outcome
                 self.store.event(state, f'{task["number"]} 人工处理 {outcome}：{note}', ident)
                 return task
             return self.store.mutate(update)

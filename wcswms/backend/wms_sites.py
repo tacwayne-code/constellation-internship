@@ -10,7 +10,7 @@ import threading
 from .wms_device import plc_ipv4, save_config
 from .wms_service import WmsReader, feedback
 from .physical_control import ManualControl
-from .wms_store import WmsError, now
+from .wms_store import WmsError, now, business_allowed
 
 
 class Sites:
@@ -152,6 +152,7 @@ class Sites:
     @staticmethod
     def _safe(service):
         ledger=service.store.read()
+        business_allowed(ledger)
         if any(t['status'] not in {'COMPLETED','CANCELLED'} for t in ledger['tasks']):
             raise WmsError('设备仍有未结束任务，请完成或取消后再修改连接或启停')
         if any(s['status'] in {'AT_STATION','AT_EXIT'} for s in ledger['stock'].values()):

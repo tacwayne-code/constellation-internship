@@ -7,7 +7,7 @@ import tempfile
 from pathlib import Path
 
 from .wms_service import WmsReader, feedback
-from .wms_store import WmsError, now
+from .wms_store import WmsError, now, business_allowed
 
 
 def plc_ipv4(value):
@@ -73,6 +73,7 @@ class DeviceSettings:
             if expected_revision != self._settings['revision']:
                 raise WmsError('设备 IP 已被其他终端修改，请关闭设置后重新打开')
             ledger = service.store.read()
+            business_allowed(ledger)
             if any(task['status'] not in {'QUEUED', 'COMPLETED', 'CANCELLED'} for task in ledger['tasks']):
                 raise WmsError('有执行中、待核对或待返库任务，请完成后再修改设备 IP')
             if any(item['status'] in {'AT_STATION', 'AT_EXIT'} for item in ledger['stock'].values()):

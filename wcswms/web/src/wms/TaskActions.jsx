@@ -8,6 +8,7 @@ function restriction(task,kind,state,canEdit){
  if(!canEdit)return '当前账号无此操作权限，或后台连接中断。';
  if(!task)return '任务已变化，请关闭窗口后重新核对。';
  if(!hasPermission(state,taskPermission(task))||(kind!=='cancel'&&!hasPermission(state,'control')))return '当前账号没有此任务的操作权限。';
+ if(task.aging_run_id&&state.aging?.run?.id===task.aging_run_id&&state.aging.run.status!=='STOPPED'&&['cancel','dispatch'].includes(kind))return '老化步骤由测试程序自动下发，请先在老化界面停止循环。';
  const expected=kind==='acknowledge'?'PLC_DONE':'QUEUED';
  if(task.status!==expected)return '任务状态已变化，请关闭窗口后重新核对。';
  if(kind==='dispatch'){
@@ -27,7 +28,7 @@ function restriction(task,kind,state,canEdit){
 export function TaskButtons({task,state,canEdit,onAction}){
  canEdit=canEdit&&hasPermission(state,taskPermission(task));
  return <div className="wm-task-actions">
-  {task.status==='QUEUED'&&<><button type="button" className="wm-primary" disabled={Boolean(restriction(task,'dispatch',state,canEdit))} onClick={()=>onAction('dispatch')}>{task.order_leg==='FETCH'?'核对取箱':task.order_leg==='RETURN'?'核对返库':'核对并下发'}</button><button type="button" disabled={!canEdit} onClick={()=>onAction('cancel')}>取消未下发任务</button>{canEdit&&restriction(task,'dispatch',state,canEdit)&&<span className="wm-help">{restriction(task,'dispatch',state,canEdit)}</span>}</>}
+  {task.status==='QUEUED'&&<><button type="button" className="wm-primary" disabled={Boolean(restriction(task,'dispatch',state,canEdit))} onClick={()=>onAction('dispatch')}>{task.order_leg==='FETCH'?'核对取箱':task.order_leg==='RETURN'?'核对返库':'核对并下发'}</button><button type="button" disabled={!canEdit||Boolean(task.aging_run_id&&state.aging?.run?.id===task.aging_run_id&&state.aging.run.status!=='STOPPED')} onClick={()=>onAction('cancel')}>取消未下发任务</button>{canEdit&&restriction(task,'dispatch',state,canEdit)&&<span className="wm-help">{restriction(task,'dispatch',state,canEdit)}</span>}</>}
   {task.status==='PLC_DONE'&&(state.auto_acknowledge&&!task.ack_error?<span className="wm-help" role="status">后台正在自动确认 PLC 回执，无需人工操作。</span>:<button type="button" className="wm-primary" disabled={Boolean(restriction(task,'acknowledge',state,canEdit))} onClick={()=>onAction('acknowledge')}>{task.ack_error?'重试回执确认':'确认 PLC 回执'}</button>)}
   {task.status==='AWAIT_PICKUP'&&<span className="wm-help">在出库登记处扫描出口料箱，确认已取走。</span>}
   {task.status==='AWAIT_RETURN'&&<span className="wm-help">在物料单据中完成装料或核对取料，再点击返库。</span>}

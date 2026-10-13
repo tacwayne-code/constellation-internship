@@ -21,6 +21,7 @@ from .wms_auth import Users, AuthError, PERMISSIONS, ROLES, DEFAULTS, COOKIE, SE
 from . import wms_material_import
 from . import wms_scan_policy
 from . import wms_transfer
+from . import wms_aging
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -44,6 +45,17 @@ class TransferInput(Identified):
     source_location: str = Field(min_length=1, max_length=64)
     target_location: str = Field(min_length=1, max_length=64)
     expected_updated_at: str = Field(min_length=1, max_length=60)
+
+
+class AgingStartInput(Identified):
+    expected_token: str = Field(min_length=64, max_length=64, pattern=r'^[0-9a-f]+$')
+    limit_cycles: int = Field(default=0, ge=0, le=1000000, strict=True)
+    step_timeout: int = Field(default=300, ge=30, le=3600, strict=True)
+    site_ready: bool = Field(default=False, strict=True)
+
+
+class AgingStopInput(Identified):
+    run_id: str = Field(min_length=32, max_length=32, pattern=r'^[0-9a-f]+$')
 
 
 class MaterialInput(Identified):
@@ -267,6 +279,7 @@ def create_app(config=None, data_dir=None, reader=None, key=None, commands_path=
     if not key:
         raise RuntimeError('Control key cannot be empty')
     users = shared_users or Users(data_dir / 'users.sqlite3')
+    service.aging = wms_aging.AgingRunner(service, users)
 
     @asynccontextmanager
     async def lifespan(app):
@@ -322,6 +335,11 @@ def create_app(config=None, data_dir=None, reader=None, key=None, commands_path=
         path = route_path(request)
         if path.startswith(('/api/users','/api/warehouses','/api/devices')) or path == '/api/outbound-scan-policy':
             require(user, 'users')
+        elif path == '/api/aging/start':
+            require(user, 'inventory')
+            require(user, 'control')
+        elif path == '/api/aging/stop':
+            require(user, 'control')
         elif path in ('/api/auth/logout', '/api/auth/password', '/api/auth/check'):
             return
         elif path in ('/api/tasks', '/api/tasks/batch', '/api/orders', '/api/orders/batch'):
@@ -401,6 +419,7 @@ def create_app(config=None, data_dir=None, reader=None, key=None, commands_path=
                 'create':'登记料箱任务', 'create_batch':'批量登记料箱任务',
                 'create_order':'登记物料单据', 'create_order_batch':'批量登记物料单据',
                 'create_transfer':'登记调仓任务',
+                'start_aging':'启动老化测试', 'stop_aging':'停止老化循环',
                 'return_order':'下发返库', 'cancel':'取消任务', 'dispatch':'下发任务',
                 'acknowledge':'确认任务回执', 'resolve':'处理任务异常',
                 'add_location':'添加库位', 'configure_rack':'配置货架',
@@ -522,6 +541,7 @@ def create_app(config=None, data_dir=None, reader=None, key=None, commands_path=
         return dict(user=request.state.user, scope=app.state.sites.scope(app.state.scope_id), mode='PHYSICAL_WMS', real_plc=True, write_enabled=service.enabled,
                     device_settings=device.snapshot(),
                     outbound_scan_policy=wms_scan_policy.scan_policy(ledger),
+                    aging=wms_aging.snapshot(ledger),
                     auto_acknowledge=service.auto_acknowledge, plc=reader.snapshot(),
                     readiness=service.readiness(), locations=locations, rack_layouts=rack_layouts(ledger), allocation_policy=allocation_policy(ledger), stock=stock,
                     tasks=[task for index, task in enumerate(ledger['tasks']) if index < 200 or task['status'] in ACTIVE], events=ledger['events'][:80],
@@ -592,6 +612,14 @@ def create_app(config=None, data_dir=None, reader=None, key=None, commands_path=
     @app.post('/api/transfers', status_code=201)
     def create_transfer(body: TransferInput):
         return register(lambda request: wms_transfer.create(store, request), body.model_dump())
+
+    @app.post('/api/aging/start')
+    def start_aging(body: AgingStartInput, request: Request):
+        return service.aging.start(body.model_dump(), request.state.user)
+
+    @app.post('/api/aging/stop')
+    def stop_aging(body: AgingStopInput):
+        return service.aging.request_stop(body.model_dump())
 
     @app.post('/api/tasks/batch', status_code=201)
     def create_batch(body: TaskBatchInput):
