@@ -14,12 +14,13 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field
 
 from .wms_service import WmsReader, WmsService, feedback
-from .wms_store import WmsStore, WmsError, ACTIVE, rack_layouts, location_token, display_location
+from .wms_store import WmsStore, WmsError, ACTIVE, rack_layouts, location_token, display_location, task_locations
 from .wms_allocation import allocation_policy
 from .wms_device import DeviceSettings
 from .wms_auth import Users, AuthError, PERMISSIONS, ROLES, DEFAULTS, COOKIE, SESSION_SECONDS
 from . import wms_material_import
 from . import wms_scan_policy
+from . import wms_transfer
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -36,6 +37,13 @@ class ScanPolicyInput(Identified):
     require_barcode: bool = Field(strict=True)
     require_sku: bool = Field(strict=True)
     expected_revision: int = Field(ge=0)
+
+
+class TransferInput(Identified):
+    barcode: str = Field(min_length=1, max_length=64)
+    source_location: str = Field(min_length=1, max_length=64)
+    target_location: str = Field(min_length=1, max_length=64)
+    expected_updated_at: str = Field(min_length=1, max_length=60)
 
 
 class MaterialInput(Identified):
@@ -301,7 +309,7 @@ def create_app(config=None, data_dir=None, reader=None, key=None, commands_path=
             raise AuthError('当前用户没有' + ('用户管理' if permission == 'users' else PERMISSIONS[permission]) + '权限', 403)
 
     def task_permission(user, task, control=False):
-        require(user, (task.get('document_kind') or task.get('kind', '')).lower())
+        require(user, 'inventory' if task['kind'] == 'MOVE' else (task.get('document_kind') or task.get('kind', '')).lower())
         if control:
             require(user, 'control')
 
@@ -345,7 +353,7 @@ def create_app(config=None, data_dir=None, reader=None, key=None, commands_path=
                 raise AuthError('设备连接与控制尚未启用',409)
         elif path.startswith('/api/locations') or path == '/api/allocation-policy':
             require(user, 'locations')
-        elif path in ('/api/stocktake', '/api/inventory/material', '/api/materials/import/preview', '/api/materials/import'):
+        elif path in ('/api/stocktake', '/api/inventory/material', '/api/materials/import/preview', '/api/materials/import', '/api/transfers'):
             require(user, 'inventory')
         elif path == '/api/handover':
             require(user, 'outbound')
@@ -392,6 +400,7 @@ def create_app(config=None, data_dir=None, reader=None, key=None, commands_path=
             action = {
                 'create':'登记料箱任务', 'create_batch':'批量登记料箱任务',
                 'create_order':'登记物料单据', 'create_order_batch':'批量登记物料单据',
+                'create_transfer':'登记调仓任务',
                 'return_order':'下发返库', 'cancel':'取消任务', 'dispatch':'下发任务',
                 'acknowledge':'确认任务回执', 'resolve':'处理任务异常',
                 'add_location':'添加库位', 'configure_rack':'配置货架',
@@ -494,7 +503,8 @@ def create_app(config=None, data_dir=None, reader=None, key=None, commands_path=
         tasks_by_location = {}
         for task in ledger['tasks']:
             if task['status'] in ACTIVE:
-                tasks_by_location.setdefault(task['location'], []).append(task)
+                for ident in task_locations(task):
+                    tasks_by_location.setdefault(ident, []).append(task)
         locations = []
         for location in ledger['locations'].values():
             item = stock_by_location.get(location['id'])
@@ -578,6 +588,10 @@ def create_app(config=None, data_dir=None, reader=None, key=None, commands_path=
     @app.post('/api/tasks', status_code=201)
     def create(body: TaskInput):
         return register(store.create_task,body.model_dump())
+
+    @app.post('/api/transfers', status_code=201)
+    def create_transfer(body: TransferInput):
+        return register(lambda request: wms_transfer.create(store, request), body.model_dump())
 
     @app.post('/api/tasks/batch', status_code=201)
     def create_batch(body: TaskBatchInput):

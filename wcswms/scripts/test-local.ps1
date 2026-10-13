@@ -5,7 +5,7 @@ Push-Location -LiteralPath (Split-Path $PSScriptRoot -Parent)
 try {
     & '.\.venv\Scripts\python.exe' -m pytest -q
     if ($LASTEXITCODE -ne 0) { throw 'Regression tests failed' }
-    & node --test tests/test_wms_paging.mjs tests/test_wms_scope.mjs tests/test_wms_material_search.mjs
+    & node --test tests/test_wms_paging.mjs tests/test_wms_scope.mjs tests/test_wms_material_search.mjs tests/test_wms_transfer.mjs
     if ($LASTEXITCODE -ne 0) { throw 'WMS pagination/context regression tests failed' }
     if ($Mode -eq 'lab') {
         & '.\.venv\Scripts\python.exe' scripts/validate_twin.py

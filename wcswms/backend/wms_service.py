@@ -11,6 +11,10 @@ from .physical_control import Command, ManualControl
 from .wms_store import WmsError, IN_FLIGHT, now
 
 
+def task_function(task):
+    return {'OUTBOUND': 1, 'INBOUND': 2, 'MOVE': 3}[task['kind']]
+
+
 class WmsReader(PhysicalReader):
     def __init__(self, config):
         super().__init__(config)
@@ -135,7 +139,7 @@ class WmsService:
                     if task['status'] not in {'DISPATCHING', 'SENT', 'RUNNING', 'REVIEW'} or not task['plc_id']:
                         continue
                     matching = snapshot.get('command_task_id') == task['plc_id']
-                    expected = 2 if task['kind'] == 'INBOUND' else 1
+                    expected = task_function(task)
                     if matching and ident == task['plc_id'] and status == expected and not alarm and snapshot['cpu_state'] == 'S7CpuStatusRun':
                         self.store.post_completion(state, task)
                     elif matching and status == 9 and task['status'] == 'SENT':
@@ -211,11 +215,12 @@ class WmsService:
             task = self.store.mutate(prepare)
             location = state['locations'][task['location']]
             params = dict(request_id=task['id'], action='task', task_id=task['plc_id'],
-                          function=2 if task['kind'] == 'INBOUND' else 1, dock=task['dock'], site_ready=True)
+                          function=task_function(task), dock=task['dock'], site_ready=True)
             for prefix in ('source', 'target'):
-                use_location = (prefix == 'source') == (task['kind'] == 'OUTBOUND')
+                use_location = task['kind'] == 'MOVE' or (prefix == 'source') == (task['kind'] == 'OUTBOUND')
+                position = state['locations'][task['target_location']] if task['kind'] == 'MOVE' and prefix == 'target' else location
                 for field in ('side', 'level', 'column', 'depth'):
-                    params[f'{prefix}_{field}'] = location[field] if use_location else 0
+                    params[f'{prefix}_{field}'] = position[field] if use_location else 0
             try:
                 result = self.control.execute(Command(**params))
             except HTTPException as error:
@@ -247,6 +252,12 @@ class WmsService:
         station = next((box for box in state['stock'].values() if box['status'] == 'AT_STATION'), None)
         if station and not (task.get('order_leg') == 'RETURN' and station.get('reserved') == task['id']):
             raise WmsError('交接点正在装料或取料，请先完成该箱返库')
+        if task['kind'] == 'MOVE':
+            if any(item['status'] == 'AT_EXIT' for item in state['stock'].values()):
+                raise WmsError('出口尚有待取料箱，请先完成交接')
+            from .wms_transfer import check
+            check(state, task['barcode'], task['location'], task['target_location'], task)
+            return
         location = state['locations'][task['location']]
         if not location['enabled']:
             raise WmsError('任务库位已停用，禁止下发')
@@ -283,13 +294,13 @@ class WmsService:
             return task
         if task['status'] != 'PLC_DONE' or not task['posted']:
             raise WmsError('任务尚无匹配的完成回执')
-        self._ack_plc(task['plc_id'], 2 if task['kind'] == 'INBOUND' else 1, allow_signal=allow_signal)
+        self._ack_plc(task['plc_id'], task_function(task), allow_signal=allow_signal)
         self.reader.poll()
         def finish(state):
             item = self.store.task(state, ident)
-            item.update(status='COMPLETED' if item['kind'] == 'INBOUND' else 'AWAIT_PICKUP', ack_pending=False,
+            item.update(status='AWAIT_PICKUP' if item['kind'] == 'OUTBOUND' else 'COMPLETED', ack_pending=False,
                 ack_error=None, ack_source='AUTO' if automatic else 'MANUAL', acknowledged_at=now(),
-                updated_at=now(), detail='入库完成' if item['kind'] == 'INBOUND' else '料箱在出口，请扫码确认取走')
+                updated_at=now(), detail={'INBOUND':'入库完成', 'OUTBOUND':'料箱在出口，请扫码确认取走', 'MOVE':'调仓完成，料箱已到目标库位'}[item['kind']])
             if item.get('order_id'):
                 self.store.orders.acknowledged(state, item)
             self.store.event(state, f'{item["number"]} PLC 完成回执已{"自动" if automatic else "人工"}确认，确认信号已复位', ident)
@@ -368,10 +379,12 @@ class WmsService:
                     raise WmsError('仅待核对任务可以人工处理')
                 if outcome == 'AT_DESTINATION':
                     self.store.post_completion(state, task, manual=True)
-                    task.update(ack_pending=False, status='COMPLETED' if task['kind'] == 'INBOUND' else 'AWAIT_PICKUP')
+                    task.update(ack_pending=False, status='AWAIT_PICKUP' if task['kind'] == 'OUTBOUND' else 'COMPLETED')
                     if task.get('order_id'):
                         self.store.orders.acknowledged(state, task)
                 else:
+                    if task['kind'] == 'MOVE' and task['posted']:
+                        raise WmsError('调仓已经过账到目标库位，不能按仍在起点取消')
                     if task.get('order_id'):
                         self.store.orders.cancelled(state, task)
                     else:

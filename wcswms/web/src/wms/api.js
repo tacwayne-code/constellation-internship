@@ -23,7 +23,7 @@ export async function api(path,body,{signal,silentAuth=false}={}){
 }
 export const taskNames={QUEUED:'待下发',DISPATCHING:'下发中',SENT:'已发送待反馈',RUNNING:'执行中',REVIEW:'待现场核对',PLC_DONE:'完成回执处理中',AWAIT_PICKUP:'出口待取',AWAIT_RETURN:'待人工操作后返库',COMPLETED:'已完成',CANCELLED:'已取消'};
 export const stockNames={IN_STOCK:'在库',AT_EXIT:'出口待取',AT_STATION:'交接点作业',SHIPPED:'已出库',REMOVED:'已解除占用'};
-export const kindNames={INBOUND:'入库',OUTBOUND:'出库'};
+export const kindNames={INBOUND:'入库',OUTBOUND:'出库',MOVE:'调仓'};
 export const formatTime=value=>value?new Date(value).toLocaleString('zh-CN',{hour12:false}):'—';
 export const activeTask=task=>!['COMPLETED','CANCELLED'].includes(task.status);
 // Stored IDs remain side-column-level-depth; visible codes use side-level-column.

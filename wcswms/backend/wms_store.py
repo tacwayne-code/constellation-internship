@@ -35,6 +35,10 @@ MATERIAL_FIELDS = ('material_name', 'model', 'specification')
 CLOSED_STOCK = {'SHIPPED', 'REMOVED'}
 
 
+def task_locations(task):
+    return {task['location'], *([task['target_location']] if task['kind'] == 'MOVE' else [])}
+
+
 def material_details(record):
     return {key: record.get(key, '') for key in MATERIAL_FIELDS}
 
@@ -235,8 +239,8 @@ class WmsStore:
             outside = [loc for loc in state['locations'].values()
                        if loc['side'] == side and (loc['level'] > levels or loc['column'] > columns or loc['depth'] > depths)]
             occupied = {item['location'] for item in state['stock'].values() if item['status'] == 'IN_STOCK'}
-            task_locations = {task['location'] for task in state['tasks'] if task['status'] in ACTIVE}
-            blocked = [loc['id'] for loc in outside if loc['reserved'] or loc['id'] in occupied or loc['id'] in task_locations]
+            active_locations = {ident for task in state['tasks'] if task['status'] in ACTIVE for ident in task_locations(task)}
+            blocked = [loc['id'] for loc in outside if loc['reserved'] or loc['id'] in occupied or loc['id'] in active_locations]
             if blocked:
                 raise WmsError('以下库位有库存或未结束任务，不能缩出范围：' + '、'.join(blocked[:10]))
             disabled = 0
@@ -292,7 +296,7 @@ class WmsStore:
             if location is None:
                 raise WmsError('库位不存在')
             item = next((item for item in state['stock'].values() if item['location'] == ident and item['status'] == 'IN_STOCK'), None)
-            tasks = [task for task in state['tasks'] if task['location'] == ident and task['status'] in ACTIVE]
+            tasks = [task for task in state['tasks'] if ident in task_locations(task) and task['status'] in ACTIVE]
             if not request['confirmed']:
                 raise WmsError('请核对现场情况并确认本次库位操作')
             if request['expected_token'] != location_token(location, item, tasks):
@@ -342,7 +346,7 @@ class WmsStore:
                 raise WmsError('库位不存在')
             if not location['enabled']:
                 raise WmsError('库位已停用，请先在库位详情中重新启用')
-            if location['reserved'] or any(task['location'] == ident and task['status'] in ACTIVE for task in state['tasks']) or any(item['location'] == ident and item['status'] not in CLOSED_STOCK for item in state['stock'].values()):
+            if location['reserved'] or any(ident in task_locations(task) and task['status'] in ACTIVE for task in state['tasks']) or any(item['location'] == ident and item['status'] not in CLOSED_STOCK for item in state['stock'].values()):
                 raise WmsError('库位存在库存或预留，不能直接改为空位')
             location['verified'] = True
             self.event(state, f'现场核对库位为空：{ident}')
@@ -390,11 +394,11 @@ class WmsStore:
                 return '双伸前排单伸库位需已建档、启用并核对'
             if front['reserved'] or any(item['location'] == front['id'] and item['status'] == 'IN_STOCK' for item in state['stock'].values()):
                 return '双伸前排单伸库位有占用或预留，请先清空前排'
-            if any(task['location'] == front['id'] and task['status'] in ACTIVE for task in state['tasks']):
+            if any(front['id'] in task_locations(task) and task['status'] in ACTIVE for task in state['tasks']):
                 return '双伸前排存在未结束任务，请先完成前排任务'
         elif inbound:
             rear_id = location_id({**location, 'depth': 2})
-            if any(task['id'] != task_id and task['location'] == rear_id and task['status'] in ACTIVE for task in state['tasks']):
+            if any(task['id'] != task_id and rear_id in task_locations(task) and task['status'] in ACTIVE for task in state['tasks']):
                 return '同位置双伸后排有待办任务，请先处理后排再向单伸前排入库'
         return ''
 
@@ -540,7 +544,9 @@ class WmsStore:
 
     @staticmethod
     def release(state, task):
-        state['locations'][task['location']]['reserved'] = None
+        for ident in task_locations(task):
+            if state['locations'][ident]['reserved'] == task['id']:
+                state['locations'][ident]['reserved'] = None
         item = state['stock'].get(task['barcode'])
         if item and item.get('reserved') == task['id']:
             item['reserved'] = None
@@ -550,7 +556,13 @@ class WmsStore:
             return
         if task.get('order_id'):
             return self.orders.posted(state, task)
-        if task['kind'] == 'INBOUND':
+        if task['kind'] == 'MOVE':
+            from .wms_transfer import check
+            check(state, task['barcode'], task['location'], task['target_location'], task)
+            item = state['stock'][task['barcode']]
+            item.update(location=task['target_location'], updated_at=now())
+            self.release(state, task)
+        elif task['kind'] == 'INBOUND':
             # Keep task snapshots immutable, but posted stock uses the current catalog.
             material = state.get('materials', {}).get(task['sku'], task)
             state['stock'][task['barcode']] = dict(barcode=task['barcode'], sku=task['sku'], quantity=task['quantity'],

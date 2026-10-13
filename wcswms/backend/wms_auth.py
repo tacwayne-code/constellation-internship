@@ -9,7 +9,7 @@ import threading
 import time
 
 PERMISSIONS = {
-    'inbound': '入库登记', 'outbound': '出库登记', 'inventory': '库存调整与物料维护',
+    'inbound': '入库登记', 'outbound': '出库登记', 'inventory': '库存调整、调仓与物料维护',
     'locations': '库位与分配规则管理', 'control': '任务下发与设备控制', 'device': '设备连接设置',
 }
 ROLES = {'admin': '管理员', 'operator': '操作员', 'viewer': '只读用户', 'custom': '自定义'}
