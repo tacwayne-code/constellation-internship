@@ -519,3 +519,9 @@ tbody tr:hover{background:#f8fbf9}
  .wm-sites-table th:first-child{width:24%}.wm-sites-table th:nth-child(2){width:30%}.wm-sites-table th:nth-child(3){width:25%}.wm-sites-table th:last-child{width:21%}
  .wm-site-device-dialog .wm-form-grid{grid-template-columns:1fr 1fr}
 }
+
+.wm-scan-settings{max-width:760px;padding:20px}.wm-scan-settings form{display:grid;gap:18px;margin-top:18px}.wm-scan-settings .wm-check{padding:14px;border:1px solid var(--wm-line,#dbe8e2);border-radius:12px;background:#f7faf8}.wm-scan-settings .wm-review{margin:0}.wm-page-settings>.wm-section-tools>.wm-tabs{flex-wrap:wrap}@media(max-height:650px){.wm-scan-settings{padding:14px}.wm-scan-settings form{gap:10px;margin-top:10px}.wm-scan-settings .wm-check{padding:10px}}
+
+.wm-scan-settings .wm-form-actions{display:flex;gap:10px;justify-content:flex-end}
+
+@media(max-height:560px){.wm-scan-settings{padding:12px}.wm-scan-settings form{gap:6px;margin-top:8px}.wm-scan-settings .wm-check{padding:8px}}

@@ -6,7 +6,7 @@ import OrderCards from './OrderCards';
 import {usePagination,useTableSize,useViewport} from './paging';
 import Pager from './Pager';
 
-const orderStages={QUEUED:'待取箱',FETCHING:'取箱中',FETCH_ACK:'取箱回执处理中',WAIT_LOAD:'待人工装料',WAIT_PICK:'待扫码取料',RETURN_QUEUED:'待返库下发',RETURNING:'返库中',RETURN_ACK:'返库回执处理中',REVIEW:'待现场核对',COMPLETED:'已完成',CANCELLED:'已取消'};
+const orderStages={QUEUED:'待取箱',FETCHING:'取箱中',FETCH_ACK:'取箱回执处理中',WAIT_LOAD:'待人工装料',WAIT_PICK:'待核对取料',RETURN_QUEUED:'待返库下发',RETURNING:'返库中',RETURN_ACK:'返库回执处理中',REVIEW:'待现场核对',COMPLETED:'已完成',CANCELLED:'已取消'};
 export default function TaskPage({state,canEdit,refresh,notify}){
  const [filter,setFilter]=useState('active'),[type,setType]=useState('orders'),[selected,setSelected]=useState(null),[action,setAction]=useState(null);
  const {width}=useViewport();

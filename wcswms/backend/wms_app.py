@@ -19,6 +19,7 @@ from .wms_allocation import allocation_policy
 from .wms_device import DeviceSettings
 from .wms_auth import Users, AuthError, PERMISSIONS, ROLES, DEFAULTS, COOKIE, SESSION_SECONDS
 from . import wms_material_import
+from . import wms_scan_policy
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -29,6 +30,12 @@ class Input(BaseModel):
 
 class Identified(Input):
     request_id: str = Field(min_length=8, max_length=100)
+
+
+class ScanPolicyInput(Identified):
+    require_barcode: bool = Field(strict=True)
+    require_sku: bool = Field(strict=True)
+    expected_revision: int = Field(ge=0)
 
 
 class MaterialInput(Identified):
@@ -86,6 +93,7 @@ class OrderBatchInput(Identified):
 class ReturnInput(Identified):
     scanned_barcode: str = Field(default='', max_length=64)
     scanned_sku: str = Field(default='', max_length=80)
+    expected_scan_revision: int | None = Field(default=None, ge=0)
     confirmed: bool = False
 
 
@@ -304,7 +312,7 @@ def create_app(config=None, data_dir=None, reader=None, key=None, commands_path=
 
     async def authorize_write(request, user):
         path = route_path(request)
-        if path.startswith(('/api/users','/api/warehouses','/api/devices')):
+        if path.startswith(('/api/users','/api/warehouses','/api/devices')) or path == '/api/outbound-scan-policy':
             require(user, 'users')
         elif path in ('/api/auth/logout', '/api/auth/password', '/api/auth/check'):
             return
@@ -392,6 +400,7 @@ def create_app(config=None, data_dir=None, reader=None, key=None, commands_path=
                 'handover':'确认提走', 'update_material':'修订物料信息',
                 'import_materials':'导入物料信息', 'preview_materials':'预览物料导入',
                 'device_settings':'修改设备连接', 'stop':'请求设备停止',
+                'configure_scan_policy':'修改出库扫码设置',
                 'external_ack':'确认外部设备回执',
             }.get(getattr(endpoint, '__name__', ''), '仓储操作')
             if path.startswith('/api/warehouses'):
@@ -502,6 +511,7 @@ def create_app(config=None, data_dir=None, reader=None, key=None, commands_path=
                 'blocking_tasks': [task['number'] for task in related]})
         return dict(user=request.state.user, scope=app.state.sites.scope(app.state.scope_id), mode='PHYSICAL_WMS', real_plc=True, write_enabled=service.enabled,
                     device_settings=device.snapshot(),
+                    outbound_scan_policy=wms_scan_policy.scan_policy(ledger),
                     auto_acknowledge=service.auto_acknowledge, plc=reader.snapshot(),
                     readiness=service.readiness(), locations=locations, rack_layouts=rack_layouts(ledger), allocation_policy=allocation_policy(ledger), stock=stock,
                     tasks=[task for index, task in enumerate(ledger['tasks']) if index < 200 or task['status'] in ACTIVE], events=ledger['events'][:80],
@@ -517,6 +527,10 @@ def create_app(config=None, data_dir=None, reader=None, key=None, commands_path=
     @app.post('/api/device/settings')
     def device_settings(body: DeviceSettingsInput):
         return app.state.sites.change_host(app.state.scope_id,body.host,body.expected_revision)
+
+    @app.post('/api/outbound-scan-policy')
+    def configure_scan_policy(body: ScanPolicyInput):
+        return wms_scan_policy.configure(store, body.model_dump())
 
     @app.get('/api/lookup')
     def lookup(barcode: str):

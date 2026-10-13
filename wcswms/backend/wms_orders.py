@@ -4,6 +4,7 @@ import uuid
 
 from .wms_store import ACTIVE, WmsError, material_details, now
 from .wms_allocation import allocation_key, record_allocation
+from .wms_scan_policy import scan_policy
 
 
 class OrderWorkflow:
@@ -122,9 +123,12 @@ class OrderWorkflow:
             if not request['confirmed']:
                 raise WmsError('请确认已经按单据数量装料或取料，并已核对现场')
             if order['kind'] == 'OUTBOUND':
-                if request.get('scanned_barcode', '').strip() != order['barcode']:
+                policy = scan_policy(state)
+                if request.get('expected_scan_revision') is not None and request['expected_scan_revision'] != policy['revision']:
+                    raise WmsError('出库扫码设置已变化，请重新核对后提交')
+                if policy['require_barcode'] and request.get('scanned_barcode', '').strip() != order['barcode']:
                     raise WmsError('扫描箱号与本次出库料箱不一致')
-                if request.get('scanned_sku', '').strip() != order['sku']:
+                if policy['require_sku'] and request.get('scanned_sku', '').strip() != order['sku']:
                     raise WmsError('扫描物料编码与出库单据不一致')
             box = state['stock'][order['barcode']]
             fetch = self.store.task(state, order['fetch_task_id'])
@@ -150,6 +154,8 @@ class OrderWorkflow:
             location['reserved'] = box['reserved'] = task['id']
             order.update(status='RETURN_QUEUED', current_task_id=task['id'], return_task_id=task['id'],
                          station_confirmation=copy.deepcopy(request), updated_at=now())
+            if order['kind'] == 'OUTBOUND':
+                order['station_confirmation']['scan_policy'] = policy
             self.store.event(state, f'{order["number"]} 人工操作已确认；按单据返库后数量为 {order["after_quantity"]}', task['id'])
             return task
         return self.store.once(request['request_id'], {'operation':'order-return', 'order_id':ident, **request}, apply)

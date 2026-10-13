@@ -58,7 +58,7 @@ export default function MaterialOrderPage({kind,state,canEdit,refresh,notify,onP
   if(!canEdit||busyRef.current)return;busyRef.current=true;setBusy(true);
   try{const result=await api('/api/orders/batch',draft);await refresh();setDraft({request_id:requestId(),orders:[]});notify(`已登记 ${result.count} 条单据，按顺序核对取箱`);}catch(error){notify(error.message,'error');}finally{busyRef.current=false;setBusy(false);}
  }
- return <div className="wm-workspace"><section className="wm-panel wm-registration"><h2>创建物料{kindNames[kind]}单</h2><p className="wm-help">{inbound?'系统先取出分配的料箱，人工装料后返库。无需输入新箱箱号。':'选择在库物料箱，取箱到出口后扫码核对，按本单数量取料，再返库。'}</p><form onSubmit={submit}>
+ return <div className="wm-workspace"><section className="wm-panel wm-registration"><h2>创建物料{kindNames[kind]}单</h2><p className="wm-help">{inbound?'系统先取出分配的料箱，人工装料后返库。无需输入新箱箱号。':'选择在库物料箱，取箱到出口后按设备扫码设置核对，按本单数量取料，再返库。'}</p><form onSubmit={submit}>
  {inbound?<MaterialPicker value={materialQuery} selectedSku={form.sku} onChange={searchMaterial} onSelect={chooseMaterial} inputRef={scanner} disabled={busy}/>:<><label>扫码或搜索物料<input ref={scanner} autoFocus autoComplete="off" value={query} disabled={busy} maxLength={200} placeholder="条码、编码、名称、型号、规格" onChange={e=>{setQuery(e.target.value);setSelected(null);}} onKeyDown={e=>{if(e.key==='Enter'){e.preventDefault();scanOutbound(e.currentTarget.value);}}}/></label>{!selected&&<OutboundChoices query={query} state={state} busy={busy} onSelect={select} excluded={draft.orders.map(row=>row.box_barcode)}/>}</>}
  <ScanHint value={inbound?materialQuery:query}/>
  {pending&&<p className="wm-help" role="status">正在查询物料档案…</p>}{lookupError&&<p className="wm-error" role="alert">{lookupError}<button type="button" onClick={()=>setLookupTick(value=>value+1)}>重试查询</button></p>}
