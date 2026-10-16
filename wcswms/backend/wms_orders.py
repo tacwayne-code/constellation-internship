@@ -1,5 +1,6 @@
 """Material documents: retrieve a real box, work at the dock, return to its slot."""
 import copy
+import hashlib
 import uuid
 
 from .wms_store import ACTIVE, WmsError, material_details, now
@@ -37,6 +38,20 @@ class OrderWorkflow:
     def create(self, request):
         return self.store.once(request['request_id'], {'operation':'material-order', **request},
                                lambda state: self._create(state, request))
+
+    def create_inbound(self, request):
+        """One document and one assigned box for all submitted material lines."""
+        def apply(state):
+            if not 1 <= len(request['items']) <= 50:
+                raise WmsError('一张入库单需添加 1 至 50 条物料')
+            rows = [dict(**item, kind='INBOUND', box_mode=request['box_mode'],
+                         box_barcode=request['box_barcode'], request_id='inbound-line-' +
+                         hashlib.sha256(f'{request["request_id"]}:{index}'.encode()).hexdigest())
+                    for index, item in enumerate(request['items'])]
+            order = self._create(state, rows[0], rows)
+            order['document_request_id'] = request['request_id']
+            return order
+        return self.store.once(request['request_id'], {'operation':'inbound-document', **request}, apply)
 
     def create_batch(self, request):
         def apply(state):

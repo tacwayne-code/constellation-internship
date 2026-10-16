@@ -111,6 +111,21 @@ class OrderBatchInput(Identified):
     orders: list[OrderInput] = Field(min_length=1, max_length=50)
 
 
+class InboundMaterial(Input):
+    sku: str = Field(min_length=1, max_length=80)
+    material_name: str = Field(default='', max_length=120)
+    model: str = Field(default='', max_length=120)
+    specification: str = Field(default='', max_length=200)
+    quantity: int = Field(ge=1, le=1000000, strict=True)
+    batch: str = Field(default='', max_length=80)
+
+
+class InboundDocument(Identified):
+    box_mode: Literal['NEW', 'EXISTING'] = 'NEW'
+    box_barcode: str = Field(default='', max_length=64)
+    items: list[InboundMaterial] = Field(min_length=1, max_length=50)
+
+
 class ReturnInput(Identified):
     scanned_barcode: str = Field(default='', max_length=64)
     scanned_sku: str = Field(default='', max_length=80)
@@ -344,6 +359,8 @@ def create_app(config=None, data_dir=None, reader=None, key=None, commands_path=
             require(user, 'control')
         elif path in ('/api/auth/logout', '/api/auth/password', '/api/auth/check'):
             return
+        elif path == '/api/orders/inbound':
+            require(user, 'inbound')
         elif path in ('/api/tasks', '/api/tasks/batch', '/api/orders', '/api/orders/batch'):
             try:
                 body = await request.json()
@@ -419,7 +436,7 @@ def create_app(config=None, data_dir=None, reader=None, key=None, commands_path=
             endpoint = request.scope.get('endpoint')
             action = {
                 'create':'登记料箱任务', 'create_batch':'批量登记料箱任务',
-                'create_order':'登记物料单据', 'create_order_batch':'批量登记物料单据',
+                'create_order':'登记物料单据', 'create_order_batch':'批量登记物料单据', 'create_inbound_document':'创建入库单',
                 'create_transfer':'登记调仓任务',
                 'start_aging':'启动老化测试', 'stop_aging':'停止老化循环',
                 'return_order':'下发返库', 'cancel':'取消任务', 'dispatch':'下发任务',
@@ -638,6 +655,10 @@ def create_app(config=None, data_dir=None, reader=None, key=None, commands_path=
     @app.post('/api/orders/batch', status_code=201)
     def create_order_batch(body: OrderBatchInput):
         return register(store.orders.create_batch,body.model_dump())
+
+    @app.post('/api/orders/inbound', status_code=201)
+    def create_inbound_document(body: InboundDocument):
+        return register(store.orders.create_inbound,body.model_dump())
 
     @app.post('/api/orders/{ident}/return')
     def return_order(ident: str, body: ReturnInput):

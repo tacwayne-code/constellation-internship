@@ -56,6 +56,10 @@ a{color:var(--wm-blue);text-decoration:none}
 .wm-registration>h2{margin-bottom:4px}
 .wm-registration>p.wm-help{margin-bottom:6px}
 .wm-registration>form{display:flex;flex:1;min-height:0;flex-direction:column}
+.wm-registration.wm-inbound-document>form{flex:1 0 auto;min-height:min-content;padding-bottom:5px}
+@media(min-width:760px) and (max-height:680px){.wm-operation .wm-registration.wm-inbound-document .wm-form-grid>label{display:grid;grid-template-columns:50px minmax(0,1fr);align-items:center;gap:4px}.wm-operation .wm-registration.wm-inbound-document .wm-form-grid>label>input{margin-top:0;min-width:0}.wm-operation .wm-registration.wm-inbound-document .wm-form-grid{gap:0 8px}}
+@media(min-width:760px) and (max-height:560px){.wm-operation .wm-registration.wm-inbound-document .wm-form-grid{grid-template-columns:repeat(5,minmax(0,1fr))}.wm-operation .wm-registration.wm-inbound-document .wm-material-picker>label{display:grid;grid-template-columns:150px minmax(0,1fr);align-items:center;gap:8px}.wm-operation .wm-registration.wm-inbound-document .wm-material-picker>label>input{margin-top:0;min-width:0}.wm-operation .wm-registration.wm-inbound-document .wm-scan-hint{margin-bottom:3px}}
+@media(min-width:760px) and (max-height:560px){.wm-operation .wm-registration.wm-inbound-document>.wm-draft-summary{margin-top:0;padding-top:0}.wm-operation .wm-registration.wm-inbound-document>form{padding-bottom:0}}
 .wm-registration label,.wm-shell dialog label{display:block;font-weight:600;font-size:13px;margin:0 0 10px;line-height:1.4;min-width:0}
 .wm-registration input,.wm-registration select,.wm-shell dialog input,.wm-shell dialog select,.wm-shell dialog textarea{display:block;margin-top:5px;width:100%;min-height:40px;padding:8px 11px;border:1px solid #cbd8d1;border-radius:6px;background:#fff;color:#233b35;font-weight:400;line-height:1.4}
 .wm-shell input::placeholder,.wm-shell textarea::placeholder{color:#99a59f;font-size:13px}
