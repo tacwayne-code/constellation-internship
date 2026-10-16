@@ -224,6 +224,49 @@ tbody tr:hover{background:#f1fafc}
 .wm-count-options .wm-stock-choice{padding:10px}.wm-count-options .wm-count-selected{border-color:#1487b5;background:#eaf8fc;box-shadow:inset 3px 0 #04b2c6}
 .wm-count-create>label{font-size:12px;color:#62748a;flex-shrink:0}.wm-count-create>label>input{display:block;width:100%;min-height:32px;margin-top:4px;padding:5px 8px;border:1px solid #cbd2da;border-radius:2px}
 .wm-count-create>.wm-review{margin:0;padding:6px 9px}.wm-count-create>.wm-full{margin-top:auto}
+.wm-count-selection{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-shrink:0;font-size:11px}
+.wm-count-selection>.wm-link{white-space:nowrap;padding:2px 0;min-height:24px;font-size:11px}
+.wm-inbound-box-option{border:1px solid var(--wm-border);padding:9px}
+.wm-inbound-box-option>.wm-panel-title{margin-bottom:4px}.wm-inbound-box-option>.wm-help{margin:0 0 6px}
+.wm-inbound-box-option .wm-content-lines th,.wm-inbound-box-option .wm-content-lines td{padding:5px 7px;font-size:12px}
+.wm-inbound-box-option .wm-content-lines small{white-space:normal;overflow-wrap:anywhere}
+.wm-inbound-box-dialog .wm-review{margin:0 0 7px;padding:7px 10px;font-size:12px}
+.wm-inbound-box-dialog .wm-full{margin-bottom:7px}.wm-inbound-box-dialog .wm-panel-title button{min-height:29px;padding:4px 9px;font-size:12px}
+.wm-inbound-box-dialog .wm-choice-list{margin:7px 0}
+.wm-document-query{flex:1;min-height:0}
+.wm-query-panel{display:flex;flex-direction:column;min-height:0;min-width:0}
+.wm-query-filters{padding:12px;display:flex;flex-direction:column;gap:9px;border-bottom:1px solid var(--wm-border);flex-shrink:0}
+.wm-query-dates,.wm-query-search{display:flex;align-items:flex-end;gap:8px;min-width:0}.wm-query-dates{flex-wrap:wrap}
+.wm-query-filters label{display:flex;flex-direction:column;gap:4px;margin:0;font-size:11px;color:#62748a;min-width:0}
+.wm-query-filters input,.wm-query-filters select{min-height:32px;margin:0;padding:5px 7px;width:100%;font-size:12px;border:1px solid #cbd2da;border-radius:2px;background:#fff;color:var(--wm-ink)}
+.wm-query-dates>label{width:142px;flex-shrink:0}.wm-query-dates>span{align-self:center;padding-top:15px;color:var(--wm-muted);font-size:11px}
+.wm-query-shortcuts{display:flex;align-items:center;flex-wrap:wrap;gap:0;padding-bottom:0}
+.wm-query-shortcuts button{font-size:11px;min-height:32px;padding:5px 8px;border-radius:0;margin-left:-1px}
+.wm-query-shortcuts button[aria-pressed="true"]{background:#e9ebee;color:#4f5470;border-color:#b9bdca;box-shadow:inset 0 2px #6663b5}
+.wm-query-search>label:first-child{flex:1}.wm-query-search>label:nth-child(2){width:150px}.wm-query-search>button{min-width:90px;min-height:32px}
+.wm-query-summary{display:flex;justify-content:space-between;gap:10px;padding:8px 12px;font-size:11px;color:var(--wm-muted);flex-shrink:0}
+.wm-query-panel>.wm-error{margin:0;padding:6px 12px;font-size:12px;flex-shrink:0}
+.wm-query-panel>.wm-table-wrap{flex:1;min-height:0;overflow:hidden}.wm-query-panel>.wm-pagination{padding:8px 12px;margin:0;flex-shrink:0}
+.wm-query-table th,.wm-query-table td{padding:7px 8px;font-size:12px;overflow-wrap:anywhere}
+.wm-query-table td{height:42px}.wm-query-table .wm-row-link{font-size:12px}.wm-query-table td small{font-size:10px}
+.wm-shell dialog.wm-query-dialog{width:760px}
+.wm-query-info{margin:0 0 9px}.wm-query-info>div{padding:5px 0;font-size:12px}.wm-query-info dt{font-size:11px}.wm-query-info dd{overflow-wrap:anywhere}
+.wm-query-detail-tabs{margin-bottom:9px;flex-shrink:0}.wm-query-detail-tabs button{font-size:12px;padding:5px 10px;min-height:31px}
+.wm-query-dialog .wm-order-lines{display:flex;flex-direction:column;min-height:180px}.wm-query-dialog .wm-order-lines>.wm-pagination{margin-top:auto}
+.wm-query-related th,.wm-query-related td{font-size:12px;padding:7px}.wm-query-related small{font-size:10px}
+@media(min-width:760px) and (max-height:650px){.wm-query-filters{padding:8px 10px;gap:6px}.wm-query-table th,.wm-query-table td{padding:5px 6px;font-size:11px}.wm-query-table td{height:35px}.wm-query-info>div{padding:3px 0;font-size:11px}.wm-query-info dt{font-size:10px}.wm-query-dialog .wm-order-lines{min-height:125px}}
+@media(max-width:759px){
+ .wm-document-query .wm-task-scope button{font-size:10px}
+ .wm-query-filters{padding:8px;gap:7px}.wm-query-dates{flex-wrap:wrap;gap:5px}.wm-query-dates>label{flex:1;width:auto}.wm-query-dates>span{padding-top:13px}
+ .wm-query-shortcuts{width:100%}.wm-query-shortcuts button{flex:1;padding:4px;font-size:10px;min-height:28px}
+ .wm-query-search{flex-wrap:wrap;gap:6px}.wm-query-search>label:first-child{width:100%;flex:auto}.wm-query-search>label:nth-child(2){flex:1}.wm-query-search>button{min-width:90px}
+ .wm-query-summary{padding:7px 8px;font-size:9px}.wm-query-summary>span:last-child{max-width:48%;text-align:right}
+ .wm-query-table th,.wm-query-table td{padding:5px 4px;font-size:10px}.wm-query-table .wm-row-link{font-size:10px}.wm-query-table .wm-badge{font-size:9px;padding:3px}
+ .wm-query-table th:nth-child(3),.wm-query-table td:nth-child(3),.wm-query-table th:nth-child(4),.wm-query-table td:nth-child(4){display:none}
+ .wm-query-table col:nth-child(1){width:32%!important}.wm-query-table col:nth-child(2){width:20%!important}.wm-query-table col:nth-child(3),.wm-query-table col:nth-child(4){display:none}.wm-query-table col:nth-child(5){width:22%!important}.wm-query-table col:nth-child(6){width:26%!important}
+ .wm-query-info>div{padding:4px 0;font-size:11px}.wm-query-info dt{font-size:10px}.wm-query-related th,.wm-query-related td{font-size:10px;padding:5px 3px}
+}
+@media(max-height:650px){.wm-inbound-box-dialog .wm-dialog-head{margin-bottom:7px;padding-bottom:7px}.wm-inbound-box-dialog .wm-choice-list{margin:4px 0}.wm-inbound-box-dialog .wm-inbound-box-option{padding:7px}}
 .wm-count-dialog .wm-panel-title{margin-bottom:7px}.wm-count-dialog h3{margin:0}
 .wm-count-lines th:first-child{width:36%}.wm-count-lines th:nth-child(2){width:22%}.wm-count-lines th:nth-child(3){width:26%}.wm-count-lines th:last-child{width:16%}
 .wm-shell .wm-count-lines input{min-height:30px;margin:0;padding:4px 6px;width:100%;font-size:12px}

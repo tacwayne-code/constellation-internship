@@ -6,8 +6,8 @@ import {boxContents,orderLines} from './material';
 import {usePagination,useViewport} from './paging';
 import Pager from './Pager';
 
-export function BoxContents({item,onEdit}){
- const rows=boxContents(item),paging=usePagination(rows,3,item.barcode||item.id);
+export function BoxContents({item,onEdit,pageSize=3}){
+ const rows=boxContents(item),paging=usePagination(rows,pageSize,item.barcode||item.id);
  if(!rows.length)return <p className="wm-help">空箱 · 无物料</p>;
  return <div className="wm-content-lines"><table><thead><tr><th>物料 / 批次</th><th>数量</th>{onEdit&&<th>操作</th>}</tr></thead><tbody>{paging.items.map(row=><tr key={row.sku}><td><b>{row.sku} · {row.material_name||'—'}</b><small>{row.model||'—'} · {row.specification||'—'} · 批次 {row.batch||'—'}</small></td><td>{row.quantity}</td>{onEdit&&<td><button type="button" onClick={()=>onEdit(row)}>编辑</button></td>}</tr>)}</tbody></table><Pager paging={paging} label="箱内物料"/></div>;
 }

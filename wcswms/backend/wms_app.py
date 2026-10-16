@@ -5,6 +5,7 @@ import io
 import json
 import secrets
 from contextlib import asynccontextmanager
+from datetime import datetime
 from pathlib import Path
 from typing import Literal
 
@@ -23,6 +24,7 @@ from . import wms_scan_policy
 from . import wms_transfer
 from . import wms_aging
 from . import wms_count
+from . import wms_documents
 from .wms_actor import current_actor, identity
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -590,6 +592,18 @@ def create_app(config=None, data_dir=None, reader=None, key=None, commands_path=
                     tasks=[task for index, task in enumerate(ledger['tasks']) if index < 200 or task['status'] in ACTIVE], events=ledger['events'][:80],
                     orders=[order for index, order in enumerate(ledger.get('orders', [])) if index < 200 or order['status'] not in {'COMPLETED', 'CANCELLED'}],
                     docks=dict(inbound=config['inbound_dock'], outbound=config['outbound_dock']))
+
+    @app.get('/api/documents')
+    def query_documents(category: Literal['INBOUND', 'OUTBOUND', 'COUNT', 'TASK'],
+                        keyword: str = Query('', max_length=200), status: str = Query('', max_length=40),
+                        created_from: datetime | None = None, created_before: datetime | None = None,
+                        page: int = Query(1, ge=1), page_size: int = Query(10, ge=1, le=50)):
+        return wms_documents.search(store.read(), category, keyword=keyword, status=status,
+            created_from=created_from, created_before=created_before, page=page, page_size=page_size)
+
+    @app.get('/api/documents/{category}/{ident}')
+    def document_detail(category: Literal['INBOUND', 'OUTBOUND', 'COUNT', 'TASK'], ident: str):
+        return wms_documents.detail(store.read(), category, ident)
 
     @app.get('/api/health')
     def health():

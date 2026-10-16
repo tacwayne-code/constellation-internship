@@ -1,10 +1,10 @@
-let csrfToken='',deviceScope='primary',scopeRevision=0;
+let csrfToken='',deviceScope='primary',scopeRevision=0,locationDepths=new Map();
 const globalPath=path=>/^\/api\/(auth|users|sites|warehouses|devices)(?:\/|$)/.test(path);
-export function setDeviceScope(id){if(deviceScope===id)return;deviceScope=id;scopeRevision++;for(const key of Object.keys(sessionStorage))if(key.startsWith('wms-')&&key.includes('draft'))sessionStorage.removeItem(key);}
+export function setDeviceScope(id){if(deviceScope===id)return;deviceScope=id;scopeRevision++;locationDepths=new Map();for(const key of Object.keys(sessionStorage))if(key.startsWith('wms-')&&key.includes('draft'))sessionStorage.removeItem(key);}
 export function apiPath(path){if(globalPath(path))return path;if(!deviceScope)throw new Error('请先选择仓库和设备');return deviceScope==='primary'?path:`/api/scopes/${deviceScope}${path}`;}
 export function setSession(session){csrfToken=session?.csrf_token||'';}
 export function clearSession(){
- scopeRevision++;csrfToken='';sessionStorage.removeItem('wms-control-key');
+ scopeRevision++;csrfToken='';locationDepths=new Map();sessionStorage.removeItem('wms-control-key');
  for(const key of Object.keys(sessionStorage))if(key.startsWith('wms-')&&key.includes('draft'))sessionStorage.removeItem(key);
 }
 export const hasPermission=(state,permission)=>Boolean(state?.user?.permissions.includes(permission));
@@ -19,6 +19,7 @@ export async function api(path,body,{signal,silentAuth=false}={}){
   if(response.status===401&&!silentAuth&&!['/api/auth/login','/api/auth/bootstrap'].includes(path)){clearSession();window.dispatchEvent(new Event('wms-logged-out'));}
   const error=new Error(typeof value.detail==='string'?displayLocationText(value.detail):`请求未通过校验（${response.status}），请检查填写内容`);error.status=response.status;throw error;
  }
+ if(path==='/api/state'&&value.scope?.device_id===deviceScope)setLocationLayouts(value);
  return value;
 }
 export const taskNames={QUEUED:'待下发',DISPATCHING:'下发中',SENT:'已发送待反馈',RUNNING:'执行中',REVIEW:'待现场核对',PLC_DONE:'完成回执处理中',AWAIT_PICKUP:'出口待取',AWAIT_RETURN:'待人工操作后返库',COMPLETED:'已完成',CANCELLED:'已取消'};
@@ -32,7 +33,15 @@ export const displayLocation=value=>value==='STATION-1'?'交接点 1':String(val
 export const depthName=value=>Number(value)===2?'双伸':'单伸';
 export const boxName=item=>item?.kind==='AGING'?'不关联库存':item?.container_type==='EMPTY_BIN'?'空箱':'物料箱';
 export const taskLabel=task=>task.order_id?`${kindNames[task.document_kind]}单${task.order_leg==='FETCH'?'取箱':'返库'}`:`${task.container_type==='EMPTY_BIN'?'空箱':''}${kindNames[task.kind]}`;
-export const storedLocation=value=>`${displayLocation(value)}${/^[LR]-\d{2}-\d{2}-[12]$/.test(value||'')?' · '+depthName(value.slice(-1)):''}`;
-export function locationLabel(location){return `${displayLocation(location.id)} · ${location.side===1?'左':'右'}仓 ${location.level}层 ${location.column}列 · ${depthName(location.depth)}`;}
+// Display metadata follows the accepted device snapshot; commands keep the full stored ID.
+export function setLocationLayouts(state){
+ const depths=new Map();
+ for(const location of state.locations||[])if(location.enabled!==false)depths.set(Number(location.side),Math.max(depths.get(Number(location.side))||1,Number(location.depth)||1));
+ for(const layout of state.rack_layouts||[])depths.set(Number(layout.side),Number(layout.depths));
+ locationDepths=depths;
+}
+export function isDoubleLocation(value){const match=/^([LR])-\d{2}-\d{2}-([12])$/.exec(value||'');return Boolean(match&&(locationDepths.has(match[1]==='L'?1:2)?locationDepths.get(match[1]==='L'?1:2)===2:match[2]==='2'));}
+export const storedLocation=value=>`${displayLocation(value)}${isDoubleLocation(value)?' · '+depthName(value.slice(-1)):''}`;
+export function locationLabel(location){return `${displayLocation(location.id)} · ${location.side===1?'左':'右'}仓 ${location.level}层 ${location.column}列${isDoubleLocation(location.id)?' · '+depthName(location.depth):''}`;}
 
-export const displayLocationText=value=>String(value||'').replace(/\b([LR]-\d{2}-\d{2})-([12])\b/g,(id,_,depth)=>`${displayLocation(id)}（${depthName(depth)}）`);
+export const displayLocationText=value=>String(value||'').replace(/\b([LR]-\d{2}-\d{2})-([12])\b/g,(id,_,depth)=>`${displayLocation(id)}${isDoubleLocation(id)?'（'+depthName(depth)+'）':''}`);

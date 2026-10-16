@@ -1,8 +1,8 @@
 import React,{useState} from 'react';
-import {Box,Download,Upload,ClipboardList,MapPin,Settings,Settings2,ArrowRightLeft,LogOut,UserRound,ChevronDown,ChevronRight,PanelsTopLeft,Warehouse,ChevronsLeft,ChevronsRight} from 'lucide-react';
+import {Box,Download,Upload,ClipboardList,MapPin,Settings,Settings2,ArrowRightLeft,LogOut,UserRound,ChevronDown,ChevronRight,PanelsTopLeft,Warehouse,ChevronsLeft,ChevronsRight,FileSearch} from 'lucide-react';
 
 const groups=[
- {id:'work',label:'工作中心',Icon:PanelsTopLeft,items:[['inbound','入库单',Download],['outbound','出库单',Upload],['transfer','调仓管理',ArrowRightLeft],['tasks','作业任务',ClipboardList]]},
+ {id:'work',label:'工作中心',Icon:PanelsTopLeft,items:[['inbound','入库单',Download],['outbound','出库单',Upload],['transfer','调仓管理',ArrowRightLeft],['tasks','作业任务',ClipboardList],['query','表单查询',FileSearch]]},
  {id:'stock',label:'库存管理',Icon:Warehouse,items:[['inventory','物料库存',Box],['count','盘点单',ClipboardList],['locations','库位管理',MapPin]]},
  {id:'system',label:'系统管理',Icon:Settings2,items:[['device','设备状态',Settings],['settings','系统设置',Settings2]]}
 ];
