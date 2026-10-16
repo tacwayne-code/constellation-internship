@@ -67,6 +67,6 @@ def create(store, request, *, aging_id=None):
         if aging_id:
             task['aging_run_id'] = aging_id
             state['aging_run'].update(current_task_id=task['id'], current_started_at=now(), updated_at=now())
-        store.event(state, f'{task["number"]} 调仓已登记：{box["barcode"]} / {box["location"]} → {request["target_location"]}', task['id'])
+        store.event(state, f'{task["number"]} 调仓已登记：{box["barcode"]} / {box["location"]} → {request["target_location"]}', task['id'], created=True)
         return task
     return store.once(request['request_id'], {'operation': 'transfer', 'aging_run_id':aging_id, **request}, apply, aging_id=aging_id)

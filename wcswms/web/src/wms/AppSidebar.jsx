@@ -3,7 +3,7 @@ import {Box,Download,Upload,ClipboardList,MapPin,Settings,Settings2,ArrowRightLe
 
 const groups=[
  {id:'work',label:'工作中心',Icon:PanelsTopLeft,items:[['inbound','入库单',Download],['outbound','出库单',Upload],['transfer','调仓管理',ArrowRightLeft],['tasks','作业任务',ClipboardList]]},
- {id:'stock',label:'库存管理',Icon:Warehouse,items:[['inventory','物料库存',Box],['locations','库位管理',MapPin]]},
+ {id:'stock',label:'库存管理',Icon:Warehouse,items:[['inventory','物料库存',Box],['count','盘点单',ClipboardList],['locations','库位管理',MapPin]]},
  {id:'system',label:'系统管理',Icon:Settings2,items:[['device','设备状态',Settings],['settings','系统设置',Settings2]]}
 ];
 

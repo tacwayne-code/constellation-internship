@@ -9,6 +9,7 @@ from fastapi import HTTPException
 from .physical_app import PhysicalReader
 from .physical_control import Command, ManualControl
 from .wms_store import WmsError, IN_FLIGHT, now, business_allowed
+from .wms_actor import system_operation
 
 
 def task_function(task):
@@ -127,6 +128,7 @@ class WmsService:
             reasons.append('完成确认尚未复位，请先确认 PLC 回执')
         return dict(ready=not reasons, reasons=reasons, write_enabled=self.enabled)
 
+    @system_operation
     def poll(self):
         with self.lock:
             try:
@@ -227,6 +229,10 @@ class WmsService:
                     raise WmsError('PLC 任务号已耗尽，需受控归档后重新分配')
                 state['next_plc_id'] = max(state['next_plc_id'], plc_id + 1)
                 item.update(plc_id=plc_id, status='DISPATCHING', detail='已保存下发意图，正在写入 PLC', updated_at=now())
+                from .wms_actor import current_actor, record_operator
+                if current_actor.get():
+                    item['dispatched_by'] = dict(current_actor.get())
+                    record_operator(state, ident)
                 if item.get('order_id'):
                     self.store.orders.order(state, item['order_id']).update(
                         status='FETCHING' if item['order_leg'] == 'FETCH' else 'RETURNING', updated_at=now())

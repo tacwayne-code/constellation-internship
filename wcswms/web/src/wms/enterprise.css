@@ -78,6 +78,15 @@ td{color:#4c5b70}td strong{color:#334b65}td small{color:#919cab}
 tbody tr:hover{background:#f1fafc}
 .wm-row-selected{background:#e6f7fb!important}
 .wm-row-link{color:#2478a2;font-size:12px}
+.wm-operator-cell{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:11px}
+.wm-task-row{cursor:pointer}
+.wm-pending-card>.wm-order-operator{font-size:11px;line-height:1.45;margin-top:6px;display:flex;flex-wrap:wrap;gap:0 10px}
+.wm-task-detail .wm-pending-list{display:flex;flex:1;min-height:0}
+.wm-task-detail .wm-order-card{display:flex;flex-direction:column;flex:1;min-height:0}
+.wm-task-detail .wm-order-lines{display:contents}
+.wm-task-detail .wm-order-lines>.wm-pagination{order:2;margin-top:auto}
+.wm-count-page .wm-pending-card{padding-bottom:2px}
+.wm-wait_count{background:#fff0ce;color:#966213}
 .wm-table-action{border-color:#cbd9e4;color:#29749d;border-radius:2px}
 .wm-material-inventory-table td{height:44px;padding-top:6px;padding-bottom:6px}
 .wm-material-inventory-table td small{display:inline;margin:0 0 0 8px;font-size:10px}
@@ -191,4 +200,39 @@ tbody tr:hover{background:#f1fafc}
  .wm-data-panel>.wm-panel-title{padding:8px}.wm-data-panel>.wm-pagination{padding:7px 8px}
  .wm-material-inventory-table col:nth-child(1){width:20%!important}.wm-material-inventory-table col:nth-child(2){width:22%!important}.wm-material-inventory-table col:nth-child(3),.wm-material-inventory-table col:nth-child(4){width:14%!important}.wm-material-inventory-table col:nth-child(5){width:18%!important}.wm-material-inventory-table col:nth-child(6){width:12%!important}
  .wm-footer{font-size:9px}
+}
+
+/* Fixed ten-row material lists retain a pinned pager at the available screen height. */
+.wm-page-inventory .wm-data-panel .wm-table-wrap{container-type:size}
+.wm-page-inventory .wm-material-inventory-table th,.wm-page-inventory .wm-materials-table th{height:29px;padding:3px 7px;white-space:nowrap;font-size:12px}
+.wm-page-inventory .wm-material-inventory-table td,.wm-page-inventory .wm-materials-table td{height:clamp(15px,calc((100cqh - 30px)/10),42px);padding:0 7px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.15;font-size:12px}
+.wm-page-inventory .wm-table-action{min-height:19px;padding:1px 4px;font-size:11px;white-space:nowrap}
+.wm-page-inventory .wm-materials-table .wm-material-cell{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block;min-height:0;line-height:1.15;font-size:12px}
+.wm-count-page{display:flex;flex-direction:column;flex:1;min-height:0;gap:8px}
+.wm-count-create{display:flex;flex-direction:column;gap:9px;min-height:0}
+.wm-count-create .wm-search{width:100%;flex-shrink:0}.wm-count-create>.wm-panel-title{margin-bottom:0}
+.wm-count-options{display:grid;gap:6px;flex:1;min-height:0;align-content:start}
+.wm-count-options .wm-stock-choice{padding:10px}.wm-count-options .wm-count-selected{border-color:#1487b5;background:#eaf8fc;box-shadow:inset 3px 0 #04b2c6}
+.wm-count-create>label{font-size:12px;color:#62748a;flex-shrink:0}.wm-count-create>label>input{display:block;width:100%;min-height:32px;margin-top:4px;padding:5px 8px;border:1px solid #cbd2da;border-radius:2px}
+.wm-count-create>.wm-review{margin:0;padding:6px 9px}.wm-count-create>.wm-full{margin-top:auto}
+.wm-count-dialog .wm-panel-title{margin-bottom:7px}.wm-count-dialog h3{margin:0}
+.wm-count-lines th:first-child{width:36%}.wm-count-lines th:nth-child(2){width:22%}.wm-count-lines th:nth-child(3){width:26%}.wm-count-lines th:last-child{width:16%}
+.wm-shell .wm-count-lines input{min-height:30px;margin:0;padding:4px 6px;width:100%;font-size:12px}
+.wm-count-lines td{padding:5px 6px;font-size:12px}.wm-count-dialog .wm-pagination{margin-bottom:10px}
+@media(min-width:760px) and (max-height:650px){.wm-page-inventory .wm-material-inventory-table td small{display:none}.wm-count-options .wm-stock-choice{padding:7px 9px}.wm-count-create{gap:6px}.wm-count-create h2{font-size:16px}.wm-count-create>.wm-panel-title{gap:5px}}
+@media(max-height:650px){.wm-materials-table .wm-material-cell.wm-error{display:none}}
+@media(min-width:760px) and (max-height:560px){
+ .wm-count-page .wm-mobile-toggle{display:inline-flex}
+ .wm-count-page .wm-workspace{display:flex}.wm-count-page .wm-workspace>section{width:100%;flex:1}
+ .wm-count-page[data-pane="create"] .wm-pending-panel,.wm-count-page[data-pane="pending"] .wm-count-create{display:none}
+}
+@media(max-width:759px){
+ .wm-page-inventory .wm-material-inventory-table th,.wm-page-inventory .wm-materials-table th{font-size:9px;padding:2px 3px}
+ .wm-page-inventory .wm-material-inventory-table td,.wm-page-inventory .wm-materials-table td,.wm-page-inventory .wm-materials-table .wm-material-cell{font-size:10px;padding-left:3px;padding-right:3px}
+ .wm-page-inventory .wm-material-inventory-table td small{display:none}.wm-page-inventory .wm-table-action{font-size:10px;min-height:18px;padding:1px 3px}
+ .wm-count-page .wm-workspace{display:flex}.wm-count-page .wm-workspace>section{width:100%;flex:1}
+ .wm-count-page[data-pane="create"] .wm-pending-panel,.wm-count-page[data-pane="pending"] .wm-count-create{display:none}
+ .wm-count-page>.wm-section-tools{flex-wrap:nowrap}.wm-count-page>.wm-section-tools>p{font-size:10px;line-height:1.4;max-width:70%}
+ .wm-count-lines td,.wm-count-lines th{font-size:10px;padding:4px 3px}.wm-count-lines .wm-table-action{font-size:10px;padding:3px;min-height:27px}
+ .wm-enterprise-sidebar nav .wm-nav-items button{font-size:8px}
 }

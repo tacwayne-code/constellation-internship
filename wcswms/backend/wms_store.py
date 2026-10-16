@@ -144,8 +144,13 @@ class WmsStore:
             return copy.deepcopy(result)
 
     @staticmethod
-    def event(state, message, task=None):
+    def event(state, message, task=None, *, created=False):
+        from .wms_actor import current_actor, record_operator
+        if task:
+            record_operator(state, task, created)
         state['events'].insert(0, dict(id=str(uuid.uuid4()), time=now(), message=message, task=task))
+        if current_actor.get():
+            state['events'][0]['operator'] = dict(current_actor.get())
         state['events'] = state['events'][:2000]
 
     @staticmethod
@@ -561,7 +566,7 @@ class WmsStore:
         elif request['location'] == 'AUTO':
             record_allocation(state, state['locations'][location])
         label = ('空箱' if goods['container_type'] == 'EMPTY_BIN' else '') + ('入库' if kind == 'INBOUND' else '出库')
-        self.event(state, f'{task["number"]} {label}已登记：{barcode} / {location}', task['id'])
+        self.event(state, f'{task["number"]} {label}已登记：{barcode} / {location}', task['id'], created=True)
         return task
 
     def cancel(self, ident, *, aging_id=None):

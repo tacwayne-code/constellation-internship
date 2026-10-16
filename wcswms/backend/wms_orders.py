@@ -168,13 +168,13 @@ class OrderWorkflow:
         state.setdefault('orders', []).insert(0, order)
         if kind == 'INBOUND' and mode == 'NEW':
             record_allocation(state, state['locations'][box['location']])
-        self.store.event(state, f'{order["number"]} 已分配料箱 {box["barcode"]}；{len(lines)} 行物料，待取箱', fetch['id'])
+        self.store.event(state, f'{order["number"]} 已分配料箱 {box["barcode"]}；{len(lines)} 行物料，待取箱', fetch['id'], created=True)
         return order
 
     def prepare_return(self, ident, request):
         def apply(state):
             order = self.order(state, ident)
-            if order['status'] not in {'WAIT_LOAD', 'WAIT_PICK'}:
+            if order['status'] not in {'WAIT_LOAD', 'WAIT_PICK', 'WAIT_COUNT'}:
                 raise WmsError('单据尚未到人工装料或取料阶段，或已提交返库')
             if not request['confirmed']:
                 raise WmsError('请确认已经按单据数量装料或取料，并已核对现场')
@@ -201,6 +201,9 @@ class OrderWorkflow:
             reason = self.store.access_error(state, location, inbound=True, task_id=fetch['id'])
             if reason:
                 raise WmsError(reason)
+            if order['kind'] == 'COUNT':
+                from .wms_count import confirm
+                confirm(self.store, state, order, request)
             state['sequence'] += 1
             task = dict(id=str(uuid.uuid4()), number=f'WMS-{state["sequence"]:06}', request=copy.deepcopy(request),
                 kind='INBOUND', order_id=ident, order_leg='RETURN', document_kind=order['kind'],
@@ -217,7 +220,7 @@ class OrderWorkflow:
                          station_confirmation=copy.deepcopy(request), updated_at=now())
             if order['kind'] == 'OUTBOUND':
                 order['station_confirmation']['scan_policy'] = policy
-            self.store.event(state, f'{order["number"]} 人工操作已确认；按单据返库后数量为 {order["after_quantity"]}', task['id'])
+            self.store.event(state, f'{order["number"]} 人工操作已确认；按单据返库后全箱数量为 {order.get("box_after_total", order["after_quantity"])}', task['id'], created=True)
             return task
         return self.store.once(request['request_id'], {'operation':'order-return', 'order_id':ident, **request}, apply)
 
@@ -260,8 +263,8 @@ class OrderWorkflow:
     def acknowledged(self, state, task):
         order = self.order(state, task['order_id'])
         if task['order_leg'] == 'FETCH':
-            task.update(status='AWAIT_RETURN', detail='请按单据装料后返库' if order['kind'] == 'INBOUND' else '请扫码核对箱号及物料，按单据取料后返库')
-            order['status'] = 'WAIT_LOAD' if order['kind'] == 'INBOUND' else 'WAIT_PICK'
+            task.update(status='AWAIT_RETURN', detail='请核对箱内实际物料及数量，确认盘点后返库' if order['kind'] == 'COUNT' else '请按单据装料后返库' if order['kind'] == 'INBOUND' else '请扫码核对箱号及物料，按单据取料后返库')
+            order['status'] = {'COUNT':'WAIT_COUNT','INBOUND':'WAIT_LOAD','OUTBOUND':'WAIT_PICK'}[order['kind']]
         else:
             self.store.release(state, task)
             task.update(status='COMPLETED', detail='返库完成，已按单据更新库存数量')
@@ -277,6 +280,6 @@ class OrderWorkflow:
             fetch = self.store.task(state, order['fetch_task_id'])
             fetch.update(status='AWAIT_RETURN', updated_at=now(), detail='返库搬运已取消，人工操作记录保留；请勿重复装料或取料，核对后重新返库')
             state['locations'][order['location']]['reserved'] = state['stock'][order['barcode']]['reserved'] = fetch['id']
-            order.update(status='WAIT_LOAD' if order['kind'] == 'INBOUND' else 'WAIT_PICK', current_task_id=fetch['id'])
+            order.update(status={'COUNT':'WAIT_COUNT','INBOUND':'WAIT_LOAD','OUTBOUND':'WAIT_PICK'}[order['kind']], current_task_id=fetch['id'])
         order['updated_at'] = now()
         task.update(status='CANCELLED', updated_at=now(), detail='本次搬运已取消')

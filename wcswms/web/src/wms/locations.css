@@ -18,6 +18,8 @@
 .wm-slot-status{font-size:10px;font-weight:400;line-height:1.35}
 .wm-slot-depth{font-size:9px;opacity:.8;line-height:1.25}
 .wm-slot-occupied{--wm-slot-bg:#2563eb;--wm-slot-ink:#fff;--wm-slot-edge:#1d4ed8}
+.wm-slot-material{--wm-slot-bg:#2563eb;--wm-slot-ink:#fff;--wm-slot-edge:#1d4ed8}
+.wm-slot-empty_bin{--wm-slot-bg:#0d9488;--wm-slot-ink:#fff;--wm-slot-edge:#0f766e}
 .wm-slot-reserved{--wm-slot-bg:#7c3aed;--wm-slot-ink:#fff;--wm-slot-edge:#6d28d9}
 .wm-slot-empty{--wm-slot-bg:#e5f5ed;--wm-slot-ink:#14532d;--wm-slot-edge:#16a34a}
 .wm-slot-unverified{--wm-slot-bg:#fef3c7;--wm-slot-ink:#854d0e;--wm-slot-edge:#d97706}

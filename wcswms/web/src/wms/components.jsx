@@ -3,7 +3,7 @@ import {X,Inbox,ExternalLink} from 'lucide-react';
 import {taskNames,kindNames,formatTime,storedLocation,taskLabel,boxName} from './api';
 import {materialFields} from './material';
 import {boxContents,orderLines} from './material';
-import {usePagination} from './paging';
+import {usePagination,useViewport} from './paging';
 import Pager from './Pager';
 
 export function BoxContents({item,onEdit}){
@@ -13,8 +13,8 @@ export function BoxContents({item,onEdit}){
 }
 
 export function OrderLines({order}){
- const rows=orderLines(order),paging=usePagination(rows,2,order.id);
- return <div className="wm-order-lines">{paging.items.map((line,index)=><p key={`${line.sku}:${index}`}><b>{line.sku} · {line.material_name||'—'}</b> · 本单 {line.quantity}<small>该物料 {line.before_quantity} → {line.after_quantity} · 批次 {line.batch||'—'}</small></p>)}<Pager paging={paging} label="单据物料"/></div>;
+ const {height}=useViewport(),rows=orderLines(order),paging=usePagination(rows,height<650?1:2,order.id);
+ return <div className="wm-order-lines">{!rows.length&&<p className="wm-help">空箱 · 无物料</p>}{paging.items.map((line,index)=><p key={`${line.sku}:${index}`}><b>{line.sku} · {line.material_name||'—'}</b> · {order.kind==='COUNT'?(order.count_confirmed_at?'实盘':'账面'):'本单'} {line.quantity}<small>该物料 {line.before_quantity} → {line.after_quantity} · 批次 {line.batch||'—'}</small></p>)}<Pager paging={paging} label="单据物料"/></div>;
 }
 
 export function MaterialFields({value,onChange,disabled=false}){

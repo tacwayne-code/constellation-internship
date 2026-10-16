@@ -1,12 +1,13 @@
 import React,{useRef,useState} from 'react';
-import {api,requestId,kindNames,storedLocation,hasPermission} from './api';
+import {api,requestId,kindNames,storedLocation,hasPermission,operatorLabel} from './api';
 import {Modal,Empty,OrderLines} from './components';
 import {TaskButtons,TaskActionDialog} from './TaskActions';
 import {usePagination} from './paging';
 import Pager from './Pager';
+import CountReturnDialog from './CountReturnDialog';
 import {orderLines} from './material';
 
-const stages={QUEUED:'待取箱',FETCHING:'取箱中',FETCH_ACK:'取箱回执处理中',WAIT_LOAD:'待人工装料',WAIT_PICK:'待核对取料',RETURN_QUEUED:'待返库下发',RETURNING:'返库中',RETURN_ACK:'返库回执处理中',REVIEW:'待现场核对',COMPLETED:'已完成',CANCELLED:'已取消'};
+const stages={QUEUED:'待取箱',FETCHING:'取箱中',FETCH_ACK:'取箱回执处理中',WAIT_COUNT:'待盘点核对',WAIT_LOAD:'待人工装料',WAIT_PICK:'待核对取料',RETURN_QUEUED:'待返库下发',RETURNING:'返库中',RETURN_ACK:'返库回执处理中',REVIEW:'待现场核对',COMPLETED:'已完成',CANCELLED:'已取消'};
 export default function OrderCards({state,canEdit,refresh,notify,all=false,onlyId}){
  const [action,setAction]=useState(null),[returnId,setReturnId]=useState(null);
  const orders=(state.orders||[]).filter(order=>(all||!['COMPLETED','CANCELLED'].includes(order.status))&&(!onlyId||order.id===onlyId)).slice().reverse();
@@ -14,26 +15,26 @@ export default function OrderCards({state,canEdit,refresh,notify,all=false,onlyI
  const returning=(state.orders||[]).find(order=>order.id===returnId);
  return <div className="wm-orders"><div className="wm-pending-list">{paging.items.map(order=>{
   const task=state.tasks.find(item=>item.id===order.current_task_id);
-  const waiting=['WAIT_LOAD','WAIT_PICK'].includes(order.status);
+  const waiting=['WAIT_LOAD','WAIT_PICK','WAIT_COUNT'].includes(order.status);
   const status=task?.status==='REVIEW'?'待现场核对':task?.status==='QUEUED'?(task.order_leg==='RETURN'?'待返库下发':'待取箱'):stages[order.status]||order.status;
-  return <article className="wm-pending-card wm-order-card" key={order.id} aria-label={order.number}><div className="wm-pending-heading"><strong>{kindNames[order.kind]}单 · {order.number}</strong><span className={`wm-badge wm-${order.status.toLowerCase()}`}>{status}</span></div><h3>{orderLines(order).length>1?`${orderLines(order).length} 行物料 · 同箱作业`:order.material_name||order.sku}</h3><OrderLines order={order}/><p>料箱 <b>{order.barcode}</b> · 原库位 {storedLocation(order.location)}</p><p className="wm-help">{waiting?(order.kind==='INBOUND'?'料箱已到交接点，请按本单数量装料，再点击返库。':'料箱已到出口，请按本设备的扫码要求核对，按本单数量取料，再点击返库。'):task?.detail}</p>{order.quantity_posted&&<p className="wm-help">本单数量已过账</p>}
+  return <article className="wm-pending-card wm-order-card" key={order.id} aria-label={order.number}><div className="wm-pending-heading"><strong>{kindNames[order.kind]}单 · {order.number}</strong><span className={`wm-badge wm-${order.status.toLowerCase()}`}>{status}</span></div><h3>{orderLines(order).length>1?`${orderLines(order).length} 行物料 · 同箱作业`:order.material_name||order.sku||(order.kind==='COUNT'?'空箱盘点':'')}</h3><OrderLines order={order}/><p className="wm-order-operator"><span>建单：{operatorLabel(order.created_by)}</span><span>操作：{operatorLabel(order.operator)}</span></p><p>料箱 <b>{order.barcode}</b> · 原库位 {storedLocation(order.location)}</p><p className="wm-help">{waiting?(order.kind==='COUNT'?'料箱已到交接点，请核对实际物料、数量和批次，再确认返库。':order.kind==='INBOUND'?'料箱已到交接点，请按本单数量装料，再点击返库。':'料箱已到出口，请按本设备的扫码要求核对，按本单数量取料，再点击返库。'):task?.detail}</p>{order.quantity_posted&&<p className="wm-help">本单数量已过账</p>}
    {waiting&&order.station_confirmation&&<p className="wm-error">之前的人工操作已确认，请勿重复装料或取料。核对箱内数量后重新返库。</p>}
-   {waiting?<button className="wm-primary wm-full" disabled={!canEdit||!hasPermission(state,'control')||!hasPermission(state,order.kind.toLowerCase())} onClick={()=>setReturnId(order.id)}>{order.kind==='INBOUND'?'装料完成，返库':'核对取料并返库'}</button>:task&&<TaskButtons task={task} state={state} canEdit={canEdit} onAction={kind=>setAction({task,kind})}/>}
+   {waiting?<button className="wm-primary wm-full" disabled={!canEdit||!hasPermission(state,'control')||!hasPermission(state,order.kind==='COUNT'?'inventory':order.kind.toLowerCase())} onClick={()=>setReturnId(order.id)}>{order.kind==='COUNT'?'核对盘点并返库':order.kind==='INBOUND'?'装料完成，返库':'核对取料并返库'}</button>:task&&<TaskButtons task={task} state={state} canEdit={canEdit} onAction={kind=>setAction({task,kind})}/>}
   </article>;
  })}</div>{!orders.length&&<Empty title={all?'暂无物料单据':'暂无待办物料单据'}>登记单据后，按取箱、人工操作、返库顺序执行</Empty>}{!onlyId&&<Pager paging={paging} label="待办单据"/>}
  {action&&<TaskActionDialog action={action} state={state} canEdit={canEdit} refresh={refresh} notify={notify} onClose={()=>setAction(null)}/>}
- {returning&&<ReturnDialog key={returning.id} order={returning} state={state} canEdit={canEdit} refresh={refresh} notify={notify} onClose={()=>setReturnId(null)}/>}
+ {returning&&(returning.kind==='COUNT'?<CountReturnDialog key={returning.id} order={returning} state={state} canEdit={canEdit&&hasPermission(state,'inventory')&&hasPermission(state,'control')} refresh={refresh} notify={notify} onClose={()=>setReturnId(null)}/>:<ReturnDialog key={returning.id} order={returning} state={state} canEdit={canEdit} refresh={refresh} notify={notify} onClose={()=>setReturnId(null)}/>)}
  </div>;
 }
 
 function ReturnDialog({order,state,canEdit,refresh,notify,onClose}){
  const outbound=order.kind==='OUTBOUND',skuInput=useRef(null),busyRef=useRef(false),skus=[...new Set(orderLines(order).map(line=>line.sku))];
  const [id]=useState(requestId),[barcode,setBarcode]=useState(''),[scans,setScans]=useState(()=>Object.fromEntries(skus.map(code=>[code,'']))),[confirmed,setConfirmed]=useState(false),[busy,setBusy]=useState(false),[error,setError]=useState('');
- const waiting=['WAIT_LOAD','WAIT_PICK'].includes(order.status);
+ const waiting=['WAIT_LOAD','WAIT_PICK','WAIT_COUNT'].includes(order.status);
  const policy=state.outbound_scan_policy||{require_barcode:true,require_sku:true,revision:0};
  const scanPaging=usePagination(skus,2,order.id);
  const matched=!outbound||((!policy.require_barcode||barcode.trim()===order.barcode)&&(!policy.require_sku||skus.every(code=>scans[code]?.trim()===code)));
- const ready=canEdit&&hasPermission(state,'control')&&hasPermission(state,order.kind.toLowerCase())&&waiting&&state.readiness.ready&&matched&&confirmed&&!busy;
+ const ready=canEdit&&hasPermission(state,'control')&&hasPermission(state,order.kind==='COUNT'?'inventory':order.kind.toLowerCase())&&waiting&&state.readiness.ready&&matched&&confirmed&&!busy;
  async function submit(event){
   event.preventDefault();if(!ready||busyRef.current)return;busyRef.current=true;setBusy(true);setError('');
   try{await api(`/api/orders/${order.id}/return`,{request_id:id,confirmed:true,scanned_barcode:barcode.trim(),scanned_sku:scans[skus[0]]?.trim()||'',scanned_skus:skus.map(code=>scans[code]?.trim()||''),expected_scan_revision:outbound?policy.revision:null});await refresh();notify('返库已提交，匹配完成回执后自动更新数量');onClose();}

@@ -69,6 +69,9 @@ def create_coordinate_task(store, run, step):
                     status='QUEUED', plc_id=None, posted=False, ack_pending=False,
                     detail='坐标老化步骤已登记，不关联库存', created_at=now(), updated_at=now())
         state['tasks'].insert(0, task)
+        if run.get('actor'):
+            actor = dict(id=run['actor_id'], username=run['actor'], display_name=run.get('actor_display_name', run['actor']))
+            task.update(created_by=actor, operator=dict(actor))
         current.update(current_task_id=task['id'], current_started_at=now(), updated_at=now())
         store.event(state, f'{task["number"]} 坐标老化：{step["source"]} → {step["target"]}', task['id'])
         return task
@@ -106,7 +109,7 @@ class AgingRunner:
                 run = dict(id=uuid.uuid4().hex, status='RUNNING', next_step=0, completed_moves=0, completed_cycles=0,
                            limit_cycles=request['limit_cycles'], step_timeout=request['step_timeout'],
                            mode='COORDINATE_ONLY', actor_id=actor['id'],
-                           actor=actor['username'], started_at=now(), updated_at=now(), ended_at=None,
+                           actor=actor['username'], actor_display_name=actor['display_name'], started_at=now(), updated_at=now(), ended_at=None,
                            current_task_id=None, current_started_at=None, stop_requested=False,
                            detail='老化已启动，准备第 1 步；四组往返共八步一圈', last_error='')
                 state['aging_run'] = run

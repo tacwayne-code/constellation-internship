@@ -3,7 +3,7 @@ import {Upload,Download,Search,ArrowLeft} from 'lucide-react';
 import {api,apiPath,requestId} from './api';
 import {Empty,Modal} from './components';
 import Pager from './Pager';
-import {usePagination,useTableSize,useViewport} from './paging';
+import {usePagination} from './paging';
 
 const statuses={NEW:'新增',FILL:'补全空字段',UNCHANGED:'相同跳过',ERROR:'需修正'};
 function readFile(file){return new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve({filename:file.name,content:String(reader.result).split(',')[1]});reader.onerror=()=>reject(new Error('文件读取失败，请重新选择'));reader.readAsDataURL(file);});}
@@ -14,8 +14,7 @@ export default function MaterialCatalog({canEdit,refresh,notify}){
  const [details,setDetails]=useState(null);
  useEffect(()=>{alive.current=true;const controller=new AbortController();api('/api/materials',undefined,{signal:controller.signal}).then(value=>setData(value.materials)).catch(e=>{if(!controller.signal.aborted)setError(e.message);});return()=>{alive.current=false;controller.abort();};},[]);
  const records=preview?preview.rows.filter(row=>!onlyErrors||row.status==='ERROR'):(data||[]).filter(row=>[row.sku,row.material_name,row.model,row.specification].join(' ').toLowerCase().includes(query.toLowerCase()));
- const {height}=useViewport();
- const paging=usePagination(records,Math.max(1,useTableSize()-(height<560?2:1)),`${preview?.token||'catalog'}:${query}:${onlyErrors}`);
+ const paging=usePagination(records,10,`${preview?.token||'catalog'}:${query}:${onlyErrors}`);
  function reset(){setFile(null);setPreview(null);setDetails(null);setError('');setOnlyErrors(false);setConfirmed(false);id.current=requestId();}
  async function choose(event){
   const selected=event.target.files?.[0];event.target.value='';if(!selected||busyRef.current||!canEdit)return;

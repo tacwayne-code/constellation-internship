@@ -22,6 +22,8 @@ from . import wms_material_import
 from . import wms_scan_policy
 from . import wms_transfer
 from . import wms_aging
+from . import wms_count
+from .wms_actor import current_actor, identity
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -132,6 +134,22 @@ class ReturnInput(Identified):
     scanned_skus: list[str] = Field(default_factory=list, max_length=50)
     expected_scan_revision: int | None = Field(default=None, ge=0)
     confirmed: bool = False
+
+
+class CountInput(Identified):
+    box_barcode: str = Field(min_length=1, max_length=64)
+    expected_updated_at: str = Field(min_length=1, max_length=60)
+    note: str = Field(min_length=2, max_length=200)
+
+
+class CountMaterial(InboundMaterial):
+    quantity: int = Field(ge=0, le=1000000, strict=True)
+
+
+class CountReturnInput(Identified):
+    items: list[CountMaterial] = Field(max_length=50)
+    note: str = Field(min_length=2, max_length=200)
+    confirmed: bool = Field(default=False, strict=True)
 
 
 class LocationInput(Identified):
@@ -339,7 +357,7 @@ def create_app(config=None, data_dir=None, reader=None, key=None, commands_path=
             raise AuthError('当前用户没有' + ('用户管理' if permission == 'users' else PERMISSIONS[permission]) + '权限', 403)
 
     def task_permission(user, task, control=False):
-        require(user, 'inventory' if task['kind'] in {'MOVE', 'AGING'} else (task.get('document_kind') or task.get('kind', '')).lower())
+        require(user, 'inventory' if task['kind'] in {'MOVE', 'AGING', 'COUNT'} or task.get('document_kind') == 'COUNT' else (task.get('document_kind') or task.get('kind', '')).lower())
         if control:
             require(user, 'control')
 
@@ -361,6 +379,8 @@ def create_app(config=None, data_dir=None, reader=None, key=None, commands_path=
             return
         elif path == '/api/orders/inbound':
             require(user, 'inbound')
+        elif path == '/api/orders/count':
+            require(user, 'inventory')
         elif path in ('/api/tasks', '/api/tasks/batch', '/api/orders', '/api/orders/batch'):
             try:
                 body = await request.json()
@@ -382,7 +402,7 @@ def create_app(config=None, data_dir=None, reader=None, key=None, commands_path=
                 task_permission(user, task, parts[4] != 'cancel')
             if parts[4] != 'cancel' and not service.enabled:
                 raise AuthError('设备连接与控制尚未启用',409)
-        elif path.startswith('/api/orders/') and path.endswith('/return'):
+        elif path.startswith('/api/orders/') and path.endswith(('/return', '/count-return')):
             order = next((o for o in store.read()['orders'] if o['id'] == path.split('/')[3]), None)
             if order:
                 task_permission(user, order, True)
@@ -431,13 +451,17 @@ def create_app(config=None, data_dir=None, reader=None, key=None, commands_path=
                     raise AuthError('请从 WMS 登录页面提交', 403)
         except AuthError as error:
             return JSONResponse({'detail': error.detail}, status_code=error.status, headers={'Cache-Control': 'no-store'})
-        response = await call_next(request)
+        actor_token = current_actor.set(identity(request.state.user))
+        try:
+            response = await call_next(request)
+        finally:
+            current_actor.reset(actor_token)
         if writing and request.state.user and response.status_code < 400 and not path.startswith('/api/auth/') and not path.startswith('/api/users'):
             endpoint = request.scope.get('endpoint')
             action = {
                 'create':'登记料箱任务', 'create_batch':'批量登记料箱任务',
                 'create_order':'登记物料单据', 'create_order_batch':'批量登记物料单据', 'create_inbound_document':'创建入库单',
-                'create_transfer':'登记调仓任务',
+                'create_transfer':'登记调仓任务', 'create_count_order':'创建盘点单', 'return_count_order':'盘点确认并返库',
                 'start_aging':'启动老化测试', 'stop_aging':'停止老化循环',
                 'return_order':'下发返库', 'cancel':'取消任务', 'dispatch':'下发任务',
                 'acknowledge':'确认任务回执', 'resolve':'处理任务异常',
@@ -659,6 +683,17 @@ def create_app(config=None, data_dir=None, reader=None, key=None, commands_path=
     @app.post('/api/orders/inbound', status_code=201)
     def create_inbound_document(body: InboundDocument):
         return register(store.orders.create_inbound,body.model_dump())
+
+    @app.post('/api/orders/count', status_code=201)
+    def create_count_order(body: CountInput):
+        return register(lambda value: wms_count.create(store, value), body.model_dump())
+
+    @app.post('/api/orders/{ident}/count-return')
+    def return_count_order(ident: str, body: CountReturnInput):
+        order = store.orders.order(store.read(), ident)
+        if order['kind'] != 'COUNT':
+            raise WmsError('该单据不是盘点单')
+        return service.return_order(ident, body.model_dump())
 
     @app.post('/api/orders/{ident}/return')
     def return_order(ident: str, body: ReturnInput):
