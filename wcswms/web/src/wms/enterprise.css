@@ -1,0 +1,194 @@
+/* Reference-driven light enterprise theme. Geometry for short screens remains in wms.css. */
+:root{
+ --wm-blue:#147db3;--wm-border:#d9dde2;--wm-muted:#77818e;--wm-ink:#303c50;
+ --wm-surface:#fff;--wm-soft:#edf8fb;--wm-sidebar:204px;
+ --wm-cyan:#04b2c6;--wm-green:#51ad4c;--wm-tab:#6663b5;
+ color:var(--wm-ink);background:#f3f4f6;
+}
+.wm-shell{border-top:4px solid var(--wm-green)}
+button,.wm-button{border-color:#cbd2da;border-radius:2px;color:#3c4d62;min-height:34px;padding:6px 11px;font-size:13px;font-weight:500;gap:6px}
+button:hover:not(:disabled){background:#f0f8fb;border-color:#86b7ce}
+button:disabled{background:#f5f6f7;color:#9aa2ad;border-color:#e0e3e7}
+button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px solid #1486bd;outline-offset:2px}
+h1,h2,h3{color:#303c50;letter-spacing:0}
+h2{font-size:17px}h3{font-size:15px}
+.wm-main{padding:0 12px 7px;gap:9px;background:#f3f4f6}
+.wm-header{margin:0 -12px;min-height:45px;height:45px;padding:0 14px 0 12px;background:#fff;border-bottom:1px solid var(--wm-border);align-items:stretch}
+.wm-header .wm-active-tab{display:flex;align-items:center;background:#fff;border:1px solid var(--wm-border);border-top:3px solid var(--wm-tab);border-bottom:0;padding:0 16px;margin-top:5px;max-width:calc(100% - 190px)}
+.wm-header h1{font-size:16px;white-space:nowrap;letter-spacing:0}
+.wm-header .wm-active-tab>p{display:none}
+.wm-header-controls{gap:14px}
+.wm-header-refresh{min-height:30px;border:0;background:transparent;font-size:12px;padding:5px 7px}
+.wm-mobile-account{display:none}
+.wm-header-controls .wm-connection{font-size:11px;color:#647184;border-left:1px solid var(--wm-border);padding-left:14px}
+.wm-connection i.online{background:#22a14d}
+.wm-main>.wm-context-bar{border:0;border-radius:0;border-bottom:1px solid #e2e5e8;padding:0 2px 8px;gap:22px;background:transparent}
+.wm-context-bar label{color:#536174;gap:10px;font-size:12px;white-space:nowrap}
+.wm-context-bar select{border-color:#cbd2da;border-radius:2px;color:#344357;width:180px;min-height:31px;font-size:12px;padding:4px 8px}
+.wm-context-bar>span{color:#8b94a0;font-size:10px}
+.wm-page,.wm-operation{gap:8px}
+.wm-panel{padding:13px 15px;border-radius:2px;border-color:var(--wm-border);box-shadow:none;animation:none}
+.wm-panel-title{margin-bottom:10px}
+.wm-workspace,.wm-task-board,.wm-device-grid,.wm-aging-workspace{gap:8px}
+.wm-worklist{gap:8px}
+.wm-primary,.wm-operation-toolbar>.wm-tabs button.selected{background:#147fbd;border-color:#147fbd;color:#fff}
+.wm-primary:hover:not(:disabled){background:#0b6a9f;border-color:#0b6a9f}
+.wm-primary:disabled{background:#8cb7ce;border-color:#8cb7ce;color:#f7fbfd}
+.wm-tabs{background:#f1f2f4;border-color:#d3d7de;border-radius:2px;padding:0;gap:0}
+.wm-tabs button{border:0;border-right:1px solid #d3d7de;border-radius:0;min-height:33px;padding:6px 14px;background:transparent;color:#6b7686;box-shadow:none}
+.wm-tabs button:last-child{border-right:0}
+.wm-tabs button.selected{background:#fff;color:#176d9d;box-shadow:inset 0 2px var(--wm-tab)}
+.wm-operation-toolbar>.wm-tabs button.selected{box-shadow:none}
+.wm-section-tools{gap:10px;min-height:36px}
+.wm-tool-buttons{gap:0}
+.wm-tool-buttons button,.wm-tool-buttons .wm-button{border-radius:0;margin-left:-1px}
+.wm-tool-buttons>*:first-child{margin-left:0;border-radius:2px 0 0 2px}
+.wm-tool-buttons>*:last-child{border-radius:0 2px 2px 0}
+.wm-search{border-color:#cbd2da;border-radius:2px;color:#8895a5;width:400px;padding:0 9px;gap:7px}
+.wm-search input{height:34px;font-size:12px;color:#344357}
+.wm-list-summary{color:#7a8491;font-size:11px}
+.wm-registration label,.wm-shell dialog label{color:#536174}
+.wm-registration input,.wm-registration select,.wm-shell dialog input,.wm-shell dialog select,.wm-shell dialog textarea,.wm-account input,.wm-aging-fields input{border-color:#cbd2da;border-radius:2px;color:#344357}
+.wm-shell input::placeholder,.wm-shell textarea::placeholder{color:#9aa3ae}
+.wm-registration input:focus{border-color:#5e9ebc}
+.wm-scan-input{border-color:#cbd2da;border-radius:2px}
+.wm-scan-input svg,.wm-scan-hint b{color:#3485a5}
+.wm-scan-hint{color:#8a94a0}
+.wm-review,.wm-success,.wm-allocation-summary,.wm-outbound-choices,.wm-scan-result{background:#f1f7fa;border-color:#d6e3eb;border-radius:2px;color:#526b80}
+.wm-review{font-size:12px}
+.wm-stock-choice,.wm-transfer-location{border-color:#d9e1e7;border-radius:2px;background:#fff;color:#344357}
+.wm-stock-choice>span,.wm-stock-choice>strong span,.wm-stock-choice>small{color:#718194}
+.wm-stock-choice:hover:not(:disabled){background:#f0f9fc;border-color:#73b4cd}
+.wm-help{color:var(--wm-muted)}
+.wm-info-list dt,.wm-out-details dt,.wm-plc-summary dt{color:#8a94a0}
+.wm-info-list dd,.wm-out-details dd,.wm-plc-summary dd{color:#46556a}
+.wm-info-list>div,.wm-out-details dl>div{border-bottom-color:#e7eaf0}
+.wm-plc-summary{padding:11px 14px}.wm-plc-summary h2{font-size:15px}
+.wm-pending-card>p{color:#718092}.wm-pending-card>p b{color:#3f526a}
+.wm-empty,.wm-empty svg{color:#bbc3ce}.wm-empty strong{color:#7e8c9e}.wm-empty p{color:#939eac}
+.wm-data-panel{padding:0}
+.wm-data-panel>.wm-panel-title{padding:10px 12px;margin:0;border-bottom:1px solid var(--wm-border)}
+table{color:#445269;font-size:12px}
+th{background:#f2f3f5;color:#657084;font-weight:600}
+th,td{padding:8px 10px;border:1px solid #e0e4e9}
+th:first-child,td:first-child{border-left:0}th:last-child,td:last-child{border-right:0}
+thead tr:first-child th{border-top:0}
+tbody tr:last-child td{border-bottom:1px solid #e0e4e9}
+td{color:#4c5b70}td strong{color:#334b65}td small{color:#919cab}
+tbody tr:hover{background:#f1fafc}
+.wm-row-selected{background:#e6f7fb!important}
+.wm-row-link{color:#2478a2;font-size:12px}
+.wm-table-action{border-color:#cbd9e4;color:#29749d;border-radius:2px}
+.wm-material-inventory-table td{height:44px;padding-top:6px;padding-bottom:6px}
+.wm-material-inventory-table td small{display:inline;margin:0 0 0 8px;font-size:10px}
+.wm-data-panel>.wm-pagination{padding:8px 10px;background:#fafbfc}
+.wm-pagination{color:#7b8797;padding-top:7px;border-color:var(--wm-border)}
+.wm-pagination button,.wm-pagination select{height:29px;min-height:29px;border-color:#d3dae3;border-radius:2px;font-size:11px;color:#58718e}
+.wm-pagination button{width:29px}.wm-pagination select{padding:3px 6px}
+.wm-badge{border-radius:2px;font-weight:600}
+.wm-running,.wm-sent,.wm-dispatching,.wm-fetching,.wm-returning{background:#e4f0fd;color:#1766a3}
+.wm-completed,.wm-empty.wm-badge{background:#e6f5e9;color:#287b3f}
+.wm-badge.wm-review,.wm-unverified,.wm-plc_done,.wm-await_pickup,.wm-wait_load,.wm-wait_pick,.wm-return_queued{background:#fff0ce;color:#966213}
+.wm-cancelled{background:#eef0f3;color:#7e8796}
+.wm-lock-hint,.wm-readiness{border-radius:2px}
+.wm-footer{color:#9099a7;padding:0 2px;font-size:10px}
+.wm-shell dialog{border-radius:3px;color:#344357;box-shadow:0 12px 45px #24374a33}
+.wm-shell dialog::backdrop{background:#27384a66;backdrop-filter:none}
+.wm-toast,.wm-main>.wm-alert{border-radius:2px;box-shadow:0 3px 12px #24374a18}
+.wm-permissions,.wm-scan-settings .wm-check,.wm-aging-routes li,.wm-aging-routes li>strong,.wm-aging-metrics>div{border-radius:2px}
+.wm-aging-routes li,.wm-aging-metrics>div,.wm-scan-settings .wm-check{background:#f5f8fa}
+.wm-aging-routes li.current{border-color:#33a9be;background:#eaf8fb}
+.wm-aging-routes li>strong{background:#e3edf4;color:#297b9f}.wm-aging-metrics strong{color:#287798}
+.wm-axis-strip dd{color:#387a9e}
+.wm-rack-slot{border-radius:2px}
+.wm-login{border-top:4px solid var(--wm-green);background:#f3f4f6}
+.wm-login-panel{border-color:#d9dde2;border-radius:3px;box-shadow:none;border-top:3px solid var(--wm-cyan)}
+.wm-login-brand,.wm-login-heading{color:#147da7}.wm-login input{border-color:#cbd2da;border-radius:2px;color:#344357}
+
+/* Sidebar: actual account data and the existing feature groups. */
+.wm-enterprise-sidebar{width:var(--wm-sidebar);background:#fff;border-right:1px solid var(--wm-border);color:#3d4c60}
+.wm-profile{background:var(--wm-cyan);padding:18px 13px 9px;color:#fff;flex-shrink:0}
+.wm-profile-account{border:0;background:transparent;color:#fff;width:100%;justify-content:flex-start;text-align:left;gap:11px;padding:0;min-height:60px}
+.wm-profile-account:hover:not(:disabled),.wm-profile-actions button:hover:not(:disabled){background:#ffffff18;border-color:transparent;color:#fff}
+.wm-profile-avatar{height:48px;width:48px;display:grid;place-items:center;background:#fff;border-radius:50%;color:#1587b1;flex-shrink:0}
+.wm-profile-account>span:last-child{min-width:0}
+.wm-profile-account strong{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:16px;font-weight:600}
+.wm-profile-account small{display:block;font-size:11px;margin-top:5px;color:#e5fcff}
+.wm-profile-actions{display:flex;align-items:center;justify-content:space-between;margin-top:12px}
+.wm-profile-actions button{border:0;background:transparent;color:#fff;font-size:12px;padding:4px 2px;min-height:27px}
+.wm-enterprise-sidebar nav{display:flex;flex-direction:column;gap:6px;padding:9px 5px;min-height:0}
+.wm-nav-group{min-width:0}
+.wm-enterprise-sidebar nav button{height:35px;min-height:35px;color:#536074;border-radius:2px;font-size:13px;padding:6px 13px;gap:10px;width:100%;font-weight:500;flex-direction:row}
+.wm-enterprise-sidebar nav button:hover{background:#f1f7fa;color:#24779e}
+.wm-enterprise-sidebar nav button.active{background:#e4f7fb;color:#087fa8;box-shadow:inset 3px 0 var(--wm-cyan);font-weight:600}
+.wm-enterprise-sidebar nav .wm-nav-heading{font-weight:600;color:#3c4a5e;height:36px}
+.wm-nav-heading>span{flex:1;text-align:left}
+.wm-nav-items{display:flex;flex-direction:column}
+.wm-nav-items.wm-nav-items-closed{display:none}
+.wm-enterprise-sidebar nav .wm-nav-items button{padding-left:24px}
+.wm-sidebar-footer{display:flex;flex-direction:column;gap:5px;margin: auto 0 0;padding:13px 17px;border-top:1px solid #e8ebee;color:#8894a2;font-size:10px;line-height:1.4}
+.wm-sidebar-footer strong{font-size:12px;font-weight:500;color:#5f6e82}
+.wm-sidebar-compact{width:62px}
+.wm-sidebar-compact .wm-profile{padding:10px 5px 6px}
+.wm-sidebar-compact .wm-profile-avatar{height:36px;width:36px}
+.wm-sidebar-compact .wm-profile-account{justify-content:center;min-height:40px}
+.wm-sidebar-compact .wm-profile-account>span:last-child,.wm-sidebar-compact .wm-profile-actions button:first-child,.wm-sidebar-compact nav button span,.wm-sidebar-compact .wm-nav-heading>svg:last-child,.wm-sidebar-compact .wm-sidebar-footer{display:none}
+.wm-sidebar-compact .wm-profile-actions{justify-content:center;margin-top:3px}
+.wm-sidebar-compact nav button,.wm-sidebar-compact nav .wm-nav-items button{padding:6px;justify-content:center}
+
+/* Task scope rail mirrors the reference, with real status/kind filtering. */
+.wm-task-layout{display:grid;grid-template-columns:130px minmax(0,1fr);gap:8px;flex:1;min-height:0}
+.wm-task-scope{border:1px solid var(--wm-border);background:#fff;padding:9px 0;display:flex;flex-direction:column;gap:3px;min-width:0}
+.wm-task-scope button{border:0;border-radius:0;justify-content:flex-start;min-height:39px;padding:8px 16px;font-size:13px;font-weight:500}
+.wm-task-scope button.selected{background:#f0f4f8;box-shadow:inset 3px 0 var(--wm-tab);color:#216b9b;font-weight:600}
+.wm-task-scope p{font-size:10px;color:#929ca9;line-height:1.7;margin:15px 12px 0;padding-top:12px;border-top:1px solid #e4e8ee}
+.wm-task-layout .wm-task-board{grid-template-columns:minmax(0,1.35fr) minmax(265px,1fr)}
+
+@media(min-width:760px) and (max-height:680px){
+ .wm-main{padding-top:0;gap:6px}.wm-header{height:40px;min-height:40px}.wm-header h1{font-size:15px}
+ .wm-main>.wm-context-bar{padding:0 2px 5px}
+ .wm-profile{padding:10px 12px 6px}.wm-profile-account{min-height:45px}.wm-profile-avatar{width:40px;height:40px}.wm-profile-actions{margin-top:5px}
+ .wm-enterprise-sidebar nav{padding-top:6px;gap:3px}.wm-enterprise-sidebar nav button,.wm-enterprise-sidebar nav .wm-nav-heading{height:31px;min-height:31px;font-size:12px}
+ .wm-sidebar-footer{padding:8px 14px;font-size:9px}
+ .wm-panel{padding:10px 12px}.wm-data-panel{padding:0}.wm-task-layout{grid-template-columns:112px minmax(0,1fr)}
+ .wm-task-scope button{padding:7px 12px;font-size:12px;min-height:34px}
+ th,td{padding:6px 8px}
+ .wm-device-mobile-tabs{display:flex;align-self:flex-start}
+ .wm-device-page[data-tab="status"] .wm-events,.wm-device-page[data-tab="events"] .wm-device-grid{display:none}
+ .wm-device-page[data-tab="events"] .wm-events{flex:1}
+ .wm-device-info{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 15px}
+ .wm-device-info>div{display:block;min-width:0;padding:6px 0;font-size:11px}
+ .wm-device-info dt{font-size:10px}.wm-device-info dd{text-align:left;margin-top:3px;overflow-wrap:anywhere}
+}
+@media(min-width:760px) and (max-width:1199px){
+ :root{--wm-sidebar:174px}.wm-profile-account strong{font-size:14px}.wm-profile-avatar{height:40px;width:40px}
+ .wm-task-layout{grid-template-columns:100px minmax(0,1fr)}.wm-task-scope button{padding-left:10px;font-size:12px}.wm-task-layout .wm-task-board{grid-template-columns:minmax(0,1fr) minmax(230px,1fr)}
+}
+@media(min-width:760px) and (max-height:560px){
+ .wm-enterprise-sidebar nav{gap:1px;padding:4px 5px}.wm-enterprise-sidebar nav button,.wm-enterprise-sidebar nav .wm-nav-heading{height:27px;min-height:27px;padding-top:3px;padding-bottom:3px;font-size:11px}
+ .wm-profile{padding:6px 12px 4px}.wm-profile-avatar{height:33px;width:33px}.wm-profile-account{min-height:35px}.wm-profile-account small{margin-top:2px;font-size:10px}.wm-profile-actions{margin-top:2px}
+ .wm-sidebar-footer{padding:6px 13px;gap:2px}.wm-task-scope p{display:none}
+}
+@media(max-width:759px){
+ .wm-enterprise-sidebar,.wm-enterprise-sidebar.wm-sidebar-compact{width:100%;height:51px;border-right:0;border-bottom:1px solid var(--wm-border);flex-direction:row}
+ .wm-profile,.wm-enterprise-sidebar .wm-sidebar-footer,.wm-enterprise-sidebar nav .wm-nav-heading{display:none}
+ .wm-enterprise-sidebar nav{display:flex;flex-direction:row;gap:0;padding:3px;width:100%}
+ .wm-enterprise-sidebar .wm-nav-group,.wm-enterprise-sidebar .wm-nav-items,.wm-enterprise-sidebar .wm-nav-items-closed{display:contents}
+ .wm-enterprise-sidebar nav .wm-nav-items button,.wm-enterprise-sidebar.wm-sidebar-compact nav .wm-nav-items button{flex:1;min-width:0;width:auto;min-height:44px;height:44px;padding:3px 1px;gap:3px;flex-direction:column;justify-content:center;font-size:9px}
+ .wm-enterprise-sidebar nav .wm-nav-items button>span{display:inline}.wm-enterprise-sidebar nav button svg{width:17px;height:17px}
+ .wm-main{height:calc(100dvh - 55px);padding:0 8px 6px;gap:7px}
+ .wm-header{margin:0 -8px;padding:0 9px;height:40px;min-height:40px}
+ .wm-header .wm-active-tab{padding:0 10px;max-width:calc(100% - 75px)}.wm-header h1{font-size:15px}
+ .wm-header-controls{gap:3px}.wm-header-controls .wm-connection{display:none}.wm-header-refresh{font-size:11px;padding:4px;min-height:28px}
+ .wm-mobile-account{display:inline-flex;border:0;background:transparent;padding:5px;min-height:28px}
+ .wm-main>.wm-context-bar{gap:12px;padding:0 0 6px}.wm-context-bar label{font-size:10px;gap:5px}.wm-context-bar select{min-height:29px;font-size:10px;padding:4px}
+ .wm-panel{padding:11px 12px}.wm-data-panel{padding:0}.wm-page,.wm-operation{gap:7px}
+ .wm-section-tools{gap:6px}.wm-section-tools .wm-tool-buttons{width:auto;margin-left:auto}
+ .wm-search{width:100%}.wm-tool-buttons button,.wm-tool-buttons .wm-button{font-size:11px;min-height:32px;padding:5px 8px}
+ .wm-tabs button{font-size:11px;padding:6px 10px;min-height:31px}.wm-list-summary{font-size:10px}
+ .wm-task-layout{display:flex;flex-direction:column;gap:7px}
+ .wm-task-scope{flex-direction:row;padding:0;gap:0;flex-shrink:0}.wm-task-scope button{flex:1;justify-content:center;padding:7px 2px;min-height:32px;font-size:11px;white-space:nowrap}.wm-task-scope button.selected{box-shadow:inset 0 2px var(--wm-tab)}.wm-task-scope p{display:none}
+ .wm-data-panel>.wm-panel-title{padding:8px}.wm-data-panel>.wm-pagination{padding:7px 8px}
+ .wm-material-inventory-table col:nth-child(1){width:20%!important}.wm-material-inventory-table col:nth-child(2){width:22%!important}.wm-material-inventory-table col:nth-child(3),.wm-material-inventory-table col:nth-child(4){width:14%!important}.wm-material-inventory-table col:nth-child(5){width:18%!important}.wm-material-inventory-table col:nth-child(6){width:12%!important}
+ .wm-footer{font-size:9px}
+}

@@ -3,15 +3,15 @@ import {Plus,Search,Download} from 'lucide-react';
 import {apiPath,stockNames,storedLocation} from './api';
 import {Empty,Modal} from './components';
 import {materialInventory} from './materialSearch';
-import {usePagination,useTableSize,useViewport} from './paging';
+import {usePagination,useViewport} from './paging';
 import Pager from './Pager';
 
 export default function MaterialInventory({state,canEdit,onStocktake,onViewBox}){
  const [query,setQuery]=useState(''),[selected,setSelected]=useState(null);
- const {height}=useViewport(),all=materialInventory(state.stock);
+ const {width,height}=useViewport(),all=materialInventory(state.stock);
  const terms=query.toLowerCase().trim().split(/\s+/).filter(Boolean);
  const items=all.filter(item=>{const text=[item.sku,item.material_name,item.model,item.specification,...item.boxes.map(box=>`${box.barcode} ${storedLocation(box.location)}`)].join(' ').toLowerCase();return terms.every(term=>text.includes(term));});
- const paging=usePagination(items,Math.max(1,useTableSize()-(height<560?2:0)),query);
+ const paging=usePagination(items,Math.max(1,Math.min(width<760?6:14,Math.floor((height-(width<760?350:305))/51))),query);
  const material=all.find(item=>item.sku===selected),boxes=usePagination(material?.boxes||[],Math.max(1,Math.min(4,Math.floor((height-310)/64))),selected);
  return <><div className="wm-section-tools"><div className="wm-search"><Search size={18}/><input aria-label="搜索物料库存" placeholder="编码、名称、型号、规格或库位" value={query} onChange={event=>setQuery(event.target.value)}/></div><div className="wm-tool-buttons"><a className="wm-button" href={apiPath('/api/inventory.csv')}><Download size={18}/>导出库存明细</a><button className="wm-primary" disabled={!canEdit} onClick={onStocktake}><Plus size={18}/>盘点登记</button></div></div><div className="wm-list-summary"><span>按物料编码汇总 · {items.length} 种物料 · 账面数量 {items.reduce((sum,item)=>sum+item.quantity,0)}</span><span>含交接作业中的物料，正常返库或交接后更新</span></div>
   <section className="wm-panel wm-data-panel"><div className="wm-table-wrap"><table className="wm-material-inventory-table"><colgroup>{['19%','23%','17%','18%','15%','8%'].map((width,index)=><col key={index} style={{width}}/>)}</colgroup><thead><tr>{['物料编码','物料名称','型号','规格','账面数量','操作'].map(label=><th key={label}>{label}</th>)}</tr></thead><tbody>{paging.items.map(item=><tr key={item.sku}><td><strong>{item.sku}</strong></td><td>{item.material_name||'—'}</td><td>{item.model||'—'}</td><td>{item.specification||'—'}</td><td><strong>{item.quantity}</strong><small>{item.boxes.length} 箱{item.reserved?` · 预留 ${item.reserved} 箱`:''}</small></td><td><button className="wm-table-action" aria-label={`查看物料库存 ${item.sku}`} onClick={()=>setSelected(item.sku)}>详情</button></td></tr>)}</tbody></table></div>{!items.length&&<Empty title="暂无匹配的物料库存">物料入库完成后按编码汇总显示；物料资料可在“物料档案”导入和查询。</Empty>}<Pager paging={paging} label="物料库存"/></section>

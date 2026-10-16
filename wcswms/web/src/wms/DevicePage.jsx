@@ -9,7 +9,7 @@ const statusNames={1:'出库完成',2:'入库完成',3:'调仓完成',4:'移动�
 export default function DevicePage({state,canEdit,refresh,notify}){
  const [action,setAction]=useState(null),[id,setId]=useState(''),[editingIp,setEditingIp]=useState(false),[tab,setTab]=useState('status');
  const {height,width}=useViewport();
- const paging=usePagination(state.events,width<760?Math.max(3,Math.floor((height-310)/60)):Math.max(2,Math.min(5,Math.floor((height-590)/44))));
+ const paging=usePagination(state.events,width<760?Math.max(3,Math.floor((height-310)/60)):height<=680?Math.max(3,Math.min(8,Math.floor((height-270)/48))):Math.max(2,Math.min(5,Math.floor((height-590)/44))));
  const plc=state.plc,values=Object.fromEntries((plc.signals||[]).map(signal=>[signal.address,signal.value]));
  function open(kind){setId(requestId());setAction({kind,task:plc.command_task_id,status:values['DB2.DBW0']});}
  const rows=[['PLC',plc.endpoint],['CPU',`${plc.cpu_model||'—'} / ${plc.cpu_state?.replace('S7CpuStatus','')}`],['采样状态',`${plc.live?'实时':'未更新'} · ${formatTime(plc.updated_at)}`],['设备状态',`${statusNames[values['DB2.DBW0']]||'—'} (${values['DB2.DBW0']??'—'})`],['报警代码',values['DB2.DBW4']??'—'],['远程任务许可',values['DB2.DBW6']===1?'允许接单':'未开启'],['已完成任务号',values['DB2.DBW2']??'—'],['命令任务号 / 命令码',`${plc.command_task_id??'—'} / ${plc.command_code??'—'}`],['完成确认位',plc.idle_ack??'—'],['后台读写',state.write_enabled?'读取 / 写入已启用':'只读']];

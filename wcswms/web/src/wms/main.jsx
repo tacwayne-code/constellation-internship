@@ -1,6 +1,7 @@
 import React,{useCallback,useEffect,useRef,useState} from 'react';
 import {createRoot} from 'react-dom/client';
-import {Box,Download,Upload,ClipboardList,MapPin,Settings,Settings2,ArrowRightLeft,LogOut,UserRound,X} from 'lucide-react';
+import {RefreshCw,UserRound,LogOut,X} from 'lucide-react';
+import AppSidebar from './AppSidebar';
 import {api,clearSession,setSession,hasPermission,setDeviceScope} from './api';
 import OperationPage from './OperationPage';
 import TaskPage from './TaskPage';
@@ -13,8 +14,8 @@ import TransferPage from './TransferPage';
 import AgingPage from './AgingPage';
 import {Empty} from './components';
 import './wms.css';
+import './enterprise.css';
 
-const nav=[['inbound','入库',Download],['outbound','出库',Upload],['transfer','调仓',ArrowRightLeft],['inventory','库存',Box],['tasks','任务',ClipboardList],['locations','库位',MapPin],['device','设备',Settings],['settings','设置',Settings2]];
 const titles={inbound:['物料入库','创建单据、取箱装料、返库自动记账'],outbound:['物料出库','按单取箱、核对取料、余料或空箱返库'],aging:['调仓老化测试','四组往返、八步一圈，按完成回执推进'],transfer:['整箱调仓','当前设备内换库位，核对下发与完成回执'],inventory:['库存管理','查询物料库存与档案，登记现场盘点'],tasks:['作业任务','核对下发、跟踪执行，正常完成后自动确认回执'],locations:['库位管理','按实际货架建档，核对空位后参与分配'],device:['设备状态','真实 PLC 连接、接单条件与操作记录'],settings:['系统设置','管理仓库、设备、用户及操作权限']};
 function savedContext(){try{const value=JSON.parse(sessionStorage.getItem('wms-context-v1'));if(value&&/^(main|[0-9a-f]{32})$/.test(value.warehouse)&&/^(primary|[0-9a-f]{32}|)$/.test(value.device))return value;}catch{}return {warehouse:'main',device:'primary'};}
 function App(){
@@ -49,7 +50,7 @@ function App(){
  const permission=page==='device'?'device':['transfer','aging'].includes(page)?'inventory':page;
  const canEdit=online&&(!['inbound','outbound','transfer','aging'].includes(page)||state?.write_enabled===true)&&(page==='tasks'?user.permissions.some(p=>['inbound','outbound','inventory'].includes(p)):page==='device'?user.permissions.some(p=>['device','control'].includes(p)):hasPermission({user},permission));
  const props={state,canEdit,refresh,notify};
- return <div className="wm-shell"><aside className="wm-sidebar"><a href="#" className="wm-brand" onClick={event=>{event.preventDefault();setPage('inbound');}}><Box size={28}/><strong>仓储作业台</strong></a><nav aria-label="仓储导航">{nav.map(([id,label,Icon])=><button key={id} aria-current={page===id||(page==='aging'&&id==='transfer')?'page':undefined} className={page===id||(page==='aging'&&id==='transfer')?'active':''} onClick={()=>{setPage(id);setNotice(null);}}><Icon size={23}/><span>{label}</span></button>)}</nav><p className="wm-sidebar-footer">WMS · 现场作业</p></aside><main className="wm-main"><header className="wm-header"><div><h1>{titles[page][0]}</h1><p>{titles[page][1]}</p></div><div className="wm-header-controls"><span className="wm-connection"><i className={online&&state?.plc.live?'online':'offline'}/>{online&&state?.plc.live?'PLC 在线':'连接待就绪'}</span><button className="wm-user-button" onClick={()=>setPage('settings')}><UserRound size={18}/><span>{user.display_name}</span></button><button className="wm-logout" aria-label="退出登录" onClick={logout} disabled={logoutBusy}><LogOut size={18}/><span>退出登录</span></button></div></header>
+ return <div className="wm-shell"><AppSidebar {...{user,page,logoutBusy}} onNavigate={id=>{setPage(id);setNotice(null);}} onLogout={logout}/><main className="wm-main"><header className="wm-header"><div className="wm-active-tab"><h1>{titles[page][0]}</h1><p>{titles[page][1]}</p></div><div className="wm-header-controls"><button className="wm-header-refresh" disabled={!context.device} onClick={async()=>{try{await refresh();notify('已刷新当前设备数据');}catch(e){notify(e.message,'error');}}}><RefreshCw size={16}/><span>刷新</span></button><span className="wm-connection"><i className={online&&state?.plc.live?'online':'offline'}/>{online&&state?.plc.live?'PLC 在线':'连接待就绪'}</span><button className="wm-mobile-account" aria-label="我的账户设置" onClick={()=>setPage('settings')}><UserRound size={17}/></button><button className="wm-mobile-account" aria-label="退出登录" disabled={logoutBusy} onClick={logout}><LogOut size={17}/></button></div></header>
  <section className="wm-context-bar" aria-label="当前仓库和设备"><label>仓库<select aria-label="当前仓库" value={context.warehouse} disabled={!sites} onChange={e=>chooseWarehouse(e.target.value)}>{sites?.warehouses.map(w=><option key={w.id} value={w.id}>{w.name}</option>)}</select></label><label>设备<select aria-label="当前设备" value={context.device} disabled={!availableDevices.length} onChange={e=>chooseDevice(e.target.value)}>{availableDevices.length?availableDevices.map(d=><option key={d.id} value={d.id}>{d.name}{d.enabled?'':' · 连接已停用'}</option>):<option value="">尚未添加设备</option>}</select></label><span>库位、库存与任务对应所选设备</span></section>
  {!online&&<div className="wm-alert" role="alert">后台连接中断，当前显示最后一次数据，操作暂不可用。</div>}
  {notice&&<div className={`wm-toast ${notice.type==='error'?'wm-alert':''}`} role={notice.type==='error'?'alert':'status'}><span>{notice.message}</span><button className="wm-icon" aria-label="关闭提示" onClick={()=>setNotice(null)}><X size={19}/></button></div>}
