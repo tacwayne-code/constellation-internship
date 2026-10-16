@@ -295,7 +295,8 @@ class WmsService:
             expected = 'IN_STOCK' if task['order_leg'] == 'FETCH' else 'AT_STATION'
             if order['current_task_id'] != task['id'] or box['status'] != expected or box.get('reserved') != task['id'] or location['reserved'] != task['id']:
                 raise WmsError('料箱、原库位或单据步骤已变化，禁止下发')
-            if box['quantity'] != order['before_quantity'] or box['sku'] != order['original_sku']:
+            from .wms_contents import matches_order
+            if not matches_order(box, order):
                 raise WmsError('箱内物料或数量已变化，禁止按原单据下发')
 
     def return_order(self, ident, request):

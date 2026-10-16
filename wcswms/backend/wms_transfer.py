@@ -1,6 +1,7 @@
 """Atomic whole-box relocation within a single device's ledger."""
 import uuid
 from .wms_store import ACTIVE, WmsStore, WmsError, material_details, now, task_locations
+from .wms_contents import contents, signature
 
 
 def check(state, barcode, source, target, task=None):
@@ -23,6 +24,8 @@ def check(state, barcode, source, target, task=None):
     if any(b['location'] == target and b['status'] == 'IN_STOCK' for b in state['stock'].values()):
         raise WmsError('目标库位已有库存，请选择空库位')
     if task:
+        if 'contents' in task and signature(contents(box)) != signature(task['contents']):
+            raise WmsError('源料箱物料明细已变化，不能按原任务调仓')
         if box.get('reserved') != ident or any(box.get(key, 'MATERIAL' if key == 'container_type' else '') != task.get(key, '') for key in ('sku', 'quantity', 'batch', 'container_type', *material_details(box))):
             raise WmsError('源料箱预留、物料或数量已变化，不能按原任务调仓')
     # The box is retrieved before placing it. Ignore this move's own locks;
@@ -56,6 +59,8 @@ def create(store, request, *, aging_id=None):
                     detail='调仓已登记，等待核对原库位、目标库位并下发', posted=False, ack_pending=False,
                     created_at=now(), updated_at=now())
         state['tasks'].insert(0, task)
+        if 'contents' in box:
+            task['contents'] = contents(box)
         for key in task_locations(task):
             state['locations'][key]['reserved'] = task['id']
         box['reserved'] = task['id']

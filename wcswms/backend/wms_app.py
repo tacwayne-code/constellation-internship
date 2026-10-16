@@ -66,6 +66,7 @@ class MaterialInput(Identified):
 
 class MaterialUpdate(MaterialInput):
     barcode: str = Field(min_length=1, max_length=64)
+    sku: str = Field(default='', max_length=80)
     expected_updated_at: str = Field(min_length=1, max_length=60)
 
 
@@ -113,6 +114,7 @@ class OrderBatchInput(Identified):
 class ReturnInput(Identified):
     scanned_barcode: str = Field(default='', max_length=64)
     scanned_sku: str = Field(default='', max_length=80)
+    scanned_skus: list[str] = Field(default_factory=list, max_length=50)
     expected_scan_revision: int | None = Field(default=None, ge=0)
     confirmed: bool = False
 
@@ -730,11 +732,13 @@ def create_app(config=None, data_dir=None, reader=None, key=None, commands_path=
         ledger = store.read()
         scope = app.state.sites.scope(app.state.scope_id)
         for item in ledger['stock'].values():
+            from .wms_contents import contents
             loc = ledger['locations'].get(item['location'])
-            values = {**item, 'location': display_location(item['location'])}
-            writer.writerow([safe(values[key]) for key in ('barcode', 'sku', 'material_name', 'model', 'specification', 'quantity', 'batch', 'location', 'status')]
-                + ['空箱' if item['container_type'] == 'EMPTY_BIN' else '物料箱', ('双伸' if loc['depth'] == 2 else '单伸') if loc else '',
-                   safe(scope['warehouse_name']),safe(scope['device_name'])])
+            for line in contents(item) or [dict(sku='', quantity=0, batch='', material_name='', model='', specification='')]:
+                values = {**item, **line, 'location': display_location(item['location'])}
+                writer.writerow([safe(values[key]) for key in ('barcode', 'sku', 'material_name', 'model', 'specification', 'quantity', 'batch', 'location', 'status')]
+                    + ['空箱' if item['container_type'] == 'EMPTY_BIN' else '物料箱', ('双伸' if loc['depth'] == 2 else '单伸') if loc else '',
+                       safe(scope['warehouse_name']),safe(scope['device_name'])])
         return Response('\ufeff' + output.getvalue(), media_type='text/csv; charset=utf-8', headers={'Content-Disposition': 'attachment; filename=inventory.csv'})
 
     @app.get('/')

@@ -111,7 +111,8 @@ def parse_file(filename, content):
 
 def preview(state, rows):
     catalog = state.get('materials', {})
-    active = {order['sku'] for order in state.get('orders', []) if order['status'] not in {'COMPLETED', 'CANCELLED'}}
+    active = {row['sku'] for order in state.get('orders', []) if order['status'] not in {'COMPLETED', 'CANCELLED'}
+              for row in [order, *order.get('before_contents', []), *order.get('after_contents', [])]}
     items = []
     for row in rows:
         item = {**row, 'errors': list(row['errors'])}

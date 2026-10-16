@@ -1,7 +1,7 @@
 import React,{useMemo,useState} from 'react';
 import {Grid2X2,List,Plus,Settings2} from 'lucide-react';
 import {api,requestId,locationLabel,kindNames,displayLocation,depthName,boxName} from './api';
-import {Empty,Modal,MaterialRows,Badge} from './components';
+import {Empty,Modal,MaterialRows,Badge,BoxContents} from './components';
 import {AddLocation} from './WarehousePages';
 import {allocationSummary} from './allocation';
 import AllocationSettings from './AllocationSettings';
@@ -94,7 +94,7 @@ function LocationDetails({location,stock,task,canEdit,onClose,onSettings,onChang
   catch(e){setError(e.message);}finally{setBusy(false);}
  }
  return <Modal title="库位物料信息" onClose={onClose}><p className="wm-review"><b>{locationLabel(location)}</b><br/>{displayLocation(location.id)} · <span className={`wm-location-status wm-slot-${location.status.toLowerCase()}`}>{labels[location.status]}</span></p>
-  {!operation&&(item?<><h3>{incoming?'待入库物料（任务预留）':'当前在库物料'}</h3><dl className="wm-info-list wm-detail-grid"><div><dt>料箱条码</dt><dd>{item.barcode}</dd></div><div><dt>料箱类型</dt><dd>{boxName(item)}</dd></div>{item.container_type!=='EMPTY_BIN'&&<><div><dt>物料编码</dt><dd>{item.sku}</dd></div><MaterialRows item={item}/><div><dt>数量</dt><dd>{item.quantity}</dd></div><div><dt>批次</dt><dd>{item.batch||'—'}</dd></div></>}</dl></>:<p className="wm-help">{location.status==='UNREGISTERED'?'该位置尚未建档，设置总层列数后可批量生成。':location.status==='UNVERIFIED'?'该库位尚未现场核对，当前没有登记库存。':location.status==='DISABLED'?'该库位已停用，不参与出入库分配。':'该库位当前没有登记库存。'}</p>)}
+  {!operation&&(item?<><h3>{incoming?'待入库物料（任务预留）':'当前在库物料'}</h3><dl className="wm-info-list wm-detail-grid"><div><dt>料箱条码</dt><dd>{item.barcode}</dd></div><div><dt>料箱类型</dt><dd>{boxName(item)}</dd></div>{!item.contents&&item.container_type!=='EMPTY_BIN'&&<><div><dt>物料编码</dt><dd>{item.sku}</dd></div><MaterialRows item={item}/><div><dt>数量</dt><dd>{item.quantity}</dd></div><div><dt>批次</dt><dd>{item.batch||'—'}</dd></div></>}</dl>{item.contents&&<BoxContents item={item}/>}</>:<p className="wm-help">{location.status==='UNREGISTERED'?'该位置尚未建档，设置总层列数后可批量生成。':location.status==='UNVERIFIED'?'该库位尚未现场核对，当前没有登记库存。':location.status==='DISABLED'?'该库位已停用，不参与出入库分配。':'该库位当前没有登记库存。'}</p>)}
   {location.access_error&&<p className="wm-help">{location.access_error}</p>}{task&&<div className="wm-location-task"><span>{kindNames[task.kind]} · {task.number}</span><Badge status={task.status}/></div>}
   {location.status==='DISABLED'&&stock&&<p className="wm-help">库位已停用，库存保留；重新启用后才能出库。</p>}
   {blocked&&<p className="wm-help">该库位关联未结束任务或预留{location.blocking_tasks?.length?`：${location.blocking_tasks.join('、')}`:''}。请先在任务页处理，再更改库位状态。</p>}

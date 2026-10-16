@@ -157,6 +157,16 @@ class WmsStore:
 
     @staticmethod
     def validate(state):
+        from .wms_contents import contents
+        for item in state['stock'].values():
+            if 'contents' in item:
+                rows = contents(item)
+                if (len(rows) > 50 or len({row['sku'] for row in rows}) != len(rows)
+                    or any(not row['sku'].strip() or type(row['quantity']) is not int or row['quantity'] < 1 for row in rows)
+                    or sum(row['quantity'] for row in rows) != item['quantity']
+                    or item['quantity'] > 1000000 or bool(rows) != (item['container_type'] == 'MATERIAL')
+                    or (rows[0]['sku'] if rows else '') != item['sku']):
+                    raise WmsError('料箱物料明细与库存汇总不一致')
         occupied = [item['location'] for item in state['stock'].values() if item['status'] == 'IN_STOCK']
         if len(set(occupied)) != len(occupied):
             raise WmsError('同一库位不能登记两个料箱')
@@ -177,7 +187,8 @@ class WmsStore:
         def comparable(value):
             # Empty optional fields must not invalidate retries from older clients.
             defaults = dict.fromkeys(MATERIAL_FIELDS, '') | dict(container_type='MATERIAL', depth=0, depths=1,
-                                                                 allocation=None, expected_allocation_revision=None, aging_run_id=None)
+                                                                 allocation=None, expected_allocation_revision=None, aging_run_id=None,
+                                                                 sku='', scanned_skus=[])
             return {name: item for name, item in value.items() if name not in defaults or item != defaults[name]}
         def update(state):
             previous = state['receipts'].get(key)
@@ -436,12 +447,22 @@ class WmsStore:
 
     @staticmethod
     def sync_material_stock(state, sku, details):
+        from .wms_contents import contents, set_contents
         for item in state['stock'].values():
-            if item['sku'].strip() == sku:
-                item.update(details, updated_at=now())
+            rows = contents(item)
+            if any(row['sku'] == sku for row in rows):
+                for row in rows:
+                    if row['sku'] == sku:
+                        row.update(details)
+                if 'contents' in item:
+                    set_contents(item, rows)
+                else:
+                    item.update(details)
+                item['updated_at'] = now()
 
     def update_material(self, request):
         def apply(state):
+            from .wms_contents import contents
             item = state['stock'].get(request['barcode'])
             if item is None:
                 raise WmsError('料箱库存记录不存在')
@@ -449,10 +470,14 @@ class WmsStore:
                 raise WmsError('空箱没有物料档案')
             if item['updated_at'] != request['expected_updated_at']:
                 raise WmsError('库存记录已更新，请关闭后重新打开物料信息')
-            before = material_details(item)
+            sku = request.get('sku') or item['sku'].strip()
+            line = next((row for row in contents(item) if row['sku'] == sku), None)
+            if not line:
+                raise WmsError('料箱中不存在该物料')
+            before = material_details(line)
             after = material_details(request)
-            sku = item['sku'].strip()
-            if any(o['sku'] == sku and o['status'] not in {'COMPLETED', 'CANCELLED'} for o in state.get('orders', [])):
+            if any(any(row['sku'] == sku for row in o.get('before_contents', []) + o.get('after_contents', []) + [o])
+                   and o['status'] not in {'COMPLETED', 'CANCELLED'} for o in state.get('orders', [])):
                 raise WmsError('该物料有未结束的装料或取料单据，完成后再修改档案')
             catalog = state.setdefault('materials', {}).setdefault(sku, dict(sku=sku, created_at=now()))
             catalog.update(after, updated_at=now())
@@ -520,6 +545,8 @@ class WmsStore:
                 raise WmsError('料箱类型与库存不一致，请选择物料箱或空箱后重新读取')
             goods = dict(container_type=item.get('container_type', 'MATERIAL'), sku=item['sku'],
                          quantity=item['quantity'], batch=item['batch'], **material_details(item))
+            if 'contents' in item:
+                goods['contents'] = copy.deepcopy(item['contents'])
         else:
             raise WmsError('不支持的任务类型')
         state['sequence'] += 1

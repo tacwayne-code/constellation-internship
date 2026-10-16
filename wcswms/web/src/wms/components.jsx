@@ -2,6 +2,20 @@ import React,{useEffect,useRef,useState} from 'react';
 import {X,Inbox,ExternalLink} from 'lucide-react';
 import {taskNames,kindNames,formatTime,storedLocation,taskLabel,boxName} from './api';
 import {materialFields} from './material';
+import {boxContents,orderLines} from './material';
+import {usePagination} from './paging';
+import Pager from './Pager';
+
+export function BoxContents({item,onEdit}){
+ const rows=boxContents(item),paging=usePagination(rows,3,item.barcode||item.id);
+ if(!rows.length)return <p className="wm-help">空箱 · 无物料</p>;
+ return <div className="wm-content-lines"><table><thead><tr><th>物料 / 批次</th><th>数量</th>{onEdit&&<th>操作</th>}</tr></thead><tbody>{paging.items.map(row=><tr key={row.sku}><td><b>{row.sku} · {row.material_name||'—'}</b><small>{row.model||'—'} · {row.specification||'—'} · 批次 {row.batch||'—'}</small></td><td>{row.quantity}</td>{onEdit&&<td><button type="button" onClick={()=>onEdit(row)}>编辑</button></td>}</tr>)}</tbody></table><Pager paging={paging} label="箱内物料"/></div>;
+}
+
+export function OrderLines({order}){
+ const rows=orderLines(order),paging=usePagination(rows,2,order.id);
+ return <div className="wm-order-lines">{paging.items.map((line,index)=><p key={`${line.sku}:${index}`}><b>{line.sku} · {line.material_name||'—'}</b> · 本单 {line.quantity}<small>该物料 {line.before_quantity} → {line.after_quantity} · 批次 {line.batch||'—'}</small></p>)}<Pager paging={paging} label="单据物料"/></div>;
+}
 
 export function MaterialFields({value,onChange,disabled=false}){
  return <>{materialFields.map(([key,label,maxLength])=><label className={key==='specification'?'wm-field-wide':undefined} key={key}>{label}<input disabled={disabled} value={value[key]||''} maxLength={maxLength} placeholder={`请输入${label}（选填）`} onChange={event=>onChange(key,event.target.value)}/></label>)}</>;

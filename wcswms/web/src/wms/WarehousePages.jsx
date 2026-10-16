@@ -1,6 +1,6 @@
 import React,{useState} from 'react';
 import {api,requestId,locationLabel,stockNames,formatTime,storedLocation,boxName} from './api';
-import {Modal,MaterialFields} from './components';
+import {Modal,MaterialFields,BoxContents} from './components';
 import {materialDetails} from './material';
 import useMaterialLookup from './useMaterialLookup';
 import MaterialCatalog from './MaterialCatalog';
@@ -13,10 +13,10 @@ export function InventoryPage(props){
 function StockInventoryPage({state,canEdit,refresh,notify}){
  const [adding,setAdding]=useState(false),[editing,setEditing]=useState(null),[details,setDetails]=useState(null);
  const selected=details&&state.stock.find(item=>item.barcode===details);
- return <><MaterialInventory state={state} canEdit={canEdit} onStocktake={()=>setAdding(true)} onViewBox={setDetails}/>{selected&&<Modal title="库存详情" onClose={()=>setDetails(null)}><dl className="wm-info-list wm-detail-grid">{[['料箱条码',selected.barcode],['料箱类型',boxName(selected)],['物料编码',selected.sku||'—'],['物料名称',selected.material_name||'—'],['型号',selected.model||'—'],['规格',selected.specification||'—'],['数量',selected.container_type==='EMPTY_BIN'?'1 箱':selected.quantity],['批次',selected.batch||'—'],['库位',storedLocation(selected.location)],['状态',`${stockNames[selected.status]}${selected.reserved?' · 已预留':''}`],['更新于',formatTime(selected.updated_at)]].map(([label,value])=><div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl><button className="wm-primary wm-full" disabled={!canEdit||selected.container_type==='EMPTY_BIN'} onClick={()=>{setEditing(selected);setDetails(null);}}>编辑物料信息</button></Modal>}{adding&&<Stocktake state={state} onClose={()=>setAdding(false)} onDone={async()=>{await refresh();notify('现有库存已登记');}}/>}{editing&&<MaterialEditor item={editing} onClose={()=>setEditing(null)} onDone={async()=>{await refresh();notify('物料信息已保存');}}/>}</>;
+ return <><MaterialInventory state={state} canEdit={canEdit} onStocktake={()=>setAdding(true)} onViewBox={setDetails}/>{selected&&<Modal title="库存详情" onClose={()=>setDetails(null)}><dl className="wm-info-list wm-detail-grid">{[['料箱条码',selected.barcode],['料箱类型',boxName(selected)],['数量',selected.container_type==='EMPTY_BIN'?'1 箱':selected.quantity],['库位',storedLocation(selected.location)],['状态',`${stockNames[selected.status]}${selected.reserved?' · 已预留':''}`],['更新于',formatTime(selected.updated_at)]].map(([label,value])=><div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl><BoxContents item={selected} onEdit={canEdit?line=>{setEditing({...selected,...line});setDetails(null);}:undefined}/></Modal>}{adding&&<Stocktake state={state} onClose={()=>setAdding(false)} onDone={async()=>{await refresh();notify('现有库存已登记');}}/>}{editing&&<MaterialEditor item={editing} onClose={()=>setEditing(null)} onDone={async()=>{await refresh();notify('物料信息已保存');}}/>}</>;
 }
 function MaterialEditor({item,onClose,onDone}){
- const [form,setForm]=useState({request_id:requestId(),barcode:item.barcode,expected_updated_at:item.updated_at,...materialDetails(item)}),[busy,setBusy]=useState(false),[error,setError]=useState('');
+ const [form,setForm]=useState({request_id:requestId(),barcode:item.barcode,sku:item.sku,expected_updated_at:item.updated_at,...materialDetails(item)}),[busy,setBusy]=useState(false),[error,setError]=useState('');
  const update=(key,value)=>setForm(old=>({...old,[key]:value,request_id:requestId()}));
  async function submit(event){event.preventDefault();if(busy)return;setBusy(true);try{await api('/api/inventory/material',form);await onDone();onClose();}catch(e){setError(e.message);}finally{setBusy(false);}}
  return <Modal title="编辑物料信息" onClose={onClose}><form onSubmit={submit}><p className="wm-review">料箱：{item.barcode}<br/>物料编码：{item.sku}</p><MaterialFields value={form} onChange={update}/><p className="wm-help">保存到该物料编码的长期档案，并同步所有同编码料箱的名称、型号、规格；已有任务保留建单时的资料。</p>{error&&<p className="wm-error" role="alert">{error}</p>}<button className="wm-primary wm-full" disabled={busy}>{busy?'保存中…':'保存物料信息'}</button></form></Modal>;

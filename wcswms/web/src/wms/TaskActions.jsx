@@ -1,6 +1,6 @@
 import React,{useState} from 'react';
 import {api,kindNames,storedLocation,taskLabel,boxName,hasPermission} from './api';
-import {ConfirmDialog,Modal} from './components';
+import {ConfirmDialog,Modal,BoxContents,OrderLines} from './components';
 import {materialFields} from './material';
 import {taskPermission} from './transfer';
 
@@ -47,7 +47,7 @@ export function TaskActionDialog({action,state,canEdit,refresh,notify,onClose}){
   await api(`/api/tasks/${task.id}/${kind}`,kind==='cancel'?{}:{site_ready:true});
   await refresh();notify(kind==='dispatch'?'下发已处理，请依据 PLC 反馈查看进度':kind==='acknowledge'?'PLC 回执已确认':'任务已取消');
  }
- return <ConfirmDialog title={kind==='dispatch'?'向真机下发任务':kind==='acknowledge'?'确认 PLC 完成回执':'取消未下发任务'} label={kind==='dispatch'?'已核对料箱、库位、交接点和现场控制权':kind==='acknowledge'?'已核对设备完成，允许确认该任务回执':'确认取消此任务'} button={kind==='dispatch'?'确认下发至真机':kind==='acknowledge'?'确认回执并复归空闲':'确认取消'} disabled={Boolean(blocked)} onClose={onClose} onConfirm={submit}><div className="wm-review"><p><b>{taskLabel(action.task)} · {action.task.barcode}</b></p><p>任务：{action.task.number}</p>{['MOVE','AGING'].includes(action.task.kind)?<><p>原库位：{storedLocation(action.task.location)}</p><p>目标库位：{storedLocation(action.task.target_location)}</p></>:<p>库位：{storedLocation(action.task.location)} / 码头：{action.task.dock}</p>}<p>料箱类型：{boxName(action.task)}</p>{action.task.kind!=='AGING'&&action.task.container_type!=='EMPTY_BIN'&&<p>物料编码：{action.task.sku} / 数量：{action.task.quantity}</p>}{action.task.kind!=='AGING'&&action.task.container_type!=='EMPTY_BIN'&&materialFields.map(([key,label])=><p key={key}>{label}：{action.task[key]||'—'}</p>)}{order&&<p>单据 {order.number}：{kindNames[order.kind]} {order.sku}，数量 {order.quantity}；返库后箱内数量 {order.after_quantity}</p>}</div>{kind==='cancel'&&<p className="wm-help">{cancelHelp}</p>}{blocked&&<p className="wm-error" role="alert">{blocked}</p>}</ConfirmDialog>;
+ return <ConfirmDialog title={kind==='dispatch'?'向真机下发任务':kind==='acknowledge'?'确认 PLC 完成回执':'取消未下发任务'} label={kind==='dispatch'?'已核对料箱、库位、交接点和现场控制权':kind==='acknowledge'?'已核对设备完成，允许确认该任务回执':'确认取消此任务'} button={kind==='dispatch'?'确认下发至真机':kind==='acknowledge'?'确认回执并复归空闲':'确认取消'} disabled={Boolean(blocked)} onClose={onClose} onConfirm={submit}><div className="wm-review"><p><b>{taskLabel(action.task)} · {action.task.barcode}</b></p><p>任务：{action.task.number}</p>{['MOVE','AGING'].includes(action.task.kind)?<><p>原库位：{storedLocation(action.task.location)}</p><p>目标库位：{storedLocation(action.task.target_location)}</p></>:<p>库位：{storedLocation(action.task.location)} / 码头：{action.task.dock}</p>}<p>料箱类型：{boxName(action.task)}</p>{action.task.kind!=='AGING'&&!action.task.contents&&action.task.container_type!=='EMPTY_BIN'&&<p>物料编码：{action.task.sku} / 数量：{action.task.quantity}</p>}{action.task.kind!=='AGING'&&!action.task.contents&&action.task.container_type!=='EMPTY_BIN'&&materialFields.map(([key,label])=><p key={key}>{label}：{action.task[key]||'—'}</p>)}{action.task.contents&&<BoxContents item={action.task}/>}{order&&<><p>单据 {order.number} · {kindNames[order.kind]} · 返库后全箱数量 {order.box_after_total??order.after_quantity}</p><OrderLines order={order}/></>}</div>{kind==='cancel'&&<p className="wm-help">{cancelHelp}</p>}{blocked&&<p className="wm-error" role="alert">{blocked}</p>}</ConfirmDialog>;
 }
 
 function Recovery({task,allowed,onClose,onDone}){

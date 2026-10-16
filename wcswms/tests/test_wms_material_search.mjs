@@ -1,7 +1,16 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {boxContents,materialRows} from '../web/src/wms/material.js';
 import {findMaterials,materialInventory} from '../web/src/wms/materialSearch.js';
 const catalog=[{sku:'0006204',material_name:'深沟球轴承',model:'BR-6204',specification:'20 mm'},{sku:'BEARING-2',material_name:'深沟球轴承',model:'BR-6205',specification:'30 mm'},{sku:'MOTOR',material_name:'电机',model:'BR',specification:'20 mm'}];
+
+test('mixed box totals and outbound rows retain each SKU quantity and barcode',()=>{
+ const mixed={barcode:'MIX',sku:'A',quantity:12,status:'IN_STOCK',container_type:'MATERIAL',location:'L-01-01-1',contents:[{sku:'A',quantity:5,material_name:'甲'},{sku:'B',quantity:7,material_name:'乙'}]};
+ assert.equal(boxContents(mixed).length,2);
+ assert.deepEqual(materialRows([mixed]).map(row=>[row.barcode,row.sku,row.quantity]),[['MIX','A',5],['MIX','B',7]]);
+ assert.deepEqual(materialInventory([mixed]).map(row=>[row.sku,row.quantity,row.boxes.length]),[['A',5,1],['B',7,1]]);
+ assert.deepEqual(materialInventory([{...mixed,status:'SHIPPED'}]),[]);
+});
 test('material suggestions match code, name, model and specification with multiple terms',()=>{
  assert.deepEqual(findMaterials(catalog,'轴承 30').map(row=>row.sku),['BEARING-2']);
  assert.deepEqual(findMaterials(catalog,'br-6204').map(row=>row.sku),['0006204']);

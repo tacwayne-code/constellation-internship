@@ -1,3 +1,4 @@
+import {materialRows} from './material.js';
 const normalize=value=>String(value||'').normalize('NFKC').toLowerCase().trim();
 export function findMaterials(materials,query){
  const text=normalize(query),terms=text.split(/\s+/).filter(Boolean);
@@ -7,7 +8,7 @@ export function findMaterials(materials,query){
 }
 export function materialInventory(stock){
  const groups=new Map();
- for(const box of stock){
+ for(const box of materialRows(stock)){
   if(box.container_type==='EMPTY_BIN'||!box.sku||!['IN_STOCK','AT_STATION','AT_EXIT'].includes(box.status))continue;
   let item=groups.get(box.sku);
   if(!item){item={sku:box.sku,material_name:box.material_name||'',model:box.model||'',specification:box.specification||'',quantity:0,inStock:0,working:0,reserved:0,boxes:[]};groups.set(box.sku,item);}
