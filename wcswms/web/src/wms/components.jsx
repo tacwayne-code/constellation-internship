@@ -12,9 +12,10 @@ export function BoxContents({item,onEdit}){
  return <div className="wm-content-lines"><table><thead><tr><th>物料 / 批次</th><th>数量</th>{onEdit&&<th>操作</th>}</tr></thead><tbody>{paging.items.map(row=><tr key={row.sku}><td><b>{row.sku} · {row.material_name||'—'}</b><small>{row.model||'—'} · {row.specification||'—'} · 批次 {row.batch||'—'}</small></td><td>{row.quantity}</td>{onEdit&&<td><button type="button" onClick={()=>onEdit(row)}>编辑</button></td>}</tr>)}</tbody></table><Pager paging={paging} label="箱内物料"/></div>;
 }
 
-export function OrderLines({order}){
- const {height}=useViewport(),rows=orderLines(order),paging=usePagination(rows,height<650?1:2,order.id);
- return <div className="wm-order-lines">{!rows.length&&<p className="wm-help">空箱 · 无物料</p>}{paging.items.map((line,index)=><p key={`${line.sku}:${index}`}><b>{line.sku} · {line.material_name||'—'}</b> · {order.kind==='COUNT'?(order.count_confirmed_at?'实盘':'账面'):'本单'} {line.quantity}<small>该物料 {line.before_quantity} → {line.after_quantity} · 批次 {line.batch||'—'}</small></p>)}<Pager paging={paging} label="单据物料"/></div>;
+export function OrderLines({order,compact=false}){
+ const {height}=useViewport(),rows=orderLines(order),paging=usePagination(rows,compact||height<650?1:2,order.id);
+ const quantityLabel=order.kind==='COUNT'?(order.count_confirmed_at?'实盘数量':'账面数量'):'本单数量';
+ return <div className="wm-order-lines">{rows.length?<table className="wm-order-material-table" aria-label="单据物料明细"><colgroup><col/><col/><col/><col/></colgroup><thead><tr><th scope="col">物料编码 / 名称</th><th scope="col">型号 / 规格</th><th scope="col">批次</th><th scope="col">{quantityLabel}</th></tr></thead><tbody>{paging.items.map((line,index)=><tr key={`${line.sku}:${index}`}><td><b>{line.sku||'—'}</b><small>{line.material_name||'—'}</small></td><td><span><em>型号</em>{line.model||'—'}</span><span><em>规格</em>{line.specification||'—'}</span></td><td>{line.batch||'—'}</td><td><b>{line.quantity??'—'}</b><small>账面变动<br/>{line.before_quantity??'—'} → {line.after_quantity??'—'}</small></td></tr>)}</tbody></table>:<p className="wm-help">空箱 · 无物料</p>}<Pager paging={paging} label="单据物料"/></div>;
 }
 
 export function MaterialFields({value,onChange,disabled=false}){
