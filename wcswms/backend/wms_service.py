@@ -219,7 +219,7 @@ class WmsService:
             def prepare(state):
                 business_allowed(state, aging_id)
                 item = self.store.task(state, ident)
-                if not state['locations'][item['location']]['enabled']:
+                if item['kind'] != 'AGING' and not state['locations'][item['location']]['enabled']:
                     raise WmsError('任务库位已停用，禁止下发；请核对库位与任务')
                 self.check_dispatch(state, item)
                 plc_id = item['plc_id'] or state['next_plc_id']

@@ -30,9 +30,9 @@ def preparation(state):
             group['reason'] = str(error)
             reasons.append(f'第 {index} 组：{error}')
         groups.append(group)
-    # Stock, occupancy, verification and reservations are irrelevant to this test.
+    # Production enablement, stock, verification and reservations do not gate fixed-coordinate aging.
     coordinates = {key: {field: state['locations'][key].get(field) for field in
-        ('enabled', 'side', 'level', 'column', 'depth')} if key in state['locations'] else None
+        ('side', 'level', 'column', 'depth')} if key in state['locations'] else None
         for pair in PAIRS for key in pair}
     token = hashlib.sha256(json.dumps(dict(locations=coordinates,
         tasks=[dict(id=task['id'], status=task['status']) for task in active]), ensure_ascii=False, sort_keys=True).encode()).hexdigest()
@@ -42,8 +42,8 @@ def preparation(state):
 def check_coordinates(state, source, target):
     for key in (source, target):
         location = state['locations'].get(key)
-        if not location or not location['enabled']:
-            raise WmsError('测试坐标需已建档并启用')
+        if not location:
+            raise WmsError('测试坐标需已建档')
         side, column, level, depth = key.split('-')
         expected = (1 if side == 'L' else 2, int(level), int(column), int(depth))
         if tuple(location.get(field) for field in ('side', 'level', 'column', 'depth')) != expected:

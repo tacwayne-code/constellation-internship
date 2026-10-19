@@ -50,11 +50,17 @@ def current_task(system):
     return store.task(store.read(), store.read()['aging_run']['current_task_id'])
 
 
-@pytest.mark.parametrize('cycles,empty', [(1, False), (2, False), (1, True)])
-def test_exact_eight_leg_route_repeats_without_changing_inventory(system, cycles, empty):
+@pytest.mark.parametrize('cycles,empty,disabled', [(1, False, False), (2, False, False), (1, True, False), (1, False, True), (1, True, True)])
+def test_exact_eight_leg_route_repeats_without_changing_inventory(system, cycles, empty, disabled):
     _, store, plc, service, client = system
     if empty:
         store.mutate(lambda state: state['stock'].clear())
+    if disabled:
+        token = preparation(store.read())['token']
+        store.mutate(lambda state: [state['locations'][key].update(enabled=False, manual_disabled=True)
+                                   for pair in PAIRS for key in pair])
+        assert preparation(store.read())['ready']
+        assert preparation(store.read())['token'] == token
     before = store.read()['stock']
     locations_before = store.read()['locations']
     materials_before = store.read()['materials']
@@ -84,6 +90,45 @@ def test_exact_eight_leg_route_repeats_without_changing_inventory(system, cycles
     writes = list(plc.writes)
     for _ in range(3): service.poll()
     assert plc.writes == writes and len(store.read()['tasks']) == cycles*8
+
+
+def test_four_aging_only_slots_stay_excluded_from_production(system):
+    _, store, plc, service, _ = system
+    disabled = {key for index in (0, 2) for key in PAIRS[index]}
+    store.mutate(lambda state: [state['locations'][key].update(enabled=False, manual_disabled=True) for key in disabled])
+    original = store.read()
+    normal = store.create_task(request(barcode='PRODUCTION-BOX'))
+    assert normal['location'] not in disabled
+    store.cancel(normal['id'])
+    with pytest.raises(WmsError):
+        store.create_task(request(barcode='EXPLICIT-DISABLED') | {'location':PAIRS[0][1]})
+    with pytest.raises(WmsError):
+        store.create_task(request(kind='OUTBOUND', barcode='AGING-BOX-1'))
+    with pytest.raises(WmsError):
+        wms_transfer.create(store, dict(request_id='move-disabled-source', barcode='AGING-BOX-1', source_location=PAIRS[0][0], target_location='L-02-02-1', expected_updated_at=original['stock']['AGING-BOX-1']['updated_at']))
+    with pytest.raises(WmsError):
+        wms_transfer.create(store, dict(request_id='move-disabled-target', barcode='AGING-BOX-2', source_location=PAIRS[1][0], target_location=PAIRS[0][1], expected_updated_at=original['stock']['AGING-BOX-2']['updated_at']))
+    normal = store.create_task(request(barcode='QUEUED-PRODUCTION'))
+    store.mutate(lambda state: state['locations'][normal['location']].update(enabled=False))
+    with pytest.raises(WmsError, match='停用'):
+        service.dispatch(normal['id'], True)
+    assert not plc.writes
+    assert store.read()['stock'] == original['stock']
+    assert all(not store.read()['locations'][key]['enabled'] for key in disabled)
+
+
+def test_legacy_inventory_aging_cannot_use_disabled_production_locations(system):
+    _, store, plc, service, _ = system
+    start(system)
+    def legacy(state):
+        state['aging_run'].pop('mode')
+        state['aging_run']['barcodes']=[f'AGING-BOX-{index+1}' for index in range(4)]
+        state['locations'][PAIRS[0][0]]['enabled']=False
+    store.mutate(legacy)
+    before=store.read()['stock']
+    service.poll()
+    assert store.read()['aging_run']['status']=='PAUSED' and not plc.writes
+    assert store.read()['stock']==before
 
 
 @pytest.mark.parametrize('case', ['absent','occupied','unverified','exit','station','reservation'])
@@ -158,12 +203,11 @@ def test_stop_before_first_dispatch_and_continuous_stop_mid_leg_never_sends_next
     assert preparation(store.read())['ready']
 
 
-@pytest.mark.parametrize('cause', ['missing_location','disabled','stale','unconfirmed','not_ready','active_task'])
+@pytest.mark.parametrize('cause', ['missing_location','stale','unconfirmed','not_ready','active_task'])
 def test_start_preconditions_and_stale_plan_do_not_create_motion(system, cause):
     _, store, plc, _, client = system
     token = preparation(store.read())['token']
     if cause == 'missing_location': store.mutate(lambda state: state['locations'].pop(PAIRS[0][1]))
-    elif cause == 'disabled': store.mutate(lambda state: state['locations'][PAIRS[0][1]].update(enabled=False))
     elif cause == 'not_ready': plc.raw[6:8] = b'\0\0'; plc.poll()
     elif cause == 'stale': store.mutate(lambda state: state['locations'][PAIRS[0][1]].update(level=5))
     elif cause == 'active_task': store.create_task(request(barcode='NORMAL-TASK'))
